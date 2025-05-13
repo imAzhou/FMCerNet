@@ -13,9 +13,9 @@ magnify = '20x' # 40x
 downsample_ratio = 1 if magnify == '40x' else 2
 
 invalid_pids = [
-    'JFSW_1_57', 'JSFW_1_67', 'JSFW_2_125', 'JSFW_2_1323', 'JSFW_2_1327', 'JSFW_2_1583', 'JSFW_2_1521',
+    'JFSW_1_57', 'JFSW_1_67', 'JFSW_2_125', 'JFSW_2_1323', 'JFSW_2_1327', 'JFSW_2_1583', 'JFSW_2_1521',
     'JFSW_2_837',
-    'JFSW_2_1308', 'JFSW_2_255', 'JFSW_2_360',
+    'JFSW_2_1308', 'JFSW_2_255', 'JFSW_2_360', 'JFSW_2_278'
 ]
 
 def analyze_patchlist(total_roiInfo):
