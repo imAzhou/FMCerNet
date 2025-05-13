@@ -121,7 +121,7 @@ def test_net(cfg, model, model_without_ddp):
                 # bboxes_coords: [x1,y1,x2,y2], bboxes_clsname one of POSITIVE_CLASS
                 img_path,bboxes_coords,bboxes_clsname = metainfo['imgpath'],metainfo['bboxes'],metainfo['clsnames']
                 img = Image.open(img_path)
-                h,w = img.size
+                w,h = img.size
                 filename = os.path.basename(img_path)
 
                 pred_bboxes = outputs['pred_bbox'][bidx]
@@ -161,7 +161,7 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=5,7 torchrun  --nproc_per_node=2 --master_port=12346 scripts/analyze/vis_bbox_pred.py \
-    log/l_cerscanv4/wscer_partial_pure/2025_04_29_17_37_52/config.py \
-    log/l_cerscanv4/wscer_partial_pure/2025_04_29_17_37_52/checkpoints/best.pth
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 scripts/analyze/vis_bbox_pred.py \
+    log/l_cerscanv1/wscer_partial/2025_05_12_14_52_56/config.py \
+    log/l_cerscanv1/wscer_partial/2025_05_12_14_52_56/checkpoints/best.pth
 '''

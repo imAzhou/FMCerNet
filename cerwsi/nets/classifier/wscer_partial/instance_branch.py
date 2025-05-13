@@ -411,16 +411,18 @@ class Instance_branch(nn.Module):
         labels = gt_labels.new_full((self.instance_queries, ),0,dtype=torch.long)
         labels[pos_inds] = gt_labels[sampling_result.pos_assigned_gt_inds]
         
-        if img_meta['use_inst']:
-            label_weights = gt_labels.new_ones((self.instance_queries, ))
-        else:
-            label_weights = gt_labels.new_zeros((self.instance_queries, ))
+        # if img_meta['use_inst']:
+        #     label_weights = gt_labels.new_ones((self.instance_queries, ))
+        # else:
+        #     label_weights = gt_labels.new_zeros((self.instance_queries, ))
+        label_weights = gt_labels.new_ones((self.instance_queries, ))
 
         # mask target
         mask_targets = gt_masks[sampling_result.pos_assigned_gt_inds]
         mask_weights = mask_pred.new_zeros((self.instance_queries, ))
-        if img_meta['use_inst']:
-            mask_weights[pos_inds] = 1.0
+        # if img_meta['use_inst']:
+        #     mask_weights[pos_inds] = 1.0
+        mask_weights[pos_inds] = 1.0
 
         return (labels, label_weights, mask_targets, mask_weights, pos_inds,
                 neg_inds, sampling_result)

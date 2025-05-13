@@ -40,11 +40,11 @@ class InstanceDataset(Dataset):
         input_tensor = self.transform(image)
         image_label = imginfo['diagnose']
         
-        imginfo['use_inst'] = False
-        if imginfo['prefix'] == 'total_pos':
-            imginfo['use_inst'] = True
-        elif imginfo['prefix'] == 'neg' and random.random() < 0.2:
-            imginfo['use_inst'] = True
+        # imginfo['use_inst'] = False
+        # if imginfo['prefix'] == 'total_pos':
+        #     imginfo['use_inst'] = True
+        # elif imginfo['prefix'] == 'neg' and random.random() < 0.2:
+        #     imginfo['use_inst'] = True
 
         instance_mask, instance_label = self.generate_instance_GT(imginfo)
         return input_tensor,image_label,instance_mask, instance_label, imginfo
@@ -52,7 +52,7 @@ class InstanceDataset(Dataset):
     def generate_instance_GT(self, imginfo):
         image_label = imginfo['diagnose']
         instance_mask, instance_label = [],[]
-        if image_label != 0 and imginfo['use_inst']:
+        if image_label != 0:
             purename = imginfo["filename"].split('.')[0]
             data = np.load(f'{self.instance_mask_dir}/{purename}.npz')
             instance_mask = data['masks']      # (n, h, w)
