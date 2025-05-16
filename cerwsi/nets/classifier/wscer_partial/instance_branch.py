@@ -427,7 +427,7 @@ class Instance_branch(nn.Module):
         return (labels, label_weights, mask_targets, mask_weights, pos_inds,
                 neg_inds, sampling_result)
 
-    def predict(self, dict_inputs: dict, databatch,mask_input=None, iou_threshold=0.7):
+    def predict(self, dict_inputs: dict, databatch,mask_input=None, iou_threshold=0.5):
         """
         dict_inputs: dict, 
             vision_features: Tensor, (bs, c, h, w)

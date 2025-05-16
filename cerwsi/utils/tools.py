@@ -67,6 +67,7 @@ def overlap_enough(bbox1, bbox2, min_overlap):
     return inter_width > min_overlap and inter_height > min_overlap
 
 def calc_relative_coord(parent_bbox, child_bbox, min_overlap=25):
+    '''bbox: [x1,y1,x2,y2]'''
     relative_bbox = None
     px1,py1,px2,py2 = parent_bbox
     cx1,cy1,cx2,cy2 = child_bbox

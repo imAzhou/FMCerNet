@@ -54,6 +54,13 @@ def process_noparent_ann(annitems, roi_type, sq_size = 500):
             square_x2,square_y2 = square_x1+sq_size, square_y1+sq_size
             rx1,ry1 = min(rx1, square_x1),min(ry1, square_y1)
             rx2,ry2 = max(rx2, square_x2),max(ry2, square_y2)
+        # 处理情况： annitem bbox 过于大，生成的 RoI 无法完全包裹它
+        rw,rh = rx2-rx1, ry2-ry1
+        if rw < w or rh < h:
+            maxlen = int(max(w, h)+0.5)
+            rx1,ry1 = random_cut_square((x1,y1,w,h), sq_size=maxlen)
+            rx2,ry2 = rx1 + maxlen, ry1 + maxlen
+
         backup_rois.append(dict(
             sub_class=roi_type, region=[rx1,ry1,rx2,ry2],
             parent_id = -1
@@ -136,3 +143,15 @@ def draw_roi_inWSI(roi_items, slide, save_path):
             color = (0, 0, 255)
         cv2.rectangle(WSI_map, (x1, y1), (x2, y2), color=color, thickness=-1)  # 实心矩形填充
     Image.fromarray(cv2.cvtColor(WSI_map, cv2.COLOR_BGR2RGB)).save(save_path)
+
+def adjust_region4RoI(roi_region, roi_children):
+    '''
+    根据 roi_children 的坐标重新调整 roi_region 的坐标，
+    确保 roi_region 能包裹住所有的 roi_children
+    '''
+    rx1,ry1,rx2,ry2 = roi_region
+    for citem in roi_children:
+        cx1,cy1,cx2,cy2 = citem['region']
+        rx1,ry1 = min(rx1, cx1), min(ry1, cy1)
+        rx2,ry2 = max(rx2, cx2), max(ry2, cy2)
+    return rx1,ry1,rx2,ry2

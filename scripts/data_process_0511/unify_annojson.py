@@ -3,6 +3,7 @@
 2. 将阳性框内部的小框清除
 3. 将内含阳性框的阴性框清除
 4. 类别映射至：NILM、AGC、ASC-US、LSIL、ASC-H、HSIL, 其余类别丢弃
+5. 存储的位置都是相对于 source_path 的坐标，例如 roi image 或者 kfb slide 的左上角(0,0) 坐标
 '''
 import uuid
 import json
@@ -11,9 +12,9 @@ import pandas as pd
 from tqdm import tqdm
 import copy
 from PIL import Image
-from cerwsi.utils import KFBSlide,is_bbox_inside
+from cerwsi.utils import KFBSlide,is_bbox_inside,decode_xml,read_json_anno,remap_points
 from scripts.data_process_0511.utils import (
-    imgName2patientId,box_enclosured,process_noparent_ann,draw_roi_inWSI)
+    imgName2patientId,box_enclosured,process_noparent_ann,draw_roi_inWSI, adjust_region4RoI)
 
 NEGATIVE_CLASS = ['NILM', 'GEC']
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
@@ -32,13 +33,17 @@ RECORD_CLASS = {
 }
 SAFE_MARGIN = 100
 
-def filter_zheyi_annitems(patientId, annitems, max_xy=None):
+def filter_zheyi_annitems(patientId, annitems, max_xy=None, polygon_shift=0):
     rect_items, roi_items = [],[]
     for annitem in annitems:
         if annitem['type'] == 'circle':
             continue
+        
+        shift = 0
+        if annitem['type'] == 'polygon':
+            shift = polygon_shift
         sub_class = annitem['label']
-        all_x,all_y = [p[0] for p in annitem['points']],[p[1] for p in annitem['points']]
+        all_x,all_y = [p[0]+shift for p in annitem['points']], [p[1]+shift for p in annitem['points']]
         x1,x2 = min(all_x),max(all_x)
         y1,y2 = min(all_y),max(all_y)
         if max_xy is not None:
@@ -55,8 +60,8 @@ def filter_zheyi_annitems(patientId, annitems, max_xy=None):
         if sub_class == 'RoI' and width>15 and height>15:
             roi_items.append(new_iteminfo)
     
-    all_boxes = [i['region'] for i in rect_items]
-    rect_items = [rect for rect in rect_items if not box_enclosured(rect['region'], all_boxes)]
+    # all_boxes = [i['region'] for i in rect_items]
+    # rect_items = [rect for rect in rect_items if not box_enclosured(rect['region'], all_boxes)]
     rect_has_parent = [False] * len(rect_items)
 
     for roiitem in roi_items:
@@ -66,8 +71,9 @@ def filter_zheyi_annitems(patientId, annitems, max_xy=None):
                 annitem['parent_id'] = roiitem['annid']
                 rect_has_parent[ridx] = True
                 roiitem['children'].append(copy.deepcopy(annitem))
-    # if patientId == 'ZY_ONLINE_1_8':
-    #     print()
+        if len(roiitem['children']) > 0:
+            roiitem['region'] = adjust_region4RoI(roiitem['region'], roiitem['children'])
+
     # 为 parent_id == -1 的 annitem 生成 RoI or forge_RoI
     roi_type = 'RoI' if len(roi_items) == 0 else 'forge_RoI'
     noparent_idx = [ridx for ridx,rect in enumerate(rect_items) if rect['parent_id'] == -1]
@@ -75,8 +81,6 @@ def filter_zheyi_annitems(patientId, annitems, max_xy=None):
         noparent_items = [rect_items[i] for i in range(len(rect_items)) if i in noparent_idx]
         parent_rois = process_noparent_ann(noparent_items, roi_type)
         for tempidx, roiitem in enumerate(parent_rois):
-            # if tempidx == 18:
-            #     print()
             roiitem['children'] = []
             rx1,ry1,rx2,ry2 = roiitem['region']
             rx1,ry1 = max(0, rx1), max(0, ry1)
@@ -88,6 +92,7 @@ def filter_zheyi_annitems(patientId, annitems, max_xy=None):
                     annitem['parent_id'] = roiitem['annid']
                     rect_has_parent[ridx] = True
                     roiitem['children'].append(copy.deepcopy(annitem))
+            roiitem['region'] = adjust_region4RoI(roiitem['region'], roiitem['children'])
         roi_items.extend(parent_rois)
     
     if sum(rect_has_parent) != len(rect_items):
@@ -126,7 +131,7 @@ def gene_zheyislide_filter():
         slide = KFBSlide(rowInfo['kfb_path'])
         swidth, sheight = slide.level_dimensions[0]
         filter_anns = filter_zheyi_annitems(patientId, item['annotations'][0]['annotationResult'], 
-                                            (swidth-SAFE_MARGIN, sheight-SAFE_MARGIN))
+                                            (swidth-SAFE_MARGIN, sheight-SAFE_MARGIN),-50)
         slide_filter_items.append({
             'patientId': patientId,
             'media_type': 'slide',
@@ -136,13 +141,13 @@ def gene_zheyislide_filter():
     with open('data_resource/0511/ann_jsons/zheyi_slide.json', 'w', encoding='utf-8') as f:
         json.dump(slide_filter_items, f, ensure_ascii=False)
     
-    for slideitem in tqdm(slide_filter_items, ncols=80):
-        slide = KFBSlide(slideitem['source_path'])
-        roi_items = [item for item in slideitem['annotations'] if 'RoI' in item['sub_class']]
-        save_dir = 'statistic_results/0511/roiInWSI'
-        os.makedirs(save_dir, exist_ok=True)
-        save_path = f'{save_dir}/{slideitem["patientId"]}.png'
-        draw_roi_inWSI(roi_items, slide, save_path)
+    # for slideitem in tqdm(slide_filter_items, ncols=80):
+    #     slide = KFBSlide(slideitem['source_path'])
+    #     roi_items = [item for item in slideitem['annotations'] if 'RoI' in item['sub_class']]
+    #     save_dir = 'statistic_results/0511/roiInWSI'
+    #     os.makedirs(save_dir, exist_ok=True)
+    #     save_path = f'{save_dir}/{slideitem["patientId"]}.png'
+    #     draw_roi_inWSI(roi_items, slide, save_path)
 
 def gene_zheyiroi_filter():
     df_abandon = pd.read_csv('data_resource/group_csv/abandon.csv')
@@ -185,18 +190,114 @@ def gene_zheyiroi_filter():
     with open('data_resource/0511/ann_jsons/zheyi_roi.json', 'w', encoding='utf-8') as f:
         json.dump(roi_filter_items, f, ensure_ascii=False)
 
-def roiImage2mask(imgpath, inside_items):
-    pass
+def gene_partial_slide_filter():
+    df_data = pd.read_csv('data_resource/0511/1_partial_pos.csv')
+    slide_filter_items = []
+    for row in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80):
+        if row.kfb_source == 'WXL_1':
+            roi_list = process_wxl_slide(row)
+        else:
+            roi_list = process_jfsw_slide(row)
 
-def gene_total_pos_annfile():
-    df_data = pd.read_csv('data_resource/0511/0_total_pos.csv')
+        slide_filter_items.append({
+            'patientId': row.patientId,
+            'media_type': 'slide',
+            'source_path': row.kfb_path,
+            'annotations': roi_list
+        })
+    with open('data_resource/0511/ann_jsons/partial_pos_slide.json', 'w', encoding='utf-8') as f:
+        json.dump(slide_filter_items, f, ensure_ascii=False)
 
-def gene_partial_pos_annfile():
-    pass
+def process_jfsw_slide(rowInfo):
+    slide = KFBSlide(rowInfo.kfb_path)
+    swidth, sheight = slide.level_dimensions[0]
+    max_xy = (swidth-SAFE_MARGIN, sheight-SAFE_MARGIN)
+    annos = read_json_anno(rowInfo.anno_path)
+    rect_items = []
+    for ann_ in annos:
+        ann = remap_points(ann_)
+        if ann is None:
+            continue
+        if ann.get('sub_class') not in [*NEGATIVE_CLASS, *POSITIVE_CLASS]:
+            continue
+        sub_class = RECORD_CLASS[ann.get('sub_class')]
+        region = ann.get('region')
+        x,y = region['x'],region['y']
+        w,h = region['width'],region['height']
+
+        if w <=20 or h<=20 or sub_class not in POSITIVE_CLASS:
+            continue
+        new_iteminfo = dict(
+            annid = int(str(uuid.uuid4().int)[:13]),
+            sub_class=sub_class, region=[x,y,x+w,y+h],
+            parent_id = -1
+        )
+        rect_items.append(new_iteminfo)
+    
+    all_boxes = [i['region'] for i in rect_items]
+    rect_items = [rect for rect in rect_items if not box_enclosured(rect['region'], all_boxes)]
+    rect_has_parent = [False] * len(rect_items)
+    parent_rois = process_noparent_ann(rect_items, 'forge_RoI', sq_size=1000)
+    for tempidx, roiitem in enumerate(parent_rois):
+        roiitem['children'] = []
+        rx1,ry1,rx2,ry2 = roiitem['region']
+        rx1,ry1 = max(0, rx1), max(0, ry1)
+        rx2,ry2 = min(max_xy[0], rx2), min(max_xy[1], ry2)
+        roiitem['region'] = [rx1,ry1,rx2,ry2]
+        for ridx, annitem in enumerate(rect_items):
+            if is_bbox_inside(annitem['region'],roiitem['region'],tolerance=20):
+                annitem['parent_id'] = roiitem['annid']
+                rect_has_parent[ridx] = True
+                roiitem['children'].append(copy.deepcopy(annitem))
+        roiitem['region'] = adjust_region4RoI(roiitem['region'], roiitem['children'])
+
+    if sum(rect_has_parent) != len(rect_items):
+        print('Retain rect in JFSW has no parent!')
+            
+    return parent_rois
+
+def process_wxl_slide(rowInfo):
+    slide = KFBSlide(rowInfo.kfb_path)
+    swidth, sheight = slide.level_dimensions[0]
+    max_xy = (swidth-SAFE_MARGIN, sheight-SAFE_MARGIN)
+    all_rects = decode_xml(rowInfo.anno_path)
+    rect_items = []
+    for x1,y1,x2,y2 in all_rects:
+        w,h = x2-x1, y2-y1
+        sub_class = RECORD_CLASS[rowInfo.kfb_clsname]
+        if w <=20 or h<=20 or sub_class not in POSITIVE_CLASS:
+            continue
+        new_iteminfo = dict(
+            annid = int(str(uuid.uuid4().int)[:13]),
+            sub_class=sub_class, region=[x1,y1,x2,y2],
+            parent_id = -1
+        )
+        rect_items.append(new_iteminfo)
+    
+    # all_boxes = [i['region'] for i in rect_items]
+    # rect_items = [rect for rect in rect_items if not box_enclosured(rect['region'], all_boxes)]
+    rect_has_parent = [False] * len(rect_items)
+    parent_rois = process_noparent_ann(rect_items, 'forge_RoI', sq_size=1000)
+    for tempidx, roiitem in enumerate(parent_rois):
+        roiitem['children'] = []
+        rx1,ry1,rx2,ry2 = roiitem['region']
+        rx1,ry1 = max(0, rx1), max(0, ry1)
+        rx2,ry2 = min(max_xy[0], rx2), min(max_xy[1], ry2)
+        roiitem['region'] = [rx1,ry1,rx2,ry2]
+        for ridx, annitem in enumerate(rect_items):
+            if is_bbox_inside(annitem['region'],roiitem['region'],tolerance=20):
+                annitem['parent_id'] = roiitem['annid']
+                rect_has_parent[ridx] = True
+                roiitem['children'].append(copy.deepcopy(annitem))
+        roiitem['region'] = adjust_region4RoI(roiitem['region'], roiitem['children'])
+    if sum(rect_has_parent) != len(rect_items):
+        print('Retain rect in WXL has no parent!')
+
+    return parent_rois
+
 
 
 if __name__ == "__main__":
-    # df_abandon = pd.read_csv('data_resource/group_csv/abandon.csv')
-    gene_zheyislide_filter()  
-    # gene_zheyiroi_filter()
-
+    gene_zheyislide_filter()
+    gene_zheyiroi_filter()
+    gene_partial_slide_filter()

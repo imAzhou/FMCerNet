@@ -36,7 +36,7 @@ class InstanceDataset(Dataset):
         imgpath = f'{self.img_dir}/{imginfo["prefix"]}/{imginfo["filename"]}'
         imginfo['imgpath'] = imgpath
         image = Image.open(imgpath)
-        imginfo['origin_size'] = image.size
+        imginfo['origin_size'] = (image.size[1], image.size[0])     # (H,W)
         input_tensor = self.transform(image)
         image_label = imginfo['diagnose']
         
