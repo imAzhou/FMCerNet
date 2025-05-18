@@ -23,9 +23,9 @@ CLSNAME = ['NILM', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL', 'AGC']
 CLS_COLORS = {
     'NILM': '#2ca02c',  # 绿色
     'ASC-US': '#ff9999',  # 浅红
-    'LSIL': '#ff6666',  # 中浅红
-    'ASC-H': '#ff3333',  # 中红
-    'HSIL': '#cc0000',  # 深红
+    'LSIL': '#FF69B4',  # 中浅红
+    'ASC-H': '#FF1493',  # 中红
+    'HSIL': '#8B008B',  # 深红
     'AGC': '#1f77b4'   # 蓝色
 }
 pos_ratio_bins = [0.0, 0.005, 0.01, 0.05, 0.10, 0.15, 0.30, 0.5, 1]

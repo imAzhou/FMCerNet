@@ -10,7 +10,7 @@ from .classifier.wscer_binary import WSCerBinary
 from .classifier.wscer_partial import WSCerPartial
 from .classifier.wscer_alltoken import WSCerAllToken
 
-allowed_classifier_type = ['binary_linear', 'multicls_linear', 'mlc_linear', 'chief', 'ml_decoder', 'query2label', 'svt',
+allowed_classifier_type = ['online_version','binary_linear', 'multicls_linear', 'mlc_linear', 'chief', 'ml_decoder', 'query2label', 'svt',
                            'wscer_mlc', 'wscer_binary', 'wscer_partial', 'wscer_alltoken']
 
 def get_classifier(args):

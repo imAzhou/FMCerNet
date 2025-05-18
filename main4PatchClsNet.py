@@ -27,7 +27,7 @@ args = parser.parse_args()
 
 
 def train_net(cfg, model, model_without_ddp):
-    trainloader,valloader = load_data(cfg)
+    trainloader,valloader = load_data(cfg, ['train','val'])
     optimizer,lr_scheduler = get_train_strategy(model_without_ddp, cfg)
     
     if is_main_process():

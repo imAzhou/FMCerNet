@@ -67,6 +67,7 @@ def overlap_enough(bbox1, bbox2, min_overlap):
     return inter_width > min_overlap and inter_height > min_overlap
 
 def calc_relative_coord(parent_bbox, child_bbox, min_overlap=25):
+    '''bbox: [x1,y1,x2,y2]'''
     relative_bbox = None
     px1,py1,px2,py2 = parent_bbox
     cx1,cy1,cx2,cy2 = child_bbox
@@ -135,7 +136,8 @@ def random_cut_square(rect, sq_size):
 
     # Case 3: One side < sq_size
     else:
-        if w < sq_size:  # 宽度较短
+        min_len = min(w,h)
+        if w == min_len:  # 宽度较短
             x1 = random.randint(x - sq_size + w, x)  # 左上角的 x1 随机
             y1 = random.randint(y, y + h - sq_size)  # 高度随机分布
         else:  # 高度较短

@@ -39,7 +39,7 @@ parser.add_argument('--dist_url', default='env://', help='url used to set up dis
 args = parser.parse_args()
 
 def draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, binary_attnmap, output_path):
-    h,w = img.size
+    w,h = img.size
     # 创建画布
     fig, axes = plt.subplots(1, 3, figsize=(14, 6))
     fig.subplots_adjust(wspace=0.01)
@@ -125,9 +125,7 @@ def test_net(cfg, model, model_without_ddp):
                 filename = os.path.basename(img_path)
 
                 pred_bboxes = outputs['pred_bbox'][bidx]
-                binary_attnmap = outputs['binary_attnmap'][bidx]
-                feat_size = int(math.sqrt(binary_attnmap.shape[0]))
-                binary_attnmap = binary_attnmap.reshape((feat_size, feat_size)).detach().cpu().numpy()
+                binary_attnmap = outputs['binary_attnmap'][bidx][0].detach().cpu().numpy()
                 binary_attnmap = cv2.resize(binary_attnmap, (w, h), interpolation=cv2.INTER_NEAREST)
                 
                 output_path = f'{vis_save_dir}/{prefix}/{filename}'
@@ -156,12 +154,12 @@ def main():
 
 if __name__ == '__main__':
 
-    vis_save_dir = 'statistic_results/WSI_heatmap_partial'
+    vis_save_dir = 'statistic_results/vis_bbox_pred'
     os.makedirs(vis_save_dir, exist_ok=True)
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 scripts/analyze/vis_bbox_pred.py \
-    log/l_cerscanv1/wscer_partial/2025_05_12_14_52_56/config.py \
-    log/l_cerscanv1/wscer_partial/2025_05_12_14_52_56/checkpoints/best.pth
+CUDA_VISIBLE_DEVICES=1,2 torchrun  --nproc_per_node=2 --master_port=12341 scripts/analyze/vis_bbox_pred.py \
+    log/l_cerscanv1/2025_05_12_14_52_56/config.py \
+    log/l_cerscanv1/2025_05_12_14_52_56/checkpoints/best.pth
 '''

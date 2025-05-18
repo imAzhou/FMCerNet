@@ -19,8 +19,8 @@ def calculate_metrics(y_true, y_pred):
 
     return {
         "accuracy": round(accuracy, 4),
-        "sensitivity": round(sensitivity, 4),
-        "specificity": round(specificity, 4),
+        "sensitivity": round(sensitivity.item(), 4),
+        "specificity": round(specificity.item(), 4),
     }
 
 def compute_iou(box1, box2):
