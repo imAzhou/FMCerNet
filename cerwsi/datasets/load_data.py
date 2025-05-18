@@ -16,19 +16,18 @@ def load_cls_data(cfg):
         # 拆分 batch 中的图像和标签
         images = [item[0] for item in batch]  # 所有 image_tensor，假设 shape 一致
         image_labels = [item[1] for item in batch]
-        metainfo = [item[2] for item in batch]
+        multi_pos_label = [item[2] for item in batch]
 
         # 将 images 转换为一个批次的张量
         images_tensor = torch.stack(images, dim=0)
         imglabels_tensor = torch.as_tensor(image_labels)
-        # clsid_mask = torch.stack(clsid_mask, dim=0)
-        # multi_pos_label = torch.stack(multi_pos_label, dim=0)
+        multi_pos_label = torch.stack(multi_pos_label, dim=0)
 
         # 返回一个字典，其中包含张量和不规则的标注信息
         return {
             'images': images_tensor,
             'image_labels': imglabels_tensor,
-            'metainfo': metainfo,
+            'multi_pos_label': multi_pos_label,
         }
 
     train_transform = transforms.Compose([

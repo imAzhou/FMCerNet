@@ -1,6 +1,7 @@
 from PIL import Image
 from torch.utils.data import Dataset
 import json
+import torch
 
 # 自定义数据集类
 class ClsDataset(Dataset):
@@ -25,13 +26,14 @@ class ClsDataset(Dataset):
 
     def __getitem__(self, idx):
         imginfo = self.patch_infolist[idx]
-        imginfo['clsids'] = [self.classes.index(clsname) for clsname in imginfo['clsnames']]
-        
+        multi_pos_label = torch.zeros((self.num_classes-1,), dtype=torch.float32)
+        pos_label_list = list(set([tk[-1]-1 for tk in imginfo['gtmap_14']]))
+        multi_pos_label[pos_label_list] = 1
+
         imgpath = f'{self.img_dir}/{imginfo["prefix"]}/{imginfo["filename"]}'
         imginfo['imgpath'] = imgpath
         image = Image.open(imgpath)
         imginfo['origin_size'] = image.size
         input_tensor = self.transform(image)
-        image_label = 0 if imginfo['diagnose'] == 0 else max(imginfo['clsids'])
-        # image_label = imginfo['diagnose']
-        return input_tensor,image_label,imginfo
+        image_label = imginfo['diagnose']
+        return input_tensor,image_label,multi_pos_label

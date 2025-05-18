@@ -211,6 +211,7 @@ class WSCerMLC(MetaClassifier):
             self.cls_pos_heads.append(nn.Linear(num_patches, 1))
 
     def calc_logits(self, img_tokens: torch.Tensor):
+        img_tokens = img_tokens.transpose(1,2)
         keys_1 = self.proj_1(img_tokens)  # (bs, num_tokens, C1=512)
 
         bs, num_tokens, embed_dim = keys_1.shape

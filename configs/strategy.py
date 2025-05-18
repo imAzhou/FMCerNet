@@ -13,10 +13,11 @@ optim_wrapper = dict(
 )
 
 positive_thr = 0.5
-img_size = 512  # 224, 448, 512, 1024
+img_size = 224  # 224, 448, 512, 1024
 
 logger_name = 'wscer_partial'
 apply_auxiliary = 'random'  # random, logit
 load_from = None
 # eval_prime_score = 'single-label/binary_accuracy'
-eval_prime_score = 'img_accuracy'
+# multi-label/img_accuracy
+eval_prime_score = 'multi-label/img_accuracy'
