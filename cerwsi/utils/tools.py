@@ -136,7 +136,8 @@ def random_cut_square(rect, sq_size):
 
     # Case 3: One side < sq_size
     else:
-        if w < sq_size:  # 宽度较短
+        min_len = min(w,h)
+        if w == min_len:  # 宽度较短
             x1 = random.randint(x - sq_size + w, x)  # 左上角的 x1 随机
             y1 = random.randint(y, y + h - sq_size)  # 高度随机分布
         else:  # 高度较短

@@ -1,14 +1,43 @@
 # dataset settings 
 
-data_root = 'data_resource/0429/512'
+data_root = 'data_resource/0511'
 # data_root = '/c22073/zly/datasets/CervicalDatasets/LCerScanv1_512'
+img_dir = f'{data_root}/images'
+instance_mask_dir = f'{data_root}/patch_inst_mask'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
+dataset_type = 'instance'    # cls, instance
 train_bs = 16
 val_bs = 16
-split_group = 1     # 一般情况下设置为1，不等于1时，会分 split_group 组数据分别依次送入backbone抽特征后，组合到一起送入解码器中训练
+input_size = 512  # 224, 448, 512, 1024
 
-train_annojson = 'train.json'
-val_annojson = 'val.json'
+train_annojson = f'{data_root}/annofiles/fusiontrain_coco.json'
+train_rel_file = f'{data_root}/annofiles/fusiontrain_rle_masks.pkl'
+train_transform = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
+    # dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),
+    dict(type='Resize', scale=(input_size, input_size)),
+    # dict(type='RandomFlip', prob=0.5),
+    dict(type='PackDetInputs')
+]
 
-dataset_type = 'instance'    # cls, instance
+val_annojson = f'{data_root}/annofiles/val_coco.json'
+val_rel_file = f'{data_root}/annofiles/val_rle_masks.pkl'
+val_transform = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
+    dict(type='Resize', scale=(input_size, input_size)),
+    dict(type='PackDetInputs')
+]
+
+test_transform = [
+    dict(type='LoadImageFromFile'),
+    dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),
+    # If you don't have a gt annotation, delete the pipeline
+    dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
+    dict(
+        type='PackDetInputs',
+        meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
+                   'scale_factor'))
+]

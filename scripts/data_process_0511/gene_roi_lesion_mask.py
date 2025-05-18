@@ -154,6 +154,7 @@ def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
             for annitem in RoIItem['children']:
                 if not annitem['inst_infer']:
                     print(f'ERROR! Retain ann not infer: {purename}')
+            
             if len(RoIItem['children']) > 0:
                 sparse_mask = sparse.coo_matrix(roi_mask)  # 只保存非零元素的位置和值
                 np.savez_compressed(f"{npz_mask_save_dir}/{purename}.npz",
@@ -165,8 +166,12 @@ def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
 
 def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
-        if item['patientId'] not in test_patientId:
+        # if idx != 1585:
+        #     continue
+        if item['patientId'] != 'JFSW_2_107':
             continue
+        # if item['patientId'] not in test_patientId:
+        #     continue
         if item['media_type'] == 'roi':
             roi_img = Image.open(item['source_path'])
         elif item['media_type'] == 'slide':
@@ -174,13 +179,17 @@ def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
 
         draw_cnt = 0
         for RoIItem in item['annotations']:
-            if draw_cnt > 3:
-                break
-            if len(RoIItem['children']) > 50:
+            # if draw_cnt > 3:
+            #     break
+            # if len(RoIItem['children']) > 50:
+            #     continue
+            if str(RoIItem['annid']) != '1457140814755':
                 continue
             rx1,ry1,rx2,ry2 = RoIItem['region']
             rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
+            # if purename != 'JFSW_2_1650_1090701596895':
+            #     continue
             if len(RoIItem['children']) > 0:
                 loader = np.load(f"{npz_mask_save_dir}/{purename}.npz")
                 sparse_mask = sparse.coo_matrix((loader['data'], (loader['row'], loader['col'])), shape=loader['shape'])
@@ -193,7 +202,6 @@ def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
                 start_x1,start_y1 = random_cut_square((0,0,rw,rh), SIZE_THR)
                 start_x1,start_y1 = max(start_x1,0), max(start_y1,0)
                 start_x2,start_y2 = min(start_x1+SIZE_THR,rw), min(start_y1+SIZE_THR,rh)
-                roi_mask = roi_mask[start_y1:start_y2, start_x1:start_x2]
                 RoIItem['region'] = [start_x1+rx1, start_y1+ry1, start_x2+rx1, start_y2+ry1]
                 RoIItem['children'] = [i for i in RoIItem['children'] if is_bbox_inside(i['region'],RoIItem['region'],tolerance=10)]
 
@@ -215,6 +223,23 @@ def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
             vis_sample(sample_img, roi_mask, RoIItem, f'{purename}.png')
             draw_cnt += 1
 
+def test_file_exist(all_json_datas,npz_mask_save_dir):
+    for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
+        if idx != 1585:
+            continue
+        for RoIItem in item['annotations']:
+            purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
+            flag = False
+            if len(RoIItem['children']) > 0:
+                loader = np.load(f"{npz_mask_save_dir}/{purename}.npz")
+                sparse_mask = sparse.coo_matrix((loader['data'], (loader['row'], loader['col'])), shape=loader['shape'])
+                roi_mask = sparse_mask.toarray().astype(np.int16)
+                # unique_idx = np.unique(roi_mask)
+                if np.sum(roi_mask) == 0:
+                    flag = True
+            if flag:
+                print(f'Error in {purename}')
+
 
 if __name__ == "__main__":
     with open('data_resource/0511/ann_jsons/zheyi_roi.json', 'r', encoding='utf-8') as f:
@@ -228,6 +253,8 @@ if __name__ == "__main__":
     # all_json_datas = [*zheyi_roi_data, *zheyi_slide]
     npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
     os.makedirs(npz_mask_save_dir, exist_ok=True, mode=0o777)
-    gene_roi_lesion_mask(all_json_datas, npz_mask_save_dir)
-    # test_roi_lesion_mask(all_json_datas, npz_mask_save_dir)
-
+    # gene_roi_lesion_mask(all_json_datas, npz_mask_save_dir)
+    
+    test_roi_lesion_mask(all_json_datas, npz_mask_save_dir)
+    # test_file_exist(all_json_datas,npz_mask_save_dir)
+    

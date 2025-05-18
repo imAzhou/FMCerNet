@@ -69,9 +69,15 @@ def gene_patch_jsonlist():
     npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
     patchitems = []
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
-        if item['patientId'] not in test_patientId:
-            continue
+        # if item['patientId'] not in test_patientId:
+        #     continue
+        # if item['patientId'] != 'JFSW_2_107':
+        #     continue
+        # if idx < 2198:
+        #     continue
         for RoIItem in item['annotations']:
+            # if str(RoIItem['annid']) != '1457140814755':
+            #     continue
             rx1,ry1,rx2,ry2 = RoIItem['region']
             rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
@@ -127,6 +133,12 @@ def gene_patch_jsonlist():
                     pItem['diagnose'] = 1
                     pItem['maskfile'] = f'{purename}_{RoI_patch_idx}.npz'
                     np.savez_compressed(f'{patch_npz_save_dir}/{pItem["maskfile"]}', patch_mask=patch_mask)
+                
+                    # slide = KFBSlide(pItem['source_path'])
+                    # px1,py1,px2,py2 = pItem['square_coords']
+                    # location, level, size = (px1,py1), 0, (px2-px1,py2-py1)
+                    # patch_img = Image.fromarray(slide.read_region(location, level, size))
+                    # vis_patch_sample(patch_img, patch_mask, bboxes, pItem['filename'])
 
                 patchitems.append(pItem)
                 RoI_patch_idx += 1
@@ -153,10 +165,10 @@ def calc_patch_anns(patch_coords, RoIItem, roi_mask):
             ann_bboxes.append(np.array([bx1,by1,bx2,by2]).tolist())
             annitem = RoIItem['children'][aidx-1]
             ann_clsnames.append(annitem['sub_class'])
-            new_patch_mask[annmask] = len(ann_bboxes)
+            new_patch_mask[annmask] = len(ann_bboxes)   # id: 1,2,...
     
-    if np.sum(new_patch_mask>0) < 50*50:
-        return ann_bboxes, ann_clsnames, new_patch_mask
+    if np.sum(new_patch_mask>0) < 50*50:    # 总的阳性病变面积太小则忽略
+        return [], [], np.zeros_like(patch_mask)
     
     return ann_bboxes, ann_clsnames, new_patch_mask
 
@@ -178,8 +190,9 @@ def cut_patch_imgs():
         keyname = f"{patchinfo['patientId']}_{patchinfo['media_type']}"
         reload_patchlist[keyname].append(patchinfo)
     
+    total_nums = len(reload_patchlist.keys())
     valid_patches_in_RoI = []
-    for keyname, patchlist in reload_patchlist.items():
+    for (keyname, patchlist),idx in zip(reload_patchlist.items(), range(total_nums)):
         source_path = patchlist[0]['source_path']
         media_type = patchlist[0]['media_type']
 
@@ -188,8 +201,11 @@ def cut_patch_imgs():
         elif media_type == 'slide':
             slide = KFBSlide(source_path)
 
-        for patchinfo in tqdm(patchlist, ncols=80, desc=f'Processing {keyname}'):
+        for patchinfo in tqdm(patchlist, ncols=80, desc=f'[{idx+1}/{total_nums}]Processing {keyname}'):
+
             if media_type == 'roi':
+                # px1,py1,px2,py2 = patchinfo['square_coords']
+                # w,h = px2-px1,py2-py1
                 patch_img = roi_img.crop(patchinfo['square_coords'])
             elif media_type == 'slide':
                 px1,py1,px2,py2 = patchinfo['square_coords']
@@ -206,15 +222,14 @@ def cut_patch_imgs():
                 with torch.no_grad():
                     outputs = valid_model.val_step(data_batch)
                 if max(outputs[0].pred_score) > CERTAIN_THR and outputs[0].pred_label == 1:
-                    # patch_img.save(f'{img_save_dir}/neg/{patchinfo["filename"]}')
+                    patch_img.save(f'{img_save_dir}/neg/{patchinfo["filename"]}')
                     valid_patches_in_RoI.append(patchinfo)
             else:
                 patch_img.save(f'{img_save_dir}/{patchinfo["prefix"]}/{patchinfo["filename"]}')
                 valid_patches_in_RoI.append(patchinfo)
-                patch_mask = np.load(f'{patch_npz_save_dir}/{patchinfo["maskfile"]}')['patch_mask']
-                vis_patch_sample(patch_img, patch_mask, patchinfo['bboxes'], patchinfo['filename'])
+                # patch_mask = np.load(f'{patch_npz_save_dir}/{patchinfo["maskfile"]}')['patch_mask']
+                # vis_patch_sample(patch_img, patch_mask, patchinfo['bboxes'], patchinfo['filename'])
 
-    
     with open('data_resource/0511/ann_jsons/patches_in_RoI_valid.json', 'w', encoding='utf-8') as f:
         json.dump(valid_patches_in_RoI, f, ensure_ascii=False)
 
@@ -225,6 +240,6 @@ if __name__ == "__main__":
     gene_patch_jsonlist()
 
     img_save_dir = 'data_resource/0511/images'
-    for tag in ['neg', 'partial_pos', 'total_pos']:
-        os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
-    cut_patch_imgs()
+    # for tag in ['neg', 'partial_pos', 'total_pos']:
+    #     os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
+    # cut_patch_imgs()

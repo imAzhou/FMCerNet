@@ -22,7 +22,7 @@ parser.add_argument('--dist_url', default='env://', help='url used to set up dis
 args = parser.parse_args()
 
 def test_net(cfg, model, model_without_ddp):
-    trainloader,valloader = load_data(cfg)
+    valloader = load_data(cfg, ['val'])
 
     model.eval()
     pbar = valloader

@@ -45,7 +45,6 @@ def cut_random_neg():
     neg_patch_list = []
     txt_records = []
     low_valid_records = []
-    total_nums = len(filtered['train']) + len(filtered['val'])
     
     for mode in ['train','val']:
         filtered[mode] = filtered[mode].reset_index(drop=True)
@@ -88,7 +87,7 @@ def cut_random_neg():
                     slide_patch_cnt += 1
 
             t_delta = time.time() - start_time
-            print(f'[{r_idx+1}/{total_nums}] {patientId} cut nums: {slide_patch_cnt}, cost: {t_delta:0.2f}s')
+            print(f'[{r_idx+1}/{len(filtered[mode])}] {patientId} cut nums: {slide_patch_cnt}, cost: {t_delta:0.2f}s')
             txt_records.append(f'{patientId} cut nums: {slide_patch_cnt}. \n')
             if slide_patch_cnt < 5:
                 low_valid_records.append(f'{patientId} cut nums: {slide_patch_cnt}. \n')
