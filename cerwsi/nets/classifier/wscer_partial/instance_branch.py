@@ -198,29 +198,33 @@ class Instance_branch(nn.Module):
             backbone_fpn: List[Tensor]: [bs, c, h1,w1]...
         '''
         pred_mask_logits, pred_cls_logits = self(dict_inputs, mask_input)
-        num_imgs, _, logit_h, logit_w = pred_mask_logits.shape
+        # num_imgs, _, logit_h, logit_w = pred_mask_logits.shape
 
         device = pred_cls_logits.device
-        batch_gt_instances,cls_scores_list,mask_preds_list = [],[],[]
-        for i in range(num_imgs):
-            cls_scores_list.append(pred_cls_logits[i])
-            mask_preds_list.append(pred_mask_logits[i])
-            gt_instances = InstanceData()
-            # img_label = databatch['image_labels'][i]
-            if len(databatch['instance_mask'][i]) == 0:
-                gt_instances.masks = torch.empty((0, logit_h, logit_w), device=device).float()
-                gt_instances.labels = torch.empty((0,), device=device).long()
-            else:
-                instance_mask = F.interpolate(
-                    torch.as_tensor(databatch['instance_mask'][i]).unsqueeze(1), 
-                    size=(logit_h, logit_w), mode='nearest').squeeze(1)  # (1, H, W)
-                gt_instances.masks = instance_mask.to(device).float()
-                gt_instances.labels = torch.as_tensor(databatch['instance_label'][i], device=device).long()
+        # batch_gt_instances,cls_scores_list,mask_preds_list = [],[],[]
+        # for i in range(num_imgs):
+        #     cls_scores_list.append(pred_cls_logits[i])
+        #     mask_preds_list.append(pred_mask_logits[i])
+            # gt_instances = InstanceData()
+            # # img_label = databatch['image_labels'][i]
+            # if len(databatch['instance_mask'][i]) == 0:
+            #     gt_instances.masks = torch.empty((0, logit_h, logit_w), device=device).float()
+            #     gt_instances.labels = torch.empty((0,), device=device).long()
+            # else:
+            #     instance_mask = F.interpolate(
+            #         torch.as_tensor(databatch['instance_mask'][i]).unsqueeze(1), 
+            #         size=(logit_h, logit_w), mode='nearest').squeeze(1)  # (1, H, W)
+            #     gt_instances.masks = instance_mask.to(device).float()
+            #     gt_instances.labels = torch.as_tensor(databatch['instance_label'][i], device=device).long()
 
-            batch_gt_instances.append(gt_instances)
-        
+            # batch_gt_instances.append(gt_instances)
+            # gt_instances = databatch['data_samples'][i].gt_instances
+            # gt_instances.mask
+            # batch_gt_instances.append(databatch['data_samples'][i].gt_instances)
+        batch_gt_instances = [item.gt_instances.to(device) for item in databatch['data_samples']]
+        batch_img_metas = [item.metainfo for item in databatch['data_samples']]
         (labels_list, label_weights_list, mask_targets_list, mask_weights_list,
-         avg_factor) = self.get_targets(cls_scores_list, mask_preds_list, batch_gt_instances, databatch['metainfo'])
+         avg_factor) = self.get_targets(pred_cls_logits, pred_mask_logits, batch_gt_instances, batch_img_metas)
         # shape (batch_size, num_queries)
         labels = torch.stack(labels_list, dim=0)
         # shape (batch_size, num_queries)
@@ -427,7 +431,7 @@ class Instance_branch(nn.Module):
         return (labels, label_weights, mask_targets, mask_weights, pos_inds,
                 neg_inds, sampling_result)
 
-    def predict(self, dict_inputs: dict, databatch,mask_input=None, iou_threshold=0.5):
+    def predict(self, dict_inputs: dict, databatch, mask_input=None, iou_threshold=0.5):
         """
         dict_inputs: dict, 
             vision_features: Tensor, (bs, c, h, w)
@@ -435,7 +439,7 @@ class Instance_branch(nn.Module):
             backbone_fpn: List[Tensor]: [bs, c, h1,w1]...
         """
         pred_mask_logits, pred_cls_logits = self(dict_inputs, mask_input)
-        bs = databatch['images'].shape[0]
+        bs = databatch['inputs'].shape[0]
         pred_bboxes = []
 
         for i in range(bs):
@@ -454,7 +458,7 @@ class Instance_branch(nn.Module):
             mask_logits = pred_mask_logits[i][keep]  # (num_keep, h, w)
 
             # 3. mask logits resize到(H, W)，再 sigmoid + 二值化
-            ori_size = databatch['metainfo'][i]['origin_size']
+            ori_size = databatch['data_samples'][i].ori_shape
             mask_logits_resized = F.interpolate(mask_logits.unsqueeze(1), size=ori_size, mode='bilinear', align_corners=False).squeeze(1)  # (num_keep, H, W)
             masks = mask_logits_resized.sigmoid() > 0.5
 

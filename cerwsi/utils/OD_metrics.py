@@ -176,11 +176,12 @@ class ImgODMetric(BaseMetric):
         bs = bs_img_gt.shape[0]
 
         for bidx in range(bs):
-            metainfo = data_samples['metainfo'][bidx]
+            # metainfo = data_samples['metainfo'][bidx]
+            datasample = data_samples['data_samples'][bidx]
             gt_bbox = {
-                'bbox': metainfo['bboxes'],  # [[x1, y1, x2, y2],...]
-                'clsnames': metainfo['clsnames'],  # ['AGC',...]
-                'clsids': metainfo['clsids'],  # [1,...]
+                'bbox': datasample.gt_instances.bboxes.tensor.tolist(),  # [[x1, y1, x2, y2],...]
+                # 'clsnames': metainfo['clsnames'],  # ['AGC',...]
+                'clsids': datasample.gt_instances.labels.tolist(),  # [1,...]
             }
             result = dict(
                 img_gt = bs_img_gt[bidx].item(),
@@ -189,7 +190,7 @@ class ImgODMetric(BaseMetric):
                 # {'bbox': [x1, y1, x2, y2], 'score': float, 'cls': int}
                 pred_bbox = data_samples['pred_bbox'][bidx],
                 gt_bbox = gt_bbox,
-                prefix = metainfo['prefix'] # pfefix: 'neg', 'partial_pos', 'total_pos'
+                prefix = datasample.prefix # pfefix: 'neg', 'partial_pos', 'total_pos'
             )
 
             # Save the result to `self.results`.

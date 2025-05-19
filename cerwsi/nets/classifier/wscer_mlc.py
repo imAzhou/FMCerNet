@@ -169,7 +169,7 @@ class WSCerMLC(MetaClassifier):
     def __init__(self, args):
         input_embed_dim = args.backbone_cfg['backbone_output_dim'][0]
         patch_size = args.backbone_cfg['vit_patch_size']
-        img_size = args.img_size
+        img_size = args.input_size
         feat_size = img_size // patch_size
         num_patches = feat_size*feat_size
 

@@ -13,10 +13,6 @@ optim_wrapper = dict(
 )
 
 positive_thr = 0.5
-<<<<<<< HEAD
-img_size = 224  # 224, 448, 512, 1024
-=======
->>>>>>> 8de63f31a2f377a4e101bc5e333242bb1a61d3bf
 
 logger_name = 'wscer_partial'
 apply_auxiliary = 'random'  # random, logit

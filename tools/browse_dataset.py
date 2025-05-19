@@ -2,7 +2,6 @@
 import os.path as osp
 import os
 import argparse
-from mmengine.registry import init_default_scope
 from mmdet.models.utils import mask2ndarray
 from mmdet.structures.bbox import BaseBoxes
 from mmengine.config import Config
@@ -53,11 +52,7 @@ def draw_dataset_gt(img, data_sample: DetDataSample, save_path, metainfo):
 def main():
     args = parser.parse_args()
     os.makedirs(args.save_dir, exist_ok=True, mode=0o777)
-
-    # register all modules in mmdet into the registries
-    init_default_scope('mmdet')
     d_cfg = Config.fromfile(args.dataset_config_file)
-    
     trainloader = load_data(d_cfg, ['val'])
     metainfo = {
         'classes': trainloader.dataset.classes,

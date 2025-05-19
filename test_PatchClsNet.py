@@ -34,12 +34,12 @@ def test_net(cfg, model, model_without_ddp):
         #     break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
-        model_without_ddp.classifier.evaluator.process(data_samples=[outputs], data_batch=None)
+        # model_without_ddp.classifier.evaluator.process(data_samples=[outputs], data_batch=None)
     
-    metrics = model_without_ddp.classifier.evaluator.evaluate(len(valloader.dataset))
+    # metrics = model_without_ddp.classifier.evaluator.evaluate(len(valloader.dataset))
     if is_main_process():
         pbar.close()
-        print(metrics)
+        # print(metrics)
 
 def main():
     init_distributed_mode(args)
@@ -49,7 +49,7 @@ def main():
     cfg = Config.fromfile(args.config_file)
     cfg.save_result_dir = args.save_dir
     cfg.backbone_cfg['backbone_ckpt'] = None
-    cfg.instance_ckpt = None
+    # cfg.instance_ckpt = None
     model = PatchClsNet(cfg).to(device)
     model_without_ddp = model
 
@@ -57,7 +57,7 @@ def main():
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
     
-    model_without_ddp.load_ckpt(args.ckpt)
+    # model_without_ddp.load_ckpt(args.ckpt)
     test_net(cfg, model, model_without_ddp)
 
     if args.distributed:
@@ -68,8 +68,8 @@ if __name__ == '__main__':
     # analyze(f'{args.save_dir}/pred_results_0.5.json')
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12341 test_PatchClsNet.py \
-    log/l_cerscanv1/2025_05_12_14_52_56/config.py \
+CUDA_VISIBLE_DEVICES=7, torchrun  --nproc_per_node=1 --master_port=12341 test_PatchClsNet.py \
+    log/debug/2025_05_19_13_25_16/config.py \
     log/l_cerscanv1/2025_05_12_14_52_56/checkpoints/best.pth \
-    log/l_cerscanv1/2025_05_12_14_52_56
+    log/debug/2025_05_19_13_25_16
 '''

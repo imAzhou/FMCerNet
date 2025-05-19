@@ -8,7 +8,7 @@ num_classes = len(classes)
 # num_classes = 1
 train_bs = 128
 val_bs = 128
-split_group = 1
+input_size = 224  # 224, 448, 512, 1024
 
 train_annojson = 'train_patches.json'
 val_annojson = 'val_patches.json'

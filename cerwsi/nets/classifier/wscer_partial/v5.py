@@ -18,7 +18,7 @@ class WSCerPartial(MetaClassifier):
         self.binary_cls_branch = BinaryClsBranch(args.binary_branch_input_dim)
         self.instance_branch = Instance_branch(
             transformer_dim = 256,
-            img_input_size = args.img_size,
+            img_input_size = args.input_size,
             num_classes = args.num_classes,
             num_instance_queries = args.num_instance_queries,
             pretrain_ckpt = args.instance_ckpt)
@@ -30,17 +30,17 @@ class WSCerPartial(MetaClassifier):
             vision_pos_enc: List[Tensor]: [bs, c, h1,w1]...
             backbone_fpn: List[Tensor]: [bs, c, h1,w1]...
         '''
-        img_logits,binary_attnmap = self.binary_cls_branch(dict_inputs['vision_features'])
+        img_logits = self.binary_cls_branch(dict_inputs['vision_features'])
         binary_loss_fn = nn.BCEWithLogitsLoss()
         img_gt = databatch['image_labels'].unsqueeze(1).float()
         img_loss = binary_loss_fn(img_logits, img_gt)
         
-        bs,num_tokens = binary_attnmap.shape
-        feat_size = int(math.sqrt(num_tokens))
-        binary_attnmap = binary_attnmap.reshape((bs, feat_size, feat_size)).unsqueeze(1)
-        binary_attnmap = F.interpolate(binary_attnmap, size=(feat_size*4, feat_size*4), mode='nearest')
+        # bs,num_tokens = binary_attnmap.shape
+        # feat_size = int(math.sqrt(num_tokens))
+        # binary_attnmap = binary_attnmap.reshape((bs, feat_size, feat_size)).unsqueeze(1)
+        # binary_attnmap = F.interpolate(binary_attnmap, size=(feat_size*4, feat_size*4), mode='nearest')
         
-        instance_loss_dict = self.instance_branch.loss(dict_inputs, databatch, binary_attnmap)
+        instance_loss_dict = self.instance_branch.loss(dict_inputs, databatch, None)
         loss = img_loss
         loss_dict = {'img_loss': img_loss.item()}
         for key,value in instance_loss_dict.items():
@@ -50,13 +50,13 @@ class WSCerPartial(MetaClassifier):
         return loss, loss_dict
     
     def set_pred(self, dict_inputs, databatch):
-        img_logits,binary_attnmap = self.binary_cls_branch(dict_inputs['vision_features'])
+        img_logits = self.binary_cls_branch(dict_inputs['vision_features'])
         databatch['img_probs'] = torch.sigmoid(img_logits)
         
-        bs,num_tokens = binary_attnmap.shape
-        feat_size = int(math.sqrt(num_tokens))
-        binary_attnmap = binary_attnmap.reshape((bs, feat_size, feat_size)).unsqueeze(1)
-        databatch['binary_attnmap'] = binary_attnmap
-        binary_attnmap = F.interpolate(binary_attnmap, size=(feat_size*4, feat_size*4), mode='nearest')
-        databatch['pred_bbox'] = self.instance_branch.predict(dict_inputs, databatch, binary_attnmap)
+        # bs,num_tokens = binary_attnmap.shape
+        # feat_size = int(math.sqrt(num_tokens))
+        # binary_attnmap = binary_attnmap.reshape((bs, feat_size, feat_size)).unsqueeze(1)
+        # databatch['binary_attnmap'] = binary_attnmap
+        # binary_attnmap = F.interpolate(binary_attnmap, size=(feat_size*4, feat_size*4), mode='nearest')
+        databatch['pred_bbox'] = self.instance_branch.predict(dict_inputs, databatch, None)
         return databatch

@@ -6,6 +6,7 @@ import numpy as np
 from mmcv.transforms import Compose
 from collections import defaultdict
 import pickle
+from mmdet.models.utils import mask2ndarray
 import torch.nn.functional as F
 import random
 
@@ -67,7 +68,8 @@ class InstanceDataset(Dataset):
 
         output['data_samples'].diagnose = self.imginfo_list[idx]['diagnose']
         output['data_samples'].prefix = self.imginfo_list[idx]['prefix']
-
+        output['data_samples'].gt_instances.masks = torch.as_tensor(
+            mask2ndarray(output['data_samples'].gt_instances.masks))
         return output
     
     def generate_instance_GT(self, imginfo):
