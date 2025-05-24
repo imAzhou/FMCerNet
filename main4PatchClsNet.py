@@ -126,7 +126,7 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchClsNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12340 main4PatchClsNet.py \
     configs/dataset/l_cerscanv1_dataset.py \
     configs/model/wscer_partial.py \
     configs/strategy.py \

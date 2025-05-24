@@ -13,7 +13,13 @@ neck_type = None
 classifier_type = 'wscer_partial'
 binary_branch_input_dim = 256
 num_instance_queries = 50
+<<<<<<< HEAD
 instance_ckpt = '/c22073/zly/codes/sam2/checkpoints/sam2.1_hiera_large.pt'
 # instance_ckpt = 'checkpoints/sam2.1_hiera_large.pt'
 
 eval_prime_score = 'img_accuracy'
+=======
+# instance_ckpt = '/c22073/zly/codes/sam2/checkpoints/sam2.1_hiera_large.pt'
+instance_ckpt = 'checkpoints/sam2.1_hiera_large.pt'
+eval_prime_score = 'img_accuracy'
+>>>>>>> f3a343cfc0a616debd1052306986ba8568e10f2e

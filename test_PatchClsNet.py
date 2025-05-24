@@ -34,12 +34,12 @@ def test_net(cfg, model, model_without_ddp):
         #     break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
-        # model_without_ddp.classifier.evaluator.process(data_samples=[outputs], data_batch=None)
+        model_without_ddp.classifier.evaluator.process(data_samples=[outputs], data_batch=None)
     
-    # metrics = model_without_ddp.classifier.evaluator.evaluate(len(valloader.dataset))
+    metrics = model_without_ddp.classifier.evaluator.evaluate(len(valloader.dataset))
     if is_main_process():
         pbar.close()
-        # print(metrics)
+        print(metrics)
 
 def main():
     init_distributed_mode(args)
@@ -68,8 +68,8 @@ if __name__ == '__main__':
     # analyze(f'{args.save_dir}/pred_results_0.5.json')
 
 '''
-CUDA_VISIBLE_DEVICES=7, torchrun  --nproc_per_node=1 --master_port=12341 test_PatchClsNet.py \
-    log/debug/2025_05_19_13_25_16/config.py \
-    log/l_cerscanv1/2025_05_12_14_52_56/checkpoints/best.pth \
-    log/debug/2025_05_19_13_25_16
+CUDA_VISIBLE_DEVICES=0, torchrun  --nproc_per_node=1 --master_port=12341 test_PatchClsNet.py \
+    log/l_cerscanv1/wscer_partial/2025_05_20_09_33_13/config.py \
+    log/l_cerscanv1/wscer_partial/2025_05_20_09_33_13/checkpoints/best.pth \
+    log/l_cerscanv1/wscer_partial/2025_05_20_09_33_13
 '''

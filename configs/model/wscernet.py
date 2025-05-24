@@ -11,3 +11,5 @@ neck_type = 'identity'
 
 # classifier
 classifier_type = 'wscer_mlc'
+# eval_prime_score = 'single-label/binary_accuracy'
+eval_prime_score = 'multi-label/img_accuracy'

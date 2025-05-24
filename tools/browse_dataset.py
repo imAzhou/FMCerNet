@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 import cv2
-from cerwsi.utils import show_multi_mask,show_box,show_mask
+from cerwsi.utils import show_box,show_mask
 from cerwsi.datasets import load_data
 from mmdet.structures import DetDataSample
 
@@ -40,6 +40,11 @@ def draw_dataset_gt(img, data_sample: DetDataSample, save_path, metainfo):
         edgecolor = np.array([cls_color[0]/255, cls_color[1]/255, cls_color[2]/255, 1])
         show_box(box, ax, edgecolor=edgecolor)
         show_mask(mask, ax, rgb=cls_color)
+        plt.contour(mask, levels=[0.5], colors='lime', linewidths=2)
+        x1, y1 = box[:2]
+        class_name = classes[cls_id]
+        ax.text(x1, y1, class_name, fontsize=10, color='white',
+                bbox=dict(facecolor=np.array(cls_color)/255., alpha=0.5, edgecolor='none'))
 
     ax.set_title('GT info')
     patches = [mpatches.Patch(facecolor=np.array(palette[i])/255., label=classes[i], edgecolor='black') for i in range(len(classes))]
@@ -53,12 +58,12 @@ def main():
     args = parser.parse_args()
     os.makedirs(args.save_dir, exist_ok=True, mode=0o777)
     d_cfg = Config.fromfile(args.dataset_config_file)
-    trainloader = load_data(d_cfg, ['val'])
+    dataloader = load_data(d_cfg, ['val'])
     metainfo = {
-        'classes': trainloader.dataset.classes,
-        'palette': trainloader.dataset.palette,
+        'classes': dataloader.dataset.classes,
+        'palette': dataloader.dataset.palette,
     }
-    for i_batch, sampled_batch in enumerate(tqdm(trainloader, ncols=70)):
+    for i_batch, sampled_batch in enumerate(tqdm(dataloader, ncols=70)):
 
         if args.vis_batch_nums > 0 and i_batch > args.vis_batch_nums:
             break
@@ -66,7 +71,7 @@ def main():
         for idx,data_sample in enumerate(sampled_batch['data_samples']):
             filename = data_sample.img_path.split('/')[-1]
             # patientId = '_'.join(filename.split('_')[:3])
-            if 'ZY_ONLINE_1_196' not in filename or data_sample.diagnose == 0:
+            if data_sample.diagnose == 0:
                 continue
 
             img = sampled_batch['inputs'][idx].permute(1, 2, 0).int().numpy()
@@ -93,6 +98,6 @@ if __name__ == '__main__':
 '''
 python tools/browse_dataset.py \
     configs/dataset/l_cerscanv1_dataset.py \
-    statistic_results/visual_results/gt_visual/ZY_ONLINE_1_196 \
+    statistic_results/visual_results/gt_visual_750 \
     --vis_batch_nums 5
 '''
