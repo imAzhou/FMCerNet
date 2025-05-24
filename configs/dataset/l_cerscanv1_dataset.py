@@ -11,8 +11,8 @@ train_bs = 32
 val_bs = 32
 input_size = 512  # 224, 448, 512, 1024
 
-train_annojson = f'{data_root}/annofiles/fusiontrain_coco.json'
-train_rel_file = f'{data_root}/annofiles/fusiontrain_rle_masks.pkl'
+train_annojson = f'{data_root}/annofiles/puretrain_coco.json'
+train_rel_file = f'{data_root}/annofiles/puretrain_rle_masks.pkl'
 train_transform = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
