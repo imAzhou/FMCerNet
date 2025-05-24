@@ -17,6 +17,3 @@ positive_thr = 0.5
 logger_name = 'wscer_partial'
 apply_auxiliary = 'random'  # random, logit
 load_from = None
-# eval_prime_score = 'single-label/binary_accuracy'
-# multi-label/img_accuracy
-eval_prime_score = 'multi-label/img_accuracy'

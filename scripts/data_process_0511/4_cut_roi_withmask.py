@@ -1,6 +1,7 @@
 import os
 from PIL import Image
 import json
+import pandas as pd
 from scipy import sparse
 from cerwsi.utils import KFBSlide,random_cut_square,calc_relative_coord,is_bbox_inside,generate_cut_regions
 from tqdm import tqdm
@@ -16,8 +17,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules
 
 CERTAIN_THR = 0.7
 LEVEL = 0
-WINDOW_SIZE = 512
-STRIDE = 450
+WINDOW_SIZE = 750
+STRIDE = 700
 
 test_patientId = [
     'ZY_ONLINE_1_45', 'ZY_ONLINE_1_196',    # 0409 Slide，0422 Slide
@@ -57,29 +58,18 @@ def vis_patch_sample(image, roi_masks, bboxes, filename):
     plt.savefig(f'statistic_results/0511/patch_from_RoI/{filename}')
     plt.close()
 
-def gene_patch_jsonlist():
-    with open('data_resource/0511/ann_jsons/zheyi_roi.json', 'r', encoding='utf-8') as f:
-        zheyi_roi_data = json.load(f)
-    with open('data_resource/0511/ann_jsons/zheyi_slide.json', 'r', encoding='utf-8') as f:
-        zheyi_slide = json.load(f)
-    with open('data_resource/0511/ann_jsons/partial_pos_slide.json', 'r', encoding='utf-8') as f:
-        partial_pos_slide = json.load(f)
+def gene_patch_jsonlist(all_json_datas):
 
-    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *partial_pos_slide]
     npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
     patchitems = []
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
         # if item['patientId'] not in test_patientId:
         #     continue
-        # if item['patientId'] != 'JFSW_2_107':
-        #     continue
-        # if idx < 2198:
-        #     continue
+
         for RoIItem in item['annotations']:
-            # if str(RoIItem['annid']) != '1457140814755':
-            #     continue
-            rx1,ry1,rx2,ry2 = RoIItem['region']
-            rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
+
+            rx1,ry1,rx2,ry2 = (np.array(RoIItem['region']).astype(np.int32)).tolist()
+            rw,rh = rx2-rx1, ry2-ry1
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
             
             if len(RoIItem['children']) > 0:
@@ -90,21 +80,12 @@ def gene_patch_jsonlist():
                 roi_mask = np.zeros((rh,rw), dtype=np.int16)
 
             RoI_patch_idx = 0
-            cut_points = generate_cut_regions((0,0), rw, rh, WINDOW_SIZE, STRIDE)
-            if len(RoIItem['children']) < 50:
-                for annitem in RoIItem['children']:
-                    annx1,anny1,annx2,anny2 = annitem['region']
-                    annwidth,annheight = annx2-annx1, anny2-anny1
-                    random_num = 3 if RoIItem['sub_class'] == 'RoI' else 1
-                    for i in range(random_num):
-                        random_x1,random_y1 = random_cut_square([annx1,anny1,annwidth,annheight],WINDOW_SIZE)  # 在资源中的绝对坐标
-                        random_square_coords = [random_x1,random_y1,random_x1+WINDOW_SIZE,random_y1+WINDOW_SIZE]
-                        if is_bbox_inside(random_square_coords, RoIItem['region'], tolerance=0):    # 必须被RoI完全包裹
-                            res_x1,res_y1,_,_ = calc_relative_coord(RoIItem['region'],random_square_coords)    # 在 RoI 中的相对坐标
-                            cut_points.append((int(res_x1),int(res_y1)))
-            else:   # 在 RoI 中随机裁剪 50 patch 块
-                for i in range(50):
-                    random_x1,random_y1 = random_cut_square([0,0,rw,rh],WINDOW_SIZE)  # 在 RoI 中的相对坐标
+            cut_points = generate_cut_regions((0,0), rw-1, rh-1, WINDOW_SIZE, STRIDE)
+            random_cut_num = 20 if rw > 5000 and rh > 5000 else 10
+            for i in range(random_cut_num):
+                random_x1,random_y1 = random_cut_square([0,0,rw,rh],WINDOW_SIZE)  # 在 RoI 中的相对坐标
+                random_x2,random_y2 = random_x1+WINDOW_SIZE,random_y1+WINDOW_SIZE
+                if random_x2 < rw and random_y2 < rh:
                     cut_points.append((random_x1,random_y1))
 
             for iidx,rect_coords in enumerate(cut_points):
@@ -112,6 +93,8 @@ def gene_patch_jsonlist():
                 x2,y2 = x1+WINDOW_SIZE,y1+WINDOW_SIZE
                 patch_coords = [x1,y1,x2,y2]    # 在 RoI 中的相对坐标
                 bboxes,clsnames,patch_mask = calc_patch_anns(patch_coords, RoIItem, roi_mask)
+                if patch_mask.shape[0] != WINDOW_SIZE or patch_mask.shape[1] != WINDOW_SIZE:
+                    print(f'Shape not right: {patch_mask.shape}')
                 if len(bboxes) == 0 and RoIItem['sub_class'] == 'forge_RoI':
                     continue
 
@@ -124,6 +107,10 @@ def gene_patch_jsonlist():
                     'bboxes': bboxes,    # 在patch中的相对坐标
                     'clsnames': clsnames,
                 }
+                px1,py1,px2,py2 = pItem['square_coords']
+                if (px2-px1) != WINDOW_SIZE or (py2-py1) != WINDOW_SIZE:
+                    print(f'Shape not right: {pItem["square_coords"]}')
+                
                 if len(bboxes) == 0:
                     pItem['prefix'] = 'neg'
                     pItem['diagnose'] = 0
@@ -143,7 +130,7 @@ def gene_patch_jsonlist():
                 patchitems.append(pItem)
                 RoI_patch_idx += 1
 
-    with open('data_resource/0511/ann_jsons/patches_in_RoI.json', 'w', encoding='utf-8') as f:
+    with open(f'{json_save_dir}/{patches_jsonname}.json', 'w', encoding='utf-8') as f:
         json.dump(patchitems, f, ensure_ascii=False)
 
 def calc_patch_anns(patch_coords, RoIItem, roi_mask):
@@ -182,14 +169,16 @@ def cut_patch_imgs():
     valid_model.eval()
     valid_model.load_state_dict(torch.load(valid_model_ckpt))
 
-    with open('data_resource/0511/ann_jsons/patches_in_RoI.json', 'r', encoding='utf-8') as f:
+    with open(f'{json_save_dir}/{patches_jsonname}.json', 'r', encoding='utf-8') as f:
         json_data = json.load(f)
-
+    
+    pids = []
     reload_patchlist = defaultdict(list)
     for patchinfo in tqdm(json_data, ncols=80):
         keyname = f"{patchinfo['patientId']}_{patchinfo['media_type']}"
         reload_patchlist[keyname].append(patchinfo)
-    
+        pids.append(patchinfo['patientId'])
+
     total_nums = len(reload_patchlist.keys())
     valid_patches_in_RoI = []
     for (keyname, patchlist),idx in zip(reload_patchlist.items(), range(total_nums)):
@@ -202,10 +191,12 @@ def cut_patch_imgs():
             slide = KFBSlide(source_path)
 
         for patchinfo in tqdm(patchlist, ncols=80, desc=f'[{idx+1}/{total_nums}]Processing {keyname}'):
+            px1,py1,px2,py2 = patchinfo['square_coords']
+            w,h = px2-px1,py2-py1
+            if w!=WINDOW_SIZE or h!=WINDOW_SIZE:
+                print(f'ERROR: {patchinfo["filename"]} size (w,h): ({w},{h})')
 
             if media_type == 'roi':
-                # px1,py1,px2,py2 = patchinfo['square_coords']
-                # w,h = px2-px1,py2-py1
                 patch_img = roi_img.crop(patchinfo['square_coords'])
             elif media_type == 'slide':
                 px1,py1,px2,py2 = patchinfo['square_coords']
@@ -230,16 +221,28 @@ def cut_patch_imgs():
                 # patch_mask = np.load(f'{patch_npz_save_dir}/{patchinfo["maskfile"]}')['patch_mask']
                 # vis_patch_sample(patch_img, patch_mask, patchinfo['bboxes'], patchinfo['filename'])
 
-    with open('data_resource/0511/ann_jsons/patches_in_RoI_valid.json', 'w', encoding='utf-8') as f:
+    with open(f'{json_save_dir}/{patches_jsonname}_valid.json', 'w', encoding='utf-8') as f:
         json.dump(valid_patches_in_RoI, f, ensure_ascii=False)
 
 if __name__ == "__main__":
-    patch_npz_save_dir = 'data_resource/0511/patch_inst_mask'
+    patch_npz_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/patch_inst_mask'
     os.makedirs(patch_npz_save_dir, exist_ok=True, mode=0o777)
+    json_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/ann_jsons'
+    os.makedirs(json_save_dir, exist_ok=True, mode=0o777)
+    with open('data_resource/0511/zheyi_roi.json', 'r', encoding='utf-8') as f:
+        zheyi_roi_data = json.load(f)
+    with open('data_resource/0511/zheyi_slide.json', 'r', encoding='utf-8') as f:
+        zheyi_slide = json.load(f)
+    with open('data_resource/0511/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
+        wxl_pos_slide = json.load(f)
 
-    gene_patch_jsonlist()
+    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
 
-    img_save_dir = 'data_resource/0511/images'
-    # for tag in ['neg', 'partial_pos', 'total_pos']:
-    #     os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
-    # cut_patch_imgs()
+    patches_jsonname = 'patches_in_RoI_pure'
+    # gene_patch_jsonlist(all_json_datas)
+
+    img_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/images'
+    for tag in ['neg', 'partial_pos', 'total_pos']:
+        os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
+    cut_patch_imgs()
+

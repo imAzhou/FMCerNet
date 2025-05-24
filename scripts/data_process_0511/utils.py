@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import cv2
 from PIL import Image
+from collections import defaultdict
 from cerwsi.utils import is_bbox_inside,random_cut_square
 
 def bbox_intersection_area(boxes1, boxes2):
@@ -21,7 +22,7 @@ def bbox_intersection_area(boxes1, boxes2):
     return inter
 
 def imgName2patientId(df_data)->str:
-    name2PID = {}
+    name2PID = defaultdict(str)
     for row in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80):
         filename = os.path.basename(row.kfb_path)
         name2PID[filename] = row.patientId
@@ -68,6 +69,21 @@ def process_noparent_ann(annitems, roi_type, sq_size = 500):
     merged_rois = merge_backup_rois(backup_rois)
 
     return merged_rois
+
+def clip_roi_region(coords, max_xy, minlen = 1024):
+    '''coords: [x1,y1,x2,y2]'''
+
+    rx1,ry1,rx2,ry2 = coords
+    rx1,ry1 = max(0, rx1), max(0, ry1)
+    if max_xy is not None:
+        rx2,ry2 = min(max_xy[0], rx2), min(max_xy[1], ry2)
+    rw,rh = rx2-rx1, ry2-ry1
+    if rw < minlen:
+        rx1 = rx1 - (minlen-rw)
+    if rh < minlen:
+        ry1 = ry1 - (minlen-rh)
+    return [rx1,ry1,rx2,ry2]
+
 
 def merge_backup_rois(backup_rois, min_size=200):
     n = len(backup_rois)
@@ -155,3 +171,20 @@ def adjust_region4RoI(roi_region, roi_children):
         rx1,ry1 = min(rx1, cx1), min(ry1, cy1)
         rx2,ry2 = max(rx2, cx2), max(ry2, cy2)
     return rx1,ry1,rx2,ry2
+
+def deduplicate_regions(rect_items, tolerance=5):
+    """
+    去重 bbox 列表，允许坐标有小误差（比如5px内）
+    """
+    kept_rects = []
+    for rect in rect_items:
+        is_duplicate = False
+        for kept_rect in kept_rects:
+            bbox = np.array(rect['region'])
+            kept_bbox = np.array(kept_rect['region'])
+            if np.all(np.abs(bbox - kept_bbox) <= tolerance):
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            kept_rects.append(rect)
+    return kept_rects

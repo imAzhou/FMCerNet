@@ -40,8 +40,8 @@ class PatchClsNet(nn.Module):
             return self.val_step(data_batch)
     
     def extract_feature(self, input_x):
-        # input_x = input_x[:, [2, 1, 0], :, :]   # bgr2rgb
-        # input_x = (input_x - self.pixel_mean) / self.pixel_std  # color norm
+        input_x = input_x[:, [2, 1, 0], :, :]   # bgr2rgb
+        input_x = (input_x - self.pixel_mean) / self.pixel_std  # color norm
         feature_emb = self.backbone(input_x)
         return feature_emb
 

@@ -12,7 +12,7 @@ import shutil
 import random
 import glob
 
-PATCH_EDGE = 512
+WINDOW_SIZE = 750
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
 
@@ -30,14 +30,18 @@ def coco_format(patchlist):
     annid = 0
     for idx,pInfo in enumerate(tqdm(patchlist, ncols=80)):
         format_result['images'].append(
-            {'id': idx, 'file_name': pInfo['filename'], 'width': PATCH_EDGE, 'height': PATCH_EDGE,
+            {'id': idx, 'file_name': pInfo['filename'], 'width': WINDOW_SIZE, 'height': WINDOW_SIZE,
              'prefix': pInfo['prefix'], 'diagnose': pInfo['diagnose'], 'maskfile': pInfo['maskfile']})
-        
+        sx1,sy1,sx2,sy2 = pInfo['square_coords']
+        sw,sh = sx2-sx1, sy2-sy1
+        # if sw!=WINDOW_SIZE or sh!=WINDOW_SIZE:
+        #     print()
         if pInfo['diagnose'] == 1:
-            inst_mask = np.load(f"data_resource/0511/patch_inst_mask/{pInfo['maskfile']}")['patch_mask']
+            inst_mask = np.load(f"data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/patch_inst_mask/{pInfo['maskfile']}")['patch_mask']
             h,w = inst_mask.shape
-            if h!=PATCH_EDGE or w!=PATCH_EDGE:
-                inst_mask = cv2.resize(inst_mask, (PATCH_EDGE, PATCH_EDGE), interpolation=cv2.INTER_NEAREST)
+            if h!=WINDOW_SIZE or w!=WINDOW_SIZE:
+                print(f'Error size: (w,h): ({w},{h})')
+                inst_mask = cv2.resize(inst_mask, (WINDOW_SIZE, WINDOW_SIZE), interpolation=cv2.INTER_NEAREST)
             rle_instdict = {}
             for inst_id in range(len(pInfo['bboxes'])):
                 annmask = inst_mask == inst_id+1
@@ -64,20 +68,21 @@ def coco_format(patchlist):
 
 
 def main():
-    with open('data_resource/0511/ann_jsons/patches_in_NegSlide.json', 'r', encoding='utf-8') as f:
-        negslide_patchlist = json.load(f)
-    with open('data_resource/0511/ann_jsons/patches_in_RoI_valid.json', 'r', encoding='utf-8') as f:
+    # with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/patches_in_NegSlide.json', 'r', encoding='utf-8') as f:
+    #     negslide_patchlist = json.load(f)
+    with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
         RoI_patchlist = json.load(f)
     
-    RoI_patchlist = filter_slide_neg(RoI_patchlist) # 控制每张病人切片的阴性 patch 数量
+    RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=300) # 控制每张病人切片的阴性 patch 数量
 
     patient2patchlist = defaultdict(list)
-    for patchInfo in [*negslide_patchlist, *RoI_patchlist]:
+    # for patchInfo in [*negslide_patchlist, *RoI_patchlist]:
+    for patchInfo in RoI_patchlist:
         patient2patchlist[patchInfo['patientId']].append(patchInfo)
     
     data_group = {
         'puretrain': 'data_resource/0511/4_pure_train.csv',
-        'fusiontrain': 'data_resource/0511/5_fusion_train.csv',
+        # 'fusiontrain': 'data_resource/0511/5_fusion_train.csv',
         'val': 'data_resource/0511/6_val.csv'
     }
     for tag,csvpath in data_group.items():
@@ -87,37 +92,14 @@ def main():
             patchlist.extend(patient2patchlist[row.patientId])
         patchInCOCO,rle_output = coco_format(patchlist)
         
-        with open(f'data_resource/0511/annofiles/{tag}_coco.json', 'w', encoding='utf-8') as f:
+        with open(f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/annofiles/{tag}_coco.json', 'w', encoding='utf-8') as f:
             json.dump(patchInCOCO, f, ensure_ascii=False)
-        with open(f'data_resource/0511/annofiles/{tag}_rle_masks.pkl', 'wb') as f:
+        with open(f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/annofiles/{tag}_rle_masks.pkl', 'wb') as f:
             pickle.dump(rle_output, f)
-
-def test_visual():
-    with open('data_resource/0511/ann_jsons/patches_in_RoI_valid.json', 'r', encoding='utf-8') as f:
-        RoI_patchlist = json.load(f)
-    for patchInfo in tqdm(RoI_patchlist, ncols=80):
-        if patchInfo['filename'] != 'JFSW_2_107_1457140814755_14.png':
-            continue
-        data_root = 'data_resource/0511/images'
-        imgpath = f'{data_root}/{patchInfo["prefix"]}/{patchInfo["filename"]}'
-        img = Image.open(imgpath)
-        img.save('temp.png')
-        print()
-    with open(f'data_resource/0511/annofiles/fusiontrain_coco.json', 'r', encoding='utf-8') as f:
-        json_data = json.load(f)
-    for patchinfo in tqdm(json_data['images'], ncols=80):
-        if patchinfo['file_name'] != 'JFSW_2_107_1457140814755_14.png':
-            continue
-        data_root = 'data_resource/0511/images'
-        imgpath = f'{data_root}/{patchinfo["prefix"]}/{patchinfo["file_name"]}'
-        img = Image.open(imgpath)
-        img.save('temp2.png')
-        print()
 
 def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
 
     neg_count = Counter()
-    os.makedirs('statistic_results/0511/filter_neg', exist_ok=True, mode=0o777)
     for item in tqdm(RoI_patchlist, ncols=80):
         if item["prefix"] == 'neg':
             neg_count[item['patientId']] += 1
@@ -141,33 +123,71 @@ def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
     return new_RoI_patchlist
     
 
+def statistic():
+    with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
+        RoI_patchlist = json.load(f)
+    pn_cnt = [0,0]
+    RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=300)
+    for pInfo in RoI_patchlist:
+        pn_cnt[pInfo['diagnose']] += 1
+    print(pn_cnt)
 
-if __name__ == "__main__":
-    # main()
 
-    # test_visual()
-
+def clear_imgs():
     keep_filename = []
-    for tag in ['val']:
-        with open(f'data_resource/0511/annofiles/{tag}_coco.json', 'r', encoding='utf-8') as f:
+    for tag in ['puretrain','val']:
+        pn_cnt = [0,0]
+        with open(f'{ann_dir}/{tag}_coco.json', 'r', encoding='utf-8') as f:
             json_data = json.load(f)
-        # print(f'{tag}: {len(json_data["images"])}')
+        
         for patchinfo in tqdm(json_data['images'], ncols=80):
-            if 'ZY_ONLINE_1_196' in patchinfo["file_name"]:
-                print()
-            # data_root = 'data_resource/0511/images'
-            # imgpath = f'{data_root}/{patchinfo["prefix"]}/{patchinfo["file_name"]}'
-            # if not os.path.exists(imgpath):
-            #     print(f'ERROR: {imgpath} is not exists.')
             keep_filename.append(patchinfo["file_name"])
+            pn_cnt[patchinfo['diagnose']] += 1
+        print(f'{tag}: {len(json_data["images"])}, [neg, pos]: [{pn_cnt[0]}, {pn_cnt[1]}]')
     
-    # exists_imgpath = glob.glob('/c22073/zly/datasets/CervicalDatasets/LCerScanv1_512/images/**/*.png')
+    exists_imgpath = glob.glob('data_resource/0511/WINDOW_SIZE_750/images/**/*.png')
+    print(f'keep_filename nums: {len(keep_filename)}')
+    print(f'exists_imgpath nums: {len(exists_imgpath)}')
+
     # for imgpath in tqdm(exists_imgpath, ncols=80):
     #     filename = os.path.basename(imgpath)
     #     if filename not in keep_filename:
     #         os.remove(imgpath)
 
-    # print(len(list(set(keep_filename))))
-    # print(len(exists_imgpath))
-       
+if __name__ == "__main__":
+    ann_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/annofiles'
+    os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
+    # main()
+    # statistic()
+    clear_imgs()
+    
+    
+
+    
+       
+    # for tag in ['puretrain', 'val']:
+    #     with open(f'data_resource/0511/WINDOW_SIZE_750/annofiles/{tag}_coco.json', 'r', encoding='utf-8') as f:
+    #         json_data = json.load(f)
+    #     pn_cnt = [0,0]
+    #     for imginfo in tqdm(json_data['images'], ncols=80):
+    #         pn_cnt[imginfo['diagnose']] += 1
+    #     print(pn_cnt)
+    # with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
+    #     RoI_patchlist = json.load(f)
+    # RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=20) # 控制每张病人切片的阴性 patch 数量
+    # pn_cnt = [0,0]
+    # for pInfo in tqdm(RoI_patchlist, ncols=80):
+    #     pn_cnt[pInfo['diagnose']] += 1
+    # print(pn_cnt)
+
+'''
+512:
+puretrain: [98154, 38570]
+fusiontrain: [142150, 103616]
+val: [38189, 9919]
+
+750:
+puretrain: [14248, 6508]
+val: [5723, 4514]
+'''

@@ -32,8 +32,8 @@ SAMCONFIG = dict(
 
 SAM2CONFIG = dict(
     config_file = 'cerwsi/nets/backbone/SAM2/configs/sam2.1/sam2.1_hiera_l.yaml',
-    backbone_ckpt = '/c22073/zly/codes/sam2/checkpoints/sam2.1_hiera_large.pt',
-    # backbone_ckpt = 'checkpoints/sam2.1_hiera_large.pt',
+    # backbone_ckpt = '/c22073/zly/codes/sam2/checkpoints/sam2.1_hiera_large.pt',
+    backbone_ckpt = 'checkpoints/sam2.1_hiera_large.pt',
     frozen_backbone = True,
     use_peft = 'lora', 
     use_dtcwt_indexes = []
