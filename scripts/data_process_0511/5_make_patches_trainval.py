@@ -162,24 +162,6 @@ if __name__ == "__main__":
     # statistic()
     clear_imgs()
     
-    
-
-    
-       
-    # for tag in ['puretrain', 'val']:
-    #     with open(f'data_resource/0511/WINDOW_SIZE_750/annofiles/{tag}_coco.json', 'r', encoding='utf-8') as f:
-    #         json_data = json.load(f)
-    #     pn_cnt = [0,0]
-    #     for imginfo in tqdm(json_data['images'], ncols=80):
-    #         pn_cnt[imginfo['diagnose']] += 1
-    #     print(pn_cnt)
-    # with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
-    #     RoI_patchlist = json.load(f)
-    # RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=20) # 控制每张病人切片的阴性 patch 数量
-    # pn_cnt = [0,0]
-    # for pInfo in tqdm(RoI_patchlist, ncols=80):
-    #     pn_cnt[pInfo['diagnose']] += 1
-    # print(pn_cnt)
 
 '''
 512:
@@ -188,6 +170,6 @@ fusiontrain: [142150, 103616]
 val: [38189, 9919]
 
 750:
-puretrain: [14248, 6508]
-val: [5723, 4514]
+puretrain: 66051, [neg, pos]: [30053, 35998]
+val: 18536, [neg, pos]: [14630, 3906]
 '''
