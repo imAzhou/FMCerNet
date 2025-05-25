@@ -15,6 +15,8 @@ import glob
 WINDOW_SIZE = 750
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
+data_root = '/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750'
+
 
 def coco_format(patchlist):
     format_result = {
@@ -26,51 +28,41 @@ def coco_format(patchlist):
         'images': [],
         'annotations': []
     }
-    rle_output = {}
+
     annid = 0
     for idx,pInfo in enumerate(tqdm(patchlist, ncols=80)):
         format_result['images'].append(
-            {'id': idx, 'file_name': pInfo['filename'], 'width': WINDOW_SIZE, 'height': WINDOW_SIZE,
-             'prefix': pInfo['prefix'], 'diagnose': pInfo['diagnose'], 'maskfile': pInfo['maskfile']})
-        sx1,sy1,sx2,sy2 = pInfo['square_coords']
-        sw,sh = sx2-sx1, sy2-sy1
-        # if sw!=WINDOW_SIZE or sh!=WINDOW_SIZE:
-        #     print()
+            {'image_id': idx, 'width': WINDOW_SIZE, 'height': WINDOW_SIZE,
+             'file_name': f"{pInfo['prefix']}/{pInfo['filename']}", 
+             'prefix': pInfo['prefix'], 
+             'diagnose': pInfo['diagnose']})
+        
         if pInfo['diagnose'] == 1:
-            inst_mask = np.load(f"data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/patch_inst_mask/{pInfo['maskfile']}")['patch_mask']
-            h,w = inst_mask.shape
-            if h!=WINDOW_SIZE or w!=WINDOW_SIZE:
-                print(f'Error size: (w,h): ({w},{h})')
-                inst_mask = cv2.resize(inst_mask, (WINDOW_SIZE, WINDOW_SIZE), interpolation=cv2.INTER_NEAREST)
-            rle_instdict = {}
-            for inst_id in range(len(pInfo['bboxes'])):
+            inst_mask = np.load(f"{data_root}/patch_inst_mask/{pInfo['maskfile']}")['patch_mask']
+            for bbox,clsname,inst_id in zip(pInfo['bboxes'],pInfo['clsnames'],range(len(pInfo['bboxes']))):
+                x1,y1,x2,y2 = bbox
+                w,h = x2-x1, y2-y1
                 annmask = inst_mask == inst_id+1
                 rle = mask_utils.encode(np.asfortranarray(annmask))
                 rle['counts'] = rle['counts'].decode('utf-8')
-                rle_instdict[inst_id+1] = rle
-            rle_output[idx] = rle_instdict
+                format_result['annotations'].append({
+                    "id": annid,
+                    "image_id": idx,
+                    "category_id": POSITIVE_CLASS.index(clsname) + 1,
+                    "segmentation": rle,
+                    "bbox": [x1,y1,w,h],
+                    "area": w*h,
+                    "iscrowd": 0,
+                })
+                annid += 1
 
-        for bbox,clsname,inst_id in zip(pInfo['bboxes'],pInfo['clsnames'],range(len(pInfo['bboxes']))):
-            x1,y1,x2,y2 = bbox
-            w,h = x2-x1, y2-y1
-            format_result['annotations'].append({
-                "id": annid,
-                "image_id": idx,
-                'inst_id': inst_id+1,
-                "category_id": POSITIVE_CLASS.index(clsname) + 1,
-                "bbox": [x1,y1,w,h],
-                "area": w*h,
-                "iscrowd": 0,
-            })
-            annid += 1
-
-    return format_result,rle_output
+    return format_result
 
 
 def main():
     # with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/patches_in_NegSlide.json', 'r', encoding='utf-8') as f:
     #     negslide_patchlist = json.load(f)
-    with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
+    with open(f'{data_root}/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
         RoI_patchlist = json.load(f)
     
     RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=300) # 控制每张病人切片的阴性 patch 数量
@@ -90,12 +82,10 @@ def main():
         patchlist = []
         for row in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80):
             patchlist.extend(patient2patchlist[row.patientId])
-        patchInCOCO,rle_output = coco_format(patchlist)
+        patchInCOCO = coco_format(patchlist)
         
         with open(f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/annofiles/{tag}_coco.json', 'w', encoding='utf-8') as f:
             json.dump(patchInCOCO, f, ensure_ascii=False)
-        with open(f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/annofiles/{tag}_rle_masks.pkl', 'wb') as f:
-            pickle.dump(rle_output, f)
 
 def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
 
@@ -132,7 +122,6 @@ def statistic():
         pn_cnt[pInfo['diagnose']] += 1
     print(pn_cnt)
 
-
 def clear_imgs():
     keep_filename = []
     for tag in ['puretrain','val']:
@@ -154,13 +143,31 @@ def clear_imgs():
     #     if filename not in keep_filename:
     #         os.remove(imgpath)
 
+def remap_cocojson():
+    for tag in ['puretrain', 'val']:
+        with open(f'{data_root}/annofiles/{tag}_rle_masks.pkl', 'rb') as f:
+            rle_masks = pickle.load(f)
+        with open(f'{data_root}/annofiles/{tag}_coco.json', 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+        
+        for annoinfo in json_data['annotations']:
+            inst_mask = rle_masks[annoinfo['image_id']][annoinfo["inst_id"]]
+            annoinfo['segmentation'] = inst_mask
+        for imginfo in json_data['images']:
+            imginfo['file_name'] = f'{imginfo["prefix"]}/{imginfo["file_name"]}'
+
+        with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
+           json.dump(json_data, f, ensure_ascii=False)
+        
+
 if __name__ == "__main__":
-    ann_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/annofiles'
+    ann_dir = f'{data_root}/annofiles'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
     # main()
     # statistic()
-    clear_imgs()
+    # clear_imgs()
+    remap_cocojson()
     
 
 '''

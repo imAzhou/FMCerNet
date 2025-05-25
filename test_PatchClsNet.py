@@ -69,7 +69,7 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0, torchrun  --nproc_per_node=1 --master_port=12341 test_PatchClsNet.py \
-    log/l_cerscanv1/wscer_partial/2025_05_20_09_33_13/config.py \
-    log/l_cerscanv1/wscer_partial/2025_05_20_09_33_13/checkpoints/best.pth \
-    log/l_cerscanv1/wscer_partial/2025_05_20_09_33_13
+    log/l_cerscanv1_750/wscer_partial/2025_05_25_00_05_16/config.py \
+    log/l_cerscanv1_750/wscer_partial/2025_05_25_00_05_16/checkpoints/best.pth \
+    log/l_cerscanv1_750/wscer_partial/2025_05_25_00_05_16
 '''
