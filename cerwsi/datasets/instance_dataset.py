@@ -54,9 +54,7 @@ class InstanceDataset(Dataset):
         self.imginfo_list = []
         for imginfo in tqdm(self.patch_COCOinfo['images'], ncols=80):
             imginfo['img_path'] = f'{self.img_dir}/{imginfo["prefix"]}/{imginfo["file_name"]}'
-            imginfo['img_id'] = imginfo['id']
             imginfo['instances'] = annoInimg[imginfo['img_id']]
-            del imginfo['id']
             self.imginfo_list.append(imginfo)
         print('Done to format annotaion in COCO style.')
 

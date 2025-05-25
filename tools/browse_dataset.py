@@ -58,7 +58,7 @@ def main():
     args = parser.parse_args()
     os.makedirs(args.save_dir, exist_ok=True, mode=0o777)
     d_cfg = Config.fromfile(args.dataset_config_file)
-    dataloader = load_data(d_cfg, ['val'])
+    dataloader = load_data(d_cfg, ['train'])
     metainfo = {
         'classes': dataloader.dataset.classes,
         'palette': dataloader.dataset.palette,
@@ -98,6 +98,6 @@ if __name__ == '__main__':
 '''
 python tools/browse_dataset.py \
     configs/dataset/l_cerscanv1_dataset.py \
-    statistic_results/visual_results/gt_visual_750 \
-    --vis_batch_nums 5
+    statistic_results/visual_results/gt_visual_750_train \
+    --vis_batch_nums 20
 '''
