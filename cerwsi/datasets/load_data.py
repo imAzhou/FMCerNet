@@ -84,12 +84,10 @@ def load_instance_data(cfg, mode):
 
     if mode == 'train':
         annojson = cfg.train_annojson
-        rle_masks_path = cfg.train_rel_file
         transform = cfg.train_transform
         batch_size = cfg.train_bs
     elif mode == 'val':
         annojson = cfg.val_annojson
-        rle_masks_path = cfg.val_rel_file
         transform = cfg.val_transform
         batch_size = cfg.val_bs
     elif mode == 'test':
@@ -97,7 +95,7 @@ def load_instance_data(cfg, mode):
         transform = cfg.test_transform
         batch_size = cfg.test_bs
 
-    dataset = InstanceDataset(cfg, annojson, rle_masks_path, transform)
+    dataset = InstanceDataset(cfg, annojson, transform)
     sampler = DefaultSampler(dataset)
     loader = DataLoader(dataset, 
                 pin_memory=True,

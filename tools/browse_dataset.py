@@ -99,5 +99,5 @@ if __name__ == '__main__':
 python tools/browse_dataset.py \
     configs/dataset/l_cerscanv1_dataset.py \
     statistic_results/visual_results/gt_visual_750_train \
-    --vis_batch_nums 20
+    --vis_batch_nums 5
 '''

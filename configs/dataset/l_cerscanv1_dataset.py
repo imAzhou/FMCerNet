@@ -1,7 +1,7 @@
 # dataset settings 
 
-# data_root = 'data_resource/0511/WINDOW_SIZE_750'
-data_root = '/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750'
+data_root = 'data_resource/0511/WINDOW_SIZE_750'
+# data_root = '/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750'
 img_dir = f'{data_root}/images'
 instance_mask_dir = f'{data_root}/patch_inst_mask'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
@@ -11,8 +11,7 @@ train_bs = 32
 val_bs = 32
 input_size = 512  # 224, 392, 448, 512, 1024
 
-train_annojson = f'{data_root}/annofiles/puretrain_coco.json'
-train_rel_file = f'{data_root}/annofiles/puretrain_rle_masks.pkl'
+train_annojson = f'{data_root}/annofiles/puretrain_cocoformat.json'
 train_transform = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
@@ -21,8 +20,7 @@ train_transform = [
     dict(type='PackDetInputs')
 ]
 
-val_annojson = f'{data_root}/annofiles/val_coco.json'
-val_rel_file = f'{data_root}/annofiles/val_rle_masks.pkl'
+val_annojson = f'{data_root}/annofiles/val_cocoformat.json'
 val_transform = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=True),

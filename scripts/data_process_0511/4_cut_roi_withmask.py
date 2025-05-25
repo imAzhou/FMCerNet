@@ -81,7 +81,7 @@ def gene_patch_jsonlist(all_json_datas):
 
             RoI_patch_idx = 0
             cut_points = generate_cut_regions((0,0), rw-1, rh-1, WINDOW_SIZE, STRIDE)
-            random_cut_num = 20 if rw > 5000 and rh > 5000 else 10
+            random_cut_num = 20 if rw > 5000 and rh > 5000 else 5
             for i in range(random_cut_num):
                 random_x1,random_y1 = random_cut_square([0,0,rw,rh],WINDOW_SIZE)  # 在 RoI 中的相对坐标
                 random_x2,random_y2 = random_x1+WINDOW_SIZE,random_y1+WINDOW_SIZE
@@ -235,14 +235,16 @@ if __name__ == "__main__":
         zheyi_slide = json.load(f)
     with open('data_resource/0511/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
         wxl_pos_slide = json.load(f)
+    with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
+        jfsw_pos_slide = json.load(f)    # 876
 
-    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
+    # all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
 
-    patches_jsonname = 'patches_in_RoI_pure'
-    # gene_patch_jsonlist(all_json_datas)
+    patches_jsonname = 'patches_in_RoI_jfsw'
+    gene_patch_jsonlist(jfsw_pos_slide)
 
-    img_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/images'
-    for tag in ['neg', 'partial_pos', 'total_pos']:
-        os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
-    cut_patch_imgs()
+    # img_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/images'
+    # for tag in ['neg', 'partial_pos', 'total_pos']:
+    #     os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
+    # cut_patch_imgs()
 

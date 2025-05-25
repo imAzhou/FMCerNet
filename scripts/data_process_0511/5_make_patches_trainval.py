@@ -11,11 +11,13 @@ import cv2
 import shutil
 import random
 import glob
+from prettytable import PrettyTable
 
 WINDOW_SIZE = 750
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
-data_root = '/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750'
+# data_root = '/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750'
+data_root = 'data_resource/0511/WINDOW_SIZE_750'
 
 
 def coco_format(patchlist):
@@ -32,7 +34,7 @@ def coco_format(patchlist):
     annid = 0
     for idx,pInfo in enumerate(tqdm(patchlist, ncols=80)):
         format_result['images'].append(
-            {'image_id': idx, 'width': WINDOW_SIZE, 'height': WINDOW_SIZE,
+            {'id': idx, 'width': WINDOW_SIZE, 'height': WINDOW_SIZE,
              'file_name': f"{pInfo['prefix']}/{pInfo['filename']}", 
              'prefix': pInfo['prefix'], 
              'diagnose': pInfo['diagnose']})
@@ -112,15 +114,41 @@ def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
     
     return new_RoI_patchlist
     
-
 def statistic():
-    with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
-        RoI_patchlist = json.load(f)
-    pn_cnt = [0,0]
-    RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=300)
-    for pInfo in RoI_patchlist:
-        pn_cnt[pInfo['diagnose']] += 1
-    print(pn_cnt)
+    for tag in ['puretrain', 'val']:
+        with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
+            patch_COCOinfo = json.load(f)
+        annoInimg = defaultdict(list)
+        bbox_cls_cnt = [0]*len(POSITIVE_CLASS)
+        for annoinfo in patch_COCOinfo['annotations']:
+            annoInimg[annoinfo['image_id']].append(annoinfo)
+            bbox_cls_cnt[annoinfo['category_id']-1] += 1
+        result_table = PrettyTable(title=f'{tag} BBox Info')
+        result_table.field_names = POSITIVE_CLASS + ['Sum']
+        result_table.add_row(bbox_cls_cnt + [sum(bbox_cls_cnt)])
+        print(result_table)
+
+        pn_cnt = [0,0]
+        consist_error = [0,0]
+        pos_bbox_cnt = defaultdict(int)
+        for imginfo in tqdm(patch_COCOinfo['images'], ncols=80):
+            pn_cnt[imginfo['diagnose']] += 1
+            if imginfo['diagnose'] == 1 and len(annoInimg[imginfo['id']]) == 0:
+                consist_error[1] += 1
+            elif imginfo['diagnose'] == 0 and len(annoInimg[imginfo['id']]) != 0:
+                consist_error[0] += 1
+            if imginfo['diagnose'] == 1:
+                pos_bbox_cnt[imginfo['id']] = len(annoInimg[imginfo['id']])
+        if sum(consist_error) != 0:
+            print(f'ERROR: consist_error {consist_error}')
+        
+        mean = sum(pos_bbox_cnt.values()) / len(pos_bbox_cnt.values())
+        minv,maxv = min(pos_bbox_cnt.values()),max(pos_bbox_cnt.values())
+
+        result_table = PrettyTable(title=f'{tag} Image Info')
+        result_table.field_names = ['Neg', 'Pos', 'Sum', 'Pos bbox avg/min/max']
+        result_table.add_row(pn_cnt + [sum(pn_cnt), f'{mean:.2}/{minv}/{maxv}'])
+        print(result_table)
 
 def clear_imgs():
     keep_filename = []
@@ -143,31 +171,15 @@ def clear_imgs():
     #     if filename not in keep_filename:
     #         os.remove(imgpath)
 
-def remap_cocojson():
-    for tag in ['puretrain', 'val']:
-        with open(f'{data_root}/annofiles/{tag}_rle_masks.pkl', 'rb') as f:
-            rle_masks = pickle.load(f)
-        with open(f'{data_root}/annofiles/{tag}_coco.json', 'r', encoding='utf-8') as f:
-            json_data = json.load(f)
-        
-        for annoinfo in json_data['annotations']:
-            inst_mask = rle_masks[annoinfo['image_id']][annoinfo["inst_id"]]
-            annoinfo['segmentation'] = inst_mask
-        for imginfo in json_data['images']:
-            imginfo['file_name'] = f'{imginfo["prefix"]}/{imginfo["file_name"]}'
 
-        with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
-           json.dump(json_data, f, ensure_ascii=False)
-        
 
 if __name__ == "__main__":
     ann_dir = f'{data_root}/annofiles'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
     # main()
-    # statistic()
+    statistic()
     # clear_imgs()
-    remap_cocojson()
     
 
 '''
@@ -179,4 +191,33 @@ val: [38189, 9919]
 750:
 puretrain: 66051, [neg, pos]: [30053, 35998]
 val: 18536, [neg, pos]: [14630, 3906]
++-----------------------------------------------+
+|              puretrain BBox Info              |
++------+--------+-------+-------+-------+-------+
+| AGC  | ASC-US |  LSIL | ASC-H |  HSIL |  Sum  |
++------+--------+-------+-------+-------+-------+
+| 1338 |  5449  | 19909 |  3121 | 19673 | 49490 |
++------+--------+-------+-------+-------+-------+
++----------------------------------------------+
+|             puretrain Image Info             |
++-------+-------+-------+----------------------+
+|  Neg  |  Pos  |  Sum  | Pos bbox avg/min/max |
++-------+-------+-------+----------------------+
+| 30053 | 35998 | 66051 |       1.4/1/25       |
++-------+-------+-------+----------------------+
++-------------------------------------------+
+|               val BBox Info               |
++-----+--------+------+-------+------+------+
+| AGC | ASC-US | LSIL | ASC-H | HSIL | Sum  |
++-----+--------+------+-------+------+------+
+|  24 |  2855  | 1035 |  1636 | 2330 | 7880 |
++-----+--------+------+-------+------+------+
++---------------------------------------------+
+|                val Image Info               |
++-------+------+-------+----------------------+
+|  Neg  | Pos  |  Sum  | Pos bbox avg/min/max |
++-------+------+-------+----------------------+
+| 14630 | 3906 | 18536 |       2.0/1/26       |
++-------+------+-------+----------------------+
+
 '''

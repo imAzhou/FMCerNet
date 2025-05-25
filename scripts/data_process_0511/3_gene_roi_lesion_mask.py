@@ -12,10 +12,10 @@ from scipy import sparse
 from collections import defaultdict
 
 test_patientId = [
-    'ZY_ONLINE_1_45', 'ZY_ONLINE_1_21',    # 0409 Slide，0422 Slide
-    'JFSW_2_1486', 'JFSW_2_152',     # 空 RoI，有标注 RoI
-    'WXL_1_26',    # partial_pos slide in pure_train
-    # 'JFSW_2_2111', 'JFSW_2_133'     # partial_pos slide in jfsw_train
+    # 'ZY_ONLINE_1_45', 'ZY_ONLINE_1_21',    # 0409 Slide，0422 Slide
+    # 'JFSW_2_1486', 'JFSW_2_152',     # 空 RoI，有标注 RoI
+    # 'WXL_1_26',    # partial_pos slide in pure_train
+    # 'JFSW_2_2111', 'JFSW_2_2'     # partial_pos slide in jfsw_train
 ]
 
 def show_mask(mask, ax, random_color=False):
@@ -265,15 +265,15 @@ if __name__ == "__main__":
         zheyi_slide = json.load(f)  # 60
     with open('data_resource/0511/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
         wxl_pos_slide = json.load(f)    # 37
-    # with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
-    #     jfsw_pos_slide = json.load(f)    # 876
+    with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
+        jfsw_pos_slide = json.load(f)    # 876
 
-    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
+    # all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
     npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
     os.makedirs(npz_mask_save_dir, exist_ok=True, mode=0o777)
-    # gene_roi_lesion_mask(all_json_datas, npz_mask_save_dir)
+    # gene_roi_lesion_mask(jfsw_pos_slide, npz_mask_save_dir)
     
-    test_roi_lesion_mask(all_json_datas, npz_mask_save_dir)
+    test_roi_lesion_mask(jfsw_pos_slide, npz_mask_save_dir)
     # test_file_exist(all_json_datas,npz_mask_save_dir)
 
     # for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
