@@ -158,9 +158,9 @@ if __name__ == "__main__":
     save_dir = 'data_resource/0511'
     os.makedirs(save_dir, exist_ok=True)
     # make_zheyi_pos()
-    # make_jfsw_pos()
+    make_jfsw_pos()
     # make_noann_pos()
     # make_neg()
 
-    statistic_pids()
+    # statistic_pids()
     

@@ -22,14 +22,19 @@ def main():
     totalneg_train = df_sorted.iloc[301:1201]
     pure_train_patientIds = [*list(set(totalpos_train['patientId'])), *list(totalneg_train['patientId'])]   # 1624: 900 neg+724 pos
     
+    df_agc_sample = df_jfsw_pos[df_jfsw_pos['kfb_clsname'] == 'AGC'].sample(n=380, random_state=42)
+    df_jfsw_keep = df_jfsw_pos.drop(df_agc_sample.index)
+    exclude_pids = ['JFSW_2_62', 'JFSW_2_5']    # 有效标注区域太少
     jfsw_train_patientIds = [
-        *list(set(df_jfsw_pos['patientId'])),    # 876 pos
-        *df_sorted.iloc[1201:2201]['patientId'].to_list()    # 1000 neg
-    ]   # 1876: 1000 neg+876 pos
+        *list(set(df_jfsw_keep['patientId'])),    # 496 pos
+        *df_sorted.iloc[1201:1701]['patientId'].to_list()    # 500 neg
+    ]   # 996: 500 neg+496 pos
+    jfsw_train_patientIds = [pid for pid in jfsw_train_patientIds if pid not in exclude_pids]   # 994
     
     test_patientIds = [
-        *df_sorted.iloc[2201:]['patientId'].to_list(),   # 3469 neg
+        *df_sorted.iloc[1701:]['patientId'].to_list(),   # 3969 neg
         *list(df_noann_pos['patientId']),    # 902 pos
+        *list(df_agc_sample['patientId']),    # 380 pos
     ]
 
     list_of_dfs = [df_zheyi_pos, df_jfsw_pos, df_noann_pos, df_neg]
@@ -83,8 +88,5 @@ def eval_spilt():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
     eval_spilt()
-    # df_data = pd.read_csv('data_resource/0511/7_test.csv')
-    # pids = len(df_data[df_data['kfb_clsid'] == 0])
-    # print(pids)

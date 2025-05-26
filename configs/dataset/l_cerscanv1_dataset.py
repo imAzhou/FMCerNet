@@ -11,7 +11,7 @@ train_bs = 32
 val_bs = 32
 input_size = 512  # 224, 392, 448, 512, 1024
 
-train_annojson = f'{data_root}/annofiles/puretrain_cocoformat.json'
+train_annojson = f'{data_root}/annofiles/fusiontrain_cocoformat.json'
 train_transform = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=True),

@@ -12,6 +12,8 @@ import torch
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from mmpretrain.structures import DataSample
+import multiprocessing
+from multiprocessing import Pool
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules.conv")
 
@@ -58,16 +60,14 @@ def vis_patch_sample(image, roi_masks, bboxes, filename):
     plt.savefig(f'statistic_results/0511/patch_from_RoI/{filename}')
     plt.close()
 
-def gene_patch_jsonlist(all_json_datas):
-
-    npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
+def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_save_dir):
     patchitems = []
-    for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
-        # if item['patientId'] not in test_patientId:
+    for idx, item in enumerate(all_json_datas):
+        # if item['patientId'] != 'JFSW_2_62':
         #     continue
-
+        if item['patientId'] != 'JFSW_2_5':
+            continue
         for RoIItem in item['annotations']:
-
             rx1,ry1,rx2,ry2 = (np.array(RoIItem['region']).astype(np.int32)).tolist()
             rw,rh = rx2-rx1, ry2-ry1
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
@@ -119,7 +119,7 @@ def gene_patch_jsonlist(all_json_datas):
                     pItem['prefix'] = 'total_pos' if RoIItem['sub_class'] == 'RoI' else 'partial_pos'
                     pItem['diagnose'] = 1
                     pItem['maskfile'] = f'{purename}_{RoI_patch_idx}.npz'
-                    np.savez_compressed(f'{patch_npz_save_dir}/{pItem["maskfile"]}', patch_mask=patch_mask)
+                    # np.savez_compressed(f'{patch_npz_save_dir}/{pItem["maskfile"]}', patch_mask=patch_mask)
                 
                     # slide = KFBSlide(pItem['source_path'])
                     # px1,py1,px2,py2 = pItem['square_coords']
@@ -130,8 +130,8 @@ def gene_patch_jsonlist(all_json_datas):
                 patchitems.append(pItem)
                 RoI_patch_idx += 1
 
-    with open(f'{json_save_dir}/{patches_jsonname}.json', 'w', encoding='utf-8') as f:
-        json.dump(patchitems, f, ensure_ascii=False)
+        print(f'Core {proc_id} processed : {idx+1}/{len(all_json_datas)}.')
+    return patchitems
 
 def calc_patch_anns(patch_coords, RoIItem, roi_mask):
     rpx1,rpy1,rpx2,rpy2 = patch_coords  # 相对 roi 的坐标
@@ -159,7 +159,7 @@ def calc_patch_anns(patch_coords, RoIItem, roi_mask):
     
     return ann_bboxes, ann_clsnames, new_patch_mask
 
-def cut_patch_imgs():
+def process_cut(proc_id, img_save_dir, patchlist:dict):
     from cerwsi.nets import ValidClsNet
 
     device = torch.device('cuda:0')
@@ -168,29 +168,16 @@ def cut_patch_imgs():
     valid_model.to(device)
     valid_model.eval()
     valid_model.load_state_dict(torch.load(valid_model_ckpt))
-
-    with open(f'{json_save_dir}/{patches_jsonname}.json', 'r', encoding='utf-8') as f:
-        json_data = json.load(f)
-    
-    pids = []
-    reload_patchlist = defaultdict(list)
-    for patchinfo in tqdm(json_data, ncols=80):
-        keyname = f"{patchinfo['patientId']}_{patchinfo['media_type']}"
-        reload_patchlist[keyname].append(patchinfo)
-        pids.append(patchinfo['patientId'])
-
-    total_nums = len(reload_patchlist.keys())
-    valid_patches_in_RoI = []
-    for (keyname, patchlist),idx in zip(reload_patchlist.items(), range(total_nums)):
+    total_nums = len(patchlist.keys())
+    valid_patches = []
+    for (keyname, patchlist),idx in zip(patchlist.items(), range(total_nums)):
         source_path = patchlist[0]['source_path']
         media_type = patchlist[0]['media_type']
-
         if media_type == 'roi':
             roi_img = Image.open(source_path)
         elif media_type == 'slide':
             slide = KFBSlide(source_path)
-
-        for patchinfo in tqdm(patchlist, ncols=80, desc=f'[{idx+1}/{total_nums}]Processing {keyname}'):
+        for patchinfo in patchlist:
             px1,py1,px2,py2 = patchinfo['square_coords']
             w,h = px2-px1,py2-py1
             if w!=WINDOW_SIZE or h!=WINDOW_SIZE:
@@ -202,7 +189,7 @@ def cut_patch_imgs():
                 px1,py1,px2,py2 = patchinfo['square_coords']
                 location, level, size = (px1,py1), 0, (px2-px1,py2-py1)
                 patch_img = Image.fromarray(slide.read_region(location, level, size))
-            
+
             if patchinfo['prefix'] == 'neg':    # 没有阳性框的patch需要判定是否为有效patch
                 data_batch = dict(inputs=[], data_samples=[])
                 img_input = cv2.cvtColor(np.array(patch_img), cv2.COLOR_RGB2BGR)
@@ -214,18 +201,52 @@ def cut_patch_imgs():
                     outputs = valid_model.val_step(data_batch)
                 if max(outputs[0].pred_score) > CERTAIN_THR and outputs[0].pred_label == 1:
                     patch_img.save(f'{img_save_dir}/neg/{patchinfo["filename"]}')
-                    valid_patches_in_RoI.append(patchinfo)
+                    valid_patches.append(patchinfo)
             else:
                 patch_img.save(f'{img_save_dir}/{patchinfo["prefix"]}/{patchinfo["filename"]}')
-                valid_patches_in_RoI.append(patchinfo)
+                valid_patches.append(patchinfo)
                 # patch_mask = np.load(f'{patch_npz_save_dir}/{patchinfo["maskfile"]}')['patch_mask']
                 # vis_patch_sample(patch_img, patch_mask, patchinfo['bboxes'], patchinfo['filename'])
+        
+        print(f'Core {proc_id} processed : {idx+1}/{total_nums}.')
+    return valid_patches
+
+def cut_patch_imgs(img_save_dir):
+    with open(f'{json_save_dir}/{patches_jsonname}.json', 'r', encoding='utf-8') as f:
+        json_data = json.load(f)
+    
+    reload_patchlist = defaultdict(list)
+    for patchinfo in tqdm(json_data, ncols=80):
+        keyname = f"{patchinfo['patientId']}_{patchinfo['media_type']}"
+        reload_patchlist[keyname].append(patchinfo)
+
+    total_nums = len(reload_patchlist.keys())
+    cpu_num = 8
+    set_split = np.array_split(range(total_nums), cpu_num)
+    print(f"Number of cores: {cpu_num}, total_nums: {total_nums}, set number of per core: {len(set_split[0])}")
+    workers = Pool(processes=cpu_num)
+    processes = []
+    keys = list(reload_patchlist.keys())
+    for proc_id, set_group in enumerate(set_split):
+        process_group = {}
+        for k in [keys[i] for i in set_group]:
+            process_group[k] = reload_patchlist[k]
+        p = workers.apply_async(process_cut, (proc_id, img_save_dir, process_group))
+        processes.append(p)
+    valid_patches_in_RoI = []
+    for p in processes:
+        valid_results = p.get()
+        valid_patches_in_RoI.extend(valid_results)
+    workers.close()
+    workers.join()
 
     with open(f'{json_save_dir}/{patches_jsonname}_valid.json', 'w', encoding='utf-8') as f:
         json.dump(valid_patches_in_RoI, f, ensure_ascii=False)
 
 if __name__ == "__main__":
-    patch_npz_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/patch_inst_mask'
+    npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
+    img_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/images'
+    patch_npz_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/patch_inst_mask_jfsw'
     os.makedirs(patch_npz_save_dir, exist_ok=True, mode=0o777)
     json_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/ann_jsons'
     os.makedirs(json_save_dir, exist_ok=True, mode=0o777)
@@ -237,14 +258,42 @@ if __name__ == "__main__":
         wxl_pos_slide = json.load(f)
     with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
         jfsw_pos_slide = json.load(f)    # 876
+    df_jfswtrain = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
+    jfsw_pos_slide = [i for i in jfsw_pos_slide if i['patientId'] in list(df_jfswtrain['patientId'])]
 
     # all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
+    patches_jsonname = 'patches_in_RoI_pure'
+    # cpu_num = 8
+    # set_split = np.array_split(range(len(jfsw_pos_slide)), cpu_num)
+    # print(f"Number of cores: {cpu_num}, set number of per core: {len(set_split[0])}")
+    # multiprocessing.set_start_method('spawn', force=True)
+    # workers = Pool(processes=cpu_num)
+    # processes = []
+    # for proc_id, set_group in enumerate(set_split):
+    #     process_group = [jfsw_pos_slide[i] for i in set_group]
+    #     p = workers.apply_async(gene_patch_jsonlist, (proc_id, process_group, npz_mask_save_dir, patch_npz_save_dir))
+    #     processes.append(p)
+    # patchItems = []
+    # for p in processes:
+    #     results = p.get()
+    #     patchItems.extend(results)
+    # workers.close()
+    # workers.join()
+    # with open(f'{json_save_dir}/{patches_jsonname}.json', 'w', encoding='utf-8') as f:
+    #     json.dump(patchItems, f, ensure_ascii=False)
 
-    patches_jsonname = 'patches_in_RoI_jfsw'
-    gene_patch_jsonlist(jfsw_pos_slide)
+    for tag in ['neg', 'partial_pos', 'total_pos']:
+        os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
+    multiprocessing.set_start_method('spawn', force=True)
+    cut_patch_imgs(img_save_dir)
 
-    # img_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/images'
-    # for tag in ['neg', 'partial_pos', 'total_pos']:
-    #     os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
-    # cut_patch_imgs()
-
+    # with open(f'{json_save_dir}/{patches_jsonname}.json', 'r', encoding='utf-8') as f:
+    #     json_data = json.load(f)
+    # pids = []
+    # reload_patchlist = defaultdict(list)
+    # for patchinfo in tqdm(patchItems, ncols=80):
+    #     keyname = f"{patchinfo['patientId']}_{patchinfo['media_type']}"
+    #     reload_patchlist[keyname].append(patchinfo)
+    #     pids.append(patchinfo['patientId'])
+    # drop_item = [i for i in jfsw_pos_slide if i['patientId'] not in pids and len(i['annotations'])>0]
+    # print()

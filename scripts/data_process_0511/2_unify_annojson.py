@@ -8,6 +8,7 @@
 import uuid
 import json
 import os
+import random
 from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
@@ -190,14 +191,13 @@ def gene_zheyiroi_filter():
     with open('data_resource/0511/zheyi_roi.json', 'w', encoding='utf-8') as f:
         json.dump(roi_filter_items, f, ensure_ascii=False)
 
-
-
 def gene_jfsw_slide_filter():
     df_data = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
     df_data = df_data[df_data['kfb_clsid'] == 1]
     slide_filter_items = []
     for rowInfo in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80):
-
+        # if rowInfo.patientId != 'JFSW_2_2098':
+        #     continue
         slide = KFBSlide(rowInfo.kfb_path)
         swidth, sheight = slide.level_dimensions[0]
         max_xy = (swidth-SAFE_MARGIN, sheight-SAFE_MARGIN)
@@ -207,7 +207,7 @@ def gene_jfsw_slide_filter():
             ann = remap_points(ann_)
             if ann is None:
                 continue
-            if ann.get('sub_class') not in [*NEGATIVE_CLASS, *POSITIVE_CLASS]:
+            if ann.get('sub_class') not in RECORD_CLASS.keys():
                 continue
             sub_class = RECORD_CLASS[ann.get('sub_class')]
             region = ann.get('region')
@@ -240,12 +240,14 @@ def gene_jfsw_slide_filter():
 
         if sum(rect_has_parent) != len(rect_items):
             print('Retain rect in JFSW has no parent!')
-        slide_filter_items.append({
-            'patientId': rowInfo.patientId,
-            'media_type': 'slide',
-            'source_path': rowInfo.kfb_path,
-            'annotations': parent_rois
-        })
+        
+        if len(parent_rois) > 0:
+            slide_filter_items.append({
+                'patientId': rowInfo.patientId,
+                'media_type': 'slide',
+                'source_path': rowInfo.kfb_path,
+                'annotations': parent_rois
+            })
     with open('data_resource/0511/jfsw_pos_slide.json', 'w', encoding='utf-8') as f:
         json.dump(slide_filter_items, f, ensure_ascii=False)
 
@@ -298,18 +300,44 @@ def gene_wxl1_slide_filter():
     with open('data_resource/0511/wxl_pos_slide.json', 'w', encoding='utf-8') as f:
         json.dump(slide_filter_items, f, ensure_ascii=False)
 
-def statistic_pids():
-    with open('data_resource/0511/zheyi_roi.json', 'r', encoding='utf-8') as f:
-        zheyi_roi_data = json.load(f)   # 951
-    with open('data_resource/0511/zheyi_slide.json', 'r', encoding='utf-8') as f:
-        zheyi_slide = json.load(f)  # 60
-    with open('data_resource/0511/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
-        wxl_pos_slide = json.load(f)    # 37
-    with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
-        jfsw_pos_slide = json.load(f)    # 876
+def reset_trainval_pids(all_json_datas):
+    '''
+    Val: 阳性 pid 去重后200，阴性 pid 300
+    Val 阳性 pid: 含阳性病变的 RoI 所在 pid，10张浙一病理slide
+    '''
+    df_pure_train = pd.read_csv('data_resource/0511/4_pure_train.csv')
+    df_val = pd.read_csv('data_resource/0511/6_val.csv')
+    df_concat = pd.concat([df_pure_train, df_val])
     
+    include_lesion_roi_pids = []
+    for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
+        for RoIItem in item['annotations']:
+            if len(RoIItem['children']) > 0 and RoIItem['sub_class'] == 'RoI':
+                include_lesion_roi_pids.append(item['patientId'])
+    unique_pids = list(set(include_lesion_roi_pids))
+    random.shuffle(unique_pids)
+    zheyi_slide = [
+        'ZY_ONLINE_1_135','ZY_ONLINE_1_104', 'ZY_ONLINE_1_198',     # HSIL
+        'ZY_ONLINE_1_1479', 'ZY_ONLINE_1_21', 'ZY_ONLINE_1_43',     # LSIL
+        'ZY_ONLINE_1_14', 'ZY_ONLINE_1_8',      # ASC-US
+        'ZY_ONLINE_1_101', 'ZY_ONLINE_1_65',    # ASC-H
+    ]
+    val_pids = [*unique_pids[:190], *zheyi_slide]
+    df_val_cls0 = df_val[df_val['kfb_clsid'] == 0]
+    df_val_pid_from_pure = df_pure_train[df_pure_train['patientId'].isin(val_pids)]
+    df_val_pid_from_val = df_val[df_val['patientId'].isin(val_pids)]
+    df_new_val = pd.concat([df_val_cls0, df_val_pid_from_pure, df_val_pid_from_val], ignore_index=True)
+
+    df_new_pure_train = df_concat[~df_concat['patientId'].isin(df_new_val['patientId'])]
+
+    df_new_val.to_csv('data_resource/0511/6_val.csv', index=False)
+    df_new_pure_train.to_csv('data_resource/0511/4_pure_train.csv', index=False)
+
+
+
+def statistic_pids(all_json_datas, jfsw_pos_slide):
+
     error_flag = False
-    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
     json_pid_nums = len(set([i['patientId'] for i in all_json_datas]))
     df_pure_train = pd.read_csv('data_resource/0511/4_pure_train.csv')
     df_pure_train_pos = df_pure_train[df_pure_train['kfb_clsid']==1]
@@ -349,9 +377,22 @@ def statistic_pids():
         # print(repeat_pids)
 
 if __name__ == "__main__":
+    '''gene_*() 函数会给每个 RoI/forge_RoI 以及 annitem 重新生成 uuid，若已经生成 roi_mask，
+    请慎重执行该函数，会导致 roi_mask npz 文件失去对应的 RoI 信息(两者之间的唯一联系是 uuid)'''
     # gene_zheyislide_filter()
     # gene_zheyiroi_filter()
     # gene_wxl1_slide_filter()
     # gene_jfsw_slide_filter()
 
-    statistic_pids()
+    with open('data_resource/0511/zheyi_roi.json', 'r', encoding='utf-8') as f:
+        zheyi_roi_data = json.load(f)   # 951
+    with open('data_resource/0511/zheyi_slide.json', 'r', encoding='utf-8') as f:
+        zheyi_slide = json.load(f)  # 60
+    with open('data_resource/0511/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
+        wxl_pos_slide = json.load(f)    # 37
+    with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
+        jfsw_pos_slide = json.load(f)    # 876
+
+    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
+    # reset_trainval_pids(all_json_datas)
+    statistic_pids(all_json_datas, jfsw_pos_slide)

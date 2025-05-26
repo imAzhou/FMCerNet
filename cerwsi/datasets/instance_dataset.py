@@ -39,7 +39,7 @@ class InstanceDataset(Dataset):
                 'bbox': [x, y, x+w, y+h],
                 'bbox_label': annoinfo['category_id'],
                 'mask': annoinfo['segmentation'],
-                'inst_id': annoinfo['inst_id'],
+                # 'inst_id': annoinfo['inst_id'],
                 'ignore_flag': False     # False means retain 
             })
 

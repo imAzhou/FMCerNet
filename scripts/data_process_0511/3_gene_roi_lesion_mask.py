@@ -1,5 +1,6 @@
 import json
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from PIL import Image
 import torch
@@ -9,7 +10,10 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from cerwsi.utils import KFBSlide,random_cut_square,calc_relative_coord,is_bbox_inside,set_seed
 from scipy import sparse
+import glob
 from collections import defaultdict
+import multiprocessing
+from multiprocessing import Pool
 
 test_patientId = [
     # 'ZY_ONLINE_1_45', 'ZY_ONLINE_1_21',    # 0409 Slide，0422 Slide
@@ -54,10 +58,10 @@ def vis_sample(image, roi_masks, roi_item, filename):
     plt.savefig(f'statistic_results/0511/sam2_infer_RoI/{filename}')
     plt.close()
 
-def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
+def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
     sam2_checkpoint = "checkpoints/sam2.1_hiera_large.pt"
     model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
-    device = torch.device("cuda:1")
+    device = torch.device("cuda:2")
     torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
     if torch.cuda.get_device_properties(0).major >= 8:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -66,10 +70,7 @@ def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
     predictor = SAM2ImagePredictor(sam2_model)
 
     empty_mask = defaultdict(int)
-    for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
-        # if item['patientId'] not in test_patientId:
-        #     continue
-
+    for idx, item in enumerate(all_json_datas):
         if item['media_type'] == 'roi':
             roi_img = Image.open(item['source_path'])
         elif item['media_type'] == 'slide':
@@ -77,8 +78,6 @@ def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
 
         for RoIItem in item['annotations']:
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
-            # if purename != 'WXL_1_68_2360650969751':
-            #     continue
             if os.path.exists(f'{npz_mask_save_dir}/{purename}.npz'):
                 continue
 
@@ -182,6 +181,7 @@ def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
                     col=sparse_mask.col,
                     shape=roi_mask.shape)
         
+        print(f'Core {proc_id} processed : {idx+1}/{len(all_json_datas)}.')
 
 def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
@@ -243,6 +243,7 @@ def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
             print(f'\nDrawing {purename}.png, (width,height) is {sample_img.size}')
             vis_sample(sample_img, roi_mask, RoIItem, f'{purename}.png')
             draw_cnt += 1
+            
 
 def test_file_exist(all_json_datas,npz_mask_save_dir):
 
@@ -255,7 +256,25 @@ def test_file_exist(all_json_datas,npz_mask_save_dir):
     # for existname in os.listdir(npz_mask_save_dir):
     #     if existname not in keep_names and os.path.exists(f"{npz_mask_save_dir}/{purename}.npz"):
     #         os.remove(f"{npz_mask_save_dir}/{purename}.npz")
- 
+
+def clear_npz(all_json_datas,npz_mask_save_dir):
+
+    keep_filename = []
+    for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
+        for RoIItem in item['annotations']:
+            if len(RoIItem['children']) == 0:
+                continue
+            purename = item['patientId'] + f'_{str(RoIItem["annid"])}.npz'
+            keep_filename.append(purename)
+
+    exists_npzpath = glob.glob(f'{npz_mask_save_dir}/*.npz')
+    print(f'keep_filename nums: {len(keep_filename)}')
+    print(f'exists_imgpath nums: {len(exists_npzpath)}')
+
+    for npzpath in tqdm(exists_npzpath, ncols=80):
+        filename = os.path.basename(npzpath)
+        if filename not in keep_filename:
+            os.remove(npzpath)
 
 if __name__ == "__main__":
     set_seed(666)
@@ -267,62 +286,28 @@ if __name__ == "__main__":
         wxl_pos_slide = json.load(f)    # 37
     with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
         jfsw_pos_slide = json.load(f)    # 876
+    df_jfswtrain = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
+    jfsw_pos_slide = [i for i in jfsw_pos_slide if i['patientId'] in list(df_jfswtrain['patientId'])]
 
-    # all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
+    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
     npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
     os.makedirs(npz_mask_save_dir, exist_ok=True, mode=0o777)
-    # gene_roi_lesion_mask(jfsw_pos_slide, npz_mask_save_dir)
     
-    test_roi_lesion_mask(jfsw_pos_slide, npz_mask_save_dir)
+    # cpu_num = 8
+    # set_split = np.array_split(range(len(jfsw_pos_slide)), cpu_num)
+    # print(f"Number of cores: {cpu_num}, set number of per core: {len(set_split[0])}")
+    # multiprocessing.set_start_method('spawn', force=True)
+    # workers = Pool(processes=cpu_num)
+    # processes = []
+    # for proc_id, set_group in enumerate(set_split):
+    #     process_group = [jfsw_pos_slide[i] for i in set_group]
+    #     p = workers.apply_async(gene_roi_lesion_mask, (proc_id, process_group, npz_mask_save_dir))
+    #     processes.append(p)
+    # for p in processes:
+    #     p.get()
+    # workers.close()
+    # workers.join()
+    
+    # test_roi_lesion_mask(jfsw_pos_slide, npz_mask_save_dir)
     # test_file_exist(all_json_datas,npz_mask_save_dir)
-
-    # for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
-    #     for RoIItem in item['annotations']:
-    #         rx1,ry1,rx2,ry2 = RoIItem['region']
-    #         rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
-    #         purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
-    #         if rw<1000 or rh<1000:
-    #             print(f'{purename}: width:{rw}, height:{rh}')
-
-
-    # for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
-    #     for RoIItem in item['annotations']:
-    #         purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
-    #         rx1,ry1,rx2,ry2 = RoIItem['region']
-    #         rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
-    #         annid_list = [child['annid'] for child in RoIItem['children']]
-    #         [child.update({'inst_infer': False}) for child in RoIItem['children']]
-    #         for annitem in RoIItem['children']:
-    #             if annitem['inst_infer']:
-    #                 continue
-
-    #             annx1,anny1,annx2,anny2 = annitem['region']
-    #             annw, annh = int(annx2-annx1+0.5), int(anny2-anny1+0.5)
-    #             sq_size = max(1024, max(annw, annh))
-    #             square_x1,square_y1 = random_cut_square((annx1,anny1,annw,annh), sq_size)
-    #             square_x2,square_y2 = square_x1+sq_size,square_y1+sq_size
-    #             square_x1,square_y1 = max(0,square_x1),max(0,square_y1)
-    #             if square_x2 > rx2:
-    #                 square_x1 = square_x1 - (square_x2-rx2)
-    #                 square_x2 = square_x1+sq_size
-    #             if square_y2 > ry2:
-    #                 square_y1 = square_y1 - (square_y2-ry2)
-    #                 square_y2 = square_y1+sq_size
-                
-    #             parent_patch_coords = [square_x1,square_y1,square_x2,square_y2]
-    #             input_boxes,input_boxes_annid = [],[]
-    #             for annitem in RoIItem['children']:
-    #                 if (not annitem['inst_infer']) and is_bbox_inside(annitem['region'],parent_patch_coords,tolerance=10):
-    #                     intx1,inty1,intx2,inty2 = (np.array(annitem['region']).astype(int)).tolist()
-    #                     bbox_coord = calc_relative_coord(parent_patch_coords, [intx1,inty1,intx2,inty2])
-    #                     if bbox_coord is not None:
-    #                         input_boxes.append(bbox_coord)
-    #                         input_boxes_annid.append(annitem['annid'])
-    #                         annitem['inst_infer'] = True
-                
-    #             if len(input_boxes) == 0:
-    #                 print(f'purename {purename}: len(input_boxes) == 0')
-        
-    #     for annitem in RoIItem['children']:
-    #         if not annitem['inst_infer']:
-    #             print(f'ERROR! Retain ann not infer: {purename}')
+    # clear_npz(all_json_datas,npz_mask_save_dir)
