@@ -6,6 +6,8 @@ from prettytable import PrettyTable
 import numpy as np
 import re
 from mmengine.logging import MMLogger
+import torch
+from mmdet.structures.bbox import bbox_mapping_back
 
 def calculate_metrics(y_true, y_pred):
     # 准确率 (Accuracy)
@@ -178,8 +180,16 @@ class ImgODMetric(BaseMetric):
         for bidx in range(bs):
             # metainfo = data_samples['metainfo'][bidx]
             datasample = data_samples['data_samples'][bidx]
+            sf = datasample.scale_factor
+            bbox_in_origin = bbox_mapping_back(
+                datasample.gt_instances.bboxes.tensor,
+                datasample.img_shape,
+                (sf[0], sf[1], sf[0], sf[1]),
+                flip=datasample.get('flip', False),
+                flip_direction=datasample.get('flip_direction', None)
+            )
             gt_bbox = {
-                'bbox': datasample.gt_instances.bboxes.tensor.tolist(),  # [[x1, y1, x2, y2],...]
+                'bbox': bbox_in_origin.tolist(),  # [[x1, y1, x2, y2],...]
                 # 'clsnames': metainfo['clsnames'],  # ['AGC',...]
                 'clsids': datasample.gt_instances.labels.tolist(),  # [1,...]
             }

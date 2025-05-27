@@ -15,7 +15,6 @@ class InstanceDataset(Dataset):
             img_dir (str): img dir
         """
         self.img_dir = data_cfg.img_dir
-        self.instance_mask_dir = data_cfg.instance_mask_dir
         self.num_classes = data_cfg.num_classes
         self.classes = data_cfg.classes
         

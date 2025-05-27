@@ -57,7 +57,7 @@ def main():
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
     
-    # model_without_ddp.load_ckpt(args.ckpt)
+    model_without_ddp.load_ckpt(args.ckpt)
     test_net(cfg, model, model_without_ddp)
 
     if args.distributed:
@@ -68,8 +68,8 @@ if __name__ == '__main__':
     # analyze(f'{args.save_dir}/pred_results_0.5.json')
 
 '''
-CUDA_VISIBLE_DEVICES=0, torchrun  --nproc_per_node=1 --master_port=12341 test_PatchClsNet.py \
-    log/l_cerscanv1_750/wscer_partial/2025_05_25_00_05_16/config.py \
-    log/l_cerscanv1_750/wscer_partial/2025_05_25_00_05_16/checkpoints/best.pth \
-    log/l_cerscanv1_750/wscer_partial/2025_05_25_00_05_16
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 test_PatchClsNet.py \
+    log/l_cerscanv1_750/wscer_partial/2025_05_26_20_53_32/config.py \
+    log/l_cerscanv1_750/wscer_partial/2025_05_26_20_53_32/checkpoints/best.pth \
+    log/l_cerscanv1_750/wscer_partial/2025_05_26_20_53_32
 '''
