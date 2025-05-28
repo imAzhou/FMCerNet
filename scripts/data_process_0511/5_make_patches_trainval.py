@@ -60,23 +60,29 @@ def coco_format(patchlist):
 
     return format_result
 
+def ensure_exist(RoI_patchlist):
+    new_RoI_patchlist = []
+    for pInfo in tqdm(RoI_patchlist, ncols=90, desc="Ensuring patch file in RoI exist"):
+        if os.path.exists(f'{data_root}/images/{pInfo["prefix"]}/{pInfo["filename"]}'):
+            new_RoI_patchlist.append(pInfo)
+    return new_RoI_patchlist
 
 def main(use_jfsw):
-    # with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/patches_in_NegSlide.json', 'r', encoding='utf-8') as f:
-    #     negslide_patchlist = json.load(f)
+    with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/ppatches_in_NegSlide.json', 'r', encoding='utf-8') as f:
+        negslide_patchlist = json.load(f)
     with open(f'{data_root}/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
         RoI_patchlist = json.load(f)
-    
+    RoI_patchlist = ensure_exist(RoI_patchlist)
     RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=300) # 控制每张病人切片的阴性 patch 数量
 
     patient2patchlist = defaultdict(list)
-    # for patchInfo in [*jfsw_patchdata, *RoI_patchlist]:
-    for patchInfo in RoI_patchlist:
+    for patchInfo in [*negslide_patchlist, *RoI_patchlist]:
+    # for patchInfo in RoI_patchlist:
         patient2patchlist[patchInfo['patientId']].append(patchInfo)
     
     data_group = {
         'puretrain': 'data_resource/0511/4_pure_train.csv',
-        'val': 'data_resource/0511/6_val.csv'
+        # 'val': 'data_resource/0511/6_val.csv'
     }
     for tag,csvpath in data_group.items():
         df_data = pd.read_csv(csvpath)
@@ -85,17 +91,20 @@ def main(use_jfsw):
             patchlist.extend(patient2patchlist[row.patientId])
         patchInCOCO = coco_format(patchlist)
         
-        with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
+        with open(f'{data_root}/annofiles/{tag}_cocoformat_new.json', 'w', encoding='utf-8') as f:
             json.dump(patchInCOCO, f, ensure_ascii=False)
     
         if tag == 'puretrain' and use_jfsw:
+            with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/jfswtrain_patches_in_NegSlide.json', 'r', encoding='utf-8') as f:
+                jfswtrain_negslide_patchlist = json.load(f)
             with open(f'{data_root}/ann_jsons/patches_in_RoI_jfsw_valid.json', 'r', encoding='utf-8') as f:
-                jfsw_patchdata = json.load(f)
+                jfsw_pos_patchdata = json.load(f)
             df_jfswtrain = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
+            jfsw_patchdata = [*jfswtrain_negslide_patchlist, *jfsw_pos_patchdata]
             jfsw_patchdata = [i for i in jfsw_patchdata if i['patientId'] in list(df_jfswtrain['patientId'])]
 
             fusionPatchInCOCO = coco_format([*patchlist, *jfsw_patchdata])
-            with open(f'{data_root}/annofiles/fusiontrain_cocoformat.json', 'w', encoding='utf-8') as f:
+            with open(f'{data_root}/annofiles/fusiontrain_cocoformat_new.json', 'w', encoding='utf-8') as f:
                 json.dump(fusionPatchInCOCO, f, ensure_ascii=False)
         
 
@@ -125,7 +134,9 @@ def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
     return new_RoI_patchlist
     
 def statistic():
+    txt_lines = []
     for tag in ['fusiontrain', 'puretrain', 'val']:
+        txt_lines.append(f'{"-"*30}{tag}{"-"*30}\n')
         with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
             patch_COCOinfo = json.load(f)
         annoInimg = defaultdict(list)
@@ -137,6 +148,8 @@ def statistic():
         result_table.field_names = POSITIVE_CLASS + ['Sum']
         result_table.add_row(bbox_cls_cnt + [sum(bbox_cls_cnt)])
         print(result_table)
+        txt_lines.append(str(result_table))
+        txt_lines.append('\n')
 
         pn_cnt = [0,0]
         consist_error = [0,0]
@@ -159,17 +172,21 @@ def statistic():
         result_table.field_names = ['Neg', 'Pos', 'Sum', 'Pos bbox avg/min/max']
         result_table.add_row(pn_cnt + [sum(pn_cnt), f'{mean:.2}/{minv}/{maxv}'])
         print(result_table)
+        txt_lines.append(str(result_table))
+        txt_lines.append('\n\n')
+    with open(f'{ann_dir}/statistic_result.txt', 'w') as f:
+        f.writelines(txt_lines)
 
 def clear_imgs():
     keep_filename = []
     for tag in ['fusiontrain','puretrain','val']:
-        with open(f'{ann_dir}/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
+        with open(f'{ann_dir}/{tag}_cocoformat_new.json', 'r', encoding='utf-8') as f:
             json_data = json.load(f)
         
         for patchinfo in tqdm(json_data['images'], ncols=80):
             keep_filename.append(patchinfo["file_name"].split('/')[1])
-            # if not os.path.exists(f'{data_root}/images/{patchinfo["file_name"]}'):
-            #     print('ERROR: path not exist!')
+            if not os.path.exists(f'{data_root}/images/{patchinfo["file_name"]}'):
+                print('ERROR: path not exist!')
     #         pn_cnt[patchinfo['diagnose']] += 1
     #     print(f'{tag}: {len(json_data["images"])}, [neg, pos]: [{pn_cnt[0]}, {pn_cnt[1]}]')
     
@@ -189,61 +206,7 @@ if __name__ == "__main__":
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
     # main(use_jfsw=True)
-    # statistic()
-    clear_imgs()
+    statistic()
+    # clear_imgs()
 
     
-
-'''
-512:
-puretrain: [98154, 38570]
-fusiontrain: [142150, 103616]
-val: [38189, 9919]
-
-750:
-puretrain: 66051, [neg, pos]: [30053, 35998]
-val: 18536, [neg, pos]: [14630, 3906]
-+-------------------------------------------------+
-|              fusiontrain BBox Info              |
-+-------+--------+-------+-------+-------+--------+
-|  AGC  | ASC-US |  LSIL | ASC-H |  HSIL |  Sum   |
-+-------+--------+-------+-------+-------+--------+
-| 15042 | 65084  | 42712 | 25108 | 28968 | 176914 |
-+-------+--------+-------+-------+-------+--------+
-+------------------------------------------------+
-|             fusiontrain Image Info             |
-+-------+--------+--------+----------------------+
-|  Neg  |  Pos   |  Sum   | Pos bbox avg/min/max |
-+-------+--------+--------+----------------------+
-| 33130 | 128248 | 161378 |       1.4/1/23       |
-+-------+--------+--------+----------------------+
-+-----------------------------------------------+
-|              puretrain BBox Info              |
-+------+--------+-------+-------+-------+-------+
-| AGC  | ASC-US |  LSIL | ASC-H |  HSIL |  Sum  |
-+------+--------+-------+-------+-------+-------+
-| 1320 |  5850  | 19885 |  3176 | 19435 | 49666 |
-+------+--------+-------+-------+-------+-------+
-+----------------------------------------------+
-|             puretrain Image Info             |
-+-------+-------+-------+----------------------+
-|  Neg  |  Pos  |  Sum  | Pos bbox avg/min/max |
-+-------+-------+-------+----------------------+
-| 33130 | 36049 | 69179 |       1.4/1/23       |
-+-------+-------+-------+----------------------+
-+-------------------------------------------+
-|               val BBox Info               |
-+-----+--------+------+-------+------+------+
-| AGC | ASC-US | LSIL | ASC-H | HSIL | Sum  |
-+-----+--------+------+-------+------+------+
-|  42 |  2454  | 1059 |  1581 | 2568 | 7704 |
-+-----+--------+------+-------+------+------+
-+---------------------------------------------+
-|                val Image Info               |
-+-------+------+-------+----------------------+
-|  Neg  | Pos  |  Sum  | Pos bbox avg/min/max |
-+-------+------+-------+----------------------+
-| 11553 | 3855 | 15408 |       2.0/1/26       |
-+-------+------+-------+----------------------+
-
-'''

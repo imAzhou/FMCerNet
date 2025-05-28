@@ -15,6 +15,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+from mmdet.structures.bbox import bbox_mapping_back
 import random
 
 POSITIVE_THR = 0.5
@@ -41,7 +42,8 @@ args = parser.parse_args()
 def draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, binary_attnmap, output_path):
     w,h = img.size
     # 创建画布
-    fig, axes = plt.subplots(1, 3, figsize=(14, 6))
+    col = 3 if binary_attnmap else 2
+    fig, axes = plt.subplots(1, col, figsize=(col*5, 6))
     fig.subplots_adjust(wspace=0.01)
     # ========== 子图 1：原图 + Bounding Boxes ==========
     axes[0].imshow(img)
@@ -70,23 +72,24 @@ def draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, binary_attnmap, out
         axes[1].text(x1, y1 - 5, cls_name, color=color, fontsize=8)
         classname_denote.append(pred_bbox['cls'])
 
-        mask_color = np.array(matplotlib.colors.to_rgba(color, alpha=0.8))
-        bbox_mask = pred_bbox['mask'].int().detach().cpu().numpy()
-        overlay[bbox_mask] = mask_color  # 叠加颜色
+        # mask_color = np.array(matplotlib.colors.to_rgba(color, alpha=0.8))
+        # bbox_mask = pred_bbox['mask'].int().detach().cpu().numpy()
+        # overlay[bbox_mask] = mask_color  # 叠加颜色
         
     axes[1].imshow(overlay)
     axes[1].set_title(f"pred Classes: {list(set(classname_denote))}")
     axes[1].axis("off")
 
     # ========== 子图 3：Token Probabilities 热力图 ==========
-    axes[2].imshow(img)
-    norm_attnmap = cv2.normalize(binary_attnmap, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-    norm_attnmap = norm_attnmap.astype(np.uint8)
-    heatmap = cv2.applyColorMap(norm_attnmap, cv2.COLORMAP_JET)
-    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-    axes[2].imshow(heatmap, alpha=0.6)
-    axes[2].set_title("Binary AttnMap")
-    axes[2].axis("off")
+    if binary_attnmap != None:
+        axes[2].imshow(img)
+        norm_attnmap = cv2.normalize(binary_attnmap, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+        norm_attnmap = norm_attnmap.astype(np.uint8)
+        heatmap = cv2.applyColorMap(norm_attnmap, cv2.COLORMAP_JET)
+        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+        axes[2].imshow(heatmap, alpha=0.6)
+        axes[2].set_title("Binary AttnMap")
+        axes[2].axis("off")
 
     patches = [
         mpatches.Patch(color=matplotlib.colors.to_rgba(color), label=category)  # Matplotlib 支持归一化颜色
@@ -101,32 +104,42 @@ def draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, binary_attnmap, out
     plt.close(fig)
 
 def test_net(cfg, model, model_without_ddp):
-    trainloader,valloader = load_data(cfg)
+    valloader = load_data(cfg, ['val'])
     model.eval()
     pbar = valloader
     if is_main_process():
         pbar = tqdm(valloader, ncols=80)
     for idx, data_batch in enumerate(pbar):
-        # if idx > 20:
-        #     break
+        if idx > 20:
+            break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
         
-        for bidx in range(len(outputs['images'])):
-            prefix = outputs['metainfo'][bidx]['prefix']
+        for bidx in range(len(outputs['inputs'])):
+            datasample = outputs['data_samples'][bidx]
+            prefix = datasample.prefix
             os.makedirs(f'{vis_save_dir}/{prefix}', exist_ok=True)
             # if random.random() < 0.1:
             if prefix == 'total_pos':
-                metainfo = outputs['metainfo'][bidx]
+                sf = datasample.scale_factor
+                bbox_in_origin = bbox_mapping_back(
+                    datasample.gt_instances.bboxes.tensor,
+                    datasample.img_shape,
+                    (sf[0], sf[1], sf[0], sf[1]),
+                    flip=datasample.get('flip', False),
+                    flip_direction=datasample.get('flip_direction', None)
+                )
                 # bboxes_coords: [x1,y1,x2,y2], bboxes_clsname one of POSITIVE_CLASS
-                img_path,bboxes_coords,bboxes_clsname = metainfo['imgpath'],metainfo['bboxes'],metainfo['clsnames']
+                img_path,bboxes_coords = datasample.img_path,bbox_in_origin.tolist()
+                bboxes_clsname = [cfg.classes[label] for label in datasample.gt_instances.labels]
                 img = Image.open(img_path)
                 w,h = img.size
                 filename = os.path.basename(img_path)
 
                 pred_bboxes = outputs['pred_bbox'][bidx]
-                binary_attnmap = outputs['binary_attnmap'][bidx][0].detach().cpu().numpy()
-                binary_attnmap = cv2.resize(binary_attnmap, (w, h), interpolation=cv2.INTER_NEAREST)
+                binary_attnmap = None
+                # binary_attnmap = outputs['binary_attnmap'][bidx][0].detach().cpu().numpy()
+                # binary_attnmap = cv2.resize(binary_attnmap, (w, h), interpolation=cv2.INTER_NEAREST)
                 
                 output_path = f'{vis_save_dir}/{prefix}/{filename}'
                 draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, binary_attnmap, output_path)
@@ -159,7 +172,7 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=1,2 torchrun  --nproc_per_node=2 --master_port=12341 scripts/analyze/vis_bbox_pred.py \
-    log/l_cerscanv1/2025_05_12_14_52_56/config.py \
-    log/l_cerscanv1/2025_05_12_14_52_56/checkpoints/best.pth
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 tools/vis_bbox_pred.py \
+    log/l_cerscanv1_750/wscer_partial/2025_05_26_20_53_32/config.py \
+    log/l_cerscanv1_750/wscer_partial/2025_05_26_20_53_32/checkpoints/best.pth
 '''

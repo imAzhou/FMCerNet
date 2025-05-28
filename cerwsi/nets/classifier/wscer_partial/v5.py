@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 import torch.nn.functional as F
 from ..meta_classifier import MetaClassifier
-from cerwsi.utils import build_evaluator,ImgODMetric
+from cerwsi.utils import build_evaluator,ImgODMetric,ImgODCOCOMetric
 from .binary_cls_branch import BinaryClsBranch
 from .instance_branch import Instance_branch
 
@@ -12,7 +12,10 @@ class WSCerPartial(MetaClassifier):
     def __init__(self, args):
 
         save_result_dir = getattr(args, 'save_result_dir', None)
-        evaluator = build_evaluator([ImgODMetric(args.logger_name,save_result_dir)])
+        evaluator = build_evaluator([ImgODCOCOMetric(
+            args.logger_name,save_result_dir,
+            args.val_evaluator,args.classes
+        )])
         super(WSCerPartial, self).__init__(evaluator, **args)
 
         self.binary_cls_branch = BinaryClsBranch(args.binary_branch_input_dim)
