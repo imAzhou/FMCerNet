@@ -49,7 +49,7 @@ def main():
     cfg = Config.fromfile(args.config_file)
     cfg.save_result_dir = args.save_dir
     cfg.backbone_cfg['backbone_ckpt'] = None
-    # cfg.instance_ckpt = None
+    cfg.instance_ckpt = None
     model = PatchClsNet(cfg).to(device)
     model_without_ddp = model
 
@@ -69,7 +69,7 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 test_PatchClsNet.py \
-    log/l_cerscanv1_750/wscer_partial/2025_05_26_20_53_32/config.py \
-    log/l_cerscanv1_750/wscer_partial/2025_05_26_20_53_32/checkpoints/best.pth \
-    log/l_cerscanv1_750/wscer_partial/2025_05_26_20_53_32
+    log/l_cerscanv1_750/wscer_partial/2025_05_27_14_47_05/config.py \
+    log/l_cerscanv1_750/wscer_partial/2025_05_27_14_47_05/checkpoints/best.pth \
+    log/l_cerscanv1_750/wscer_partial/2025_05_27_14_47_05
 '''

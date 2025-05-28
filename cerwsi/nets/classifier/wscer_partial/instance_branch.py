@@ -104,7 +104,7 @@ class Instance_branch(nn.Module):
                 dict(type='DiceCost', weight=5.0, pred_act=True, eps=1.0)
             ])
         self.sampler = MaskPseudoSampler()
-        self.num_points = 112*112
+        self.num_points = 56*56
         self.oversample_ratio = 3.0
         self.importance_sample_ratio = 0.75
 

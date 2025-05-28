@@ -25,7 +25,22 @@ class WSCerPartial(MetaClassifier):
             num_classes = args.num_classes,
             num_instance_queries = args.num_instance_queries,
             pretrain_ckpt = args.instance_ckpt)
+
+    def filter4inst(self, dict_inputs: dict, databatch):
+        posIndx = [idx for idx,item in enumerate(databatch['data_samples']) if item.diagnose==1]
+        filter_ddict_inputs = {
+            'vision_features': dict_inputs['vision_features'][posIndx],
+            'vision_pos_enc': [dict_inputs['vision_pos_enc'][i] for i in posIndx],
+            'backbone_fpn': [dict_inputs['backbone_fpn'][i] for i in posIndx],
+        }
+        filter_databatch = {
+            'inputs': databatch['inputs'][posIndx],
+            'data_samples': [databatch['data_samples'][i] for i in posIndx],
+            'image_labels': databatch['image_labels'][posIndx]
+        }
         
+        return filter_ddict_inputs,filter_databatch
+
     def calc_loss(self, dict_inputs: dict, databatch):
         '''
         dict_inputs: dict, 
@@ -43,7 +58,8 @@ class WSCerPartial(MetaClassifier):
         # binary_attnmap = binary_attnmap.reshape((bs, feat_size, feat_size)).unsqueeze(1)
         # binary_attnmap = F.interpolate(binary_attnmap, size=(feat_size*4, feat_size*4), mode='nearest')
         
-        instance_loss_dict = self.instance_branch.loss(dict_inputs, databatch, None)
+        inst_dict_inputs,inst_databatch = self.filter4inst(dict_inputs, databatch)
+        instance_loss_dict = self.instance_branch.loss(inst_dict_inputs,inst_databatch, None)
         loss = img_loss
         loss_dict = {'img_loss': img_loss.item()}
         for key,value in instance_loss_dict.items():

@@ -25,7 +25,7 @@ def calculate_metrics(y_true, y_pred):
         'cm': cm
     }
 
-def print_confusion_matrix(cm):
+def print_confusion_matrix(cm, print_flag=True):
     result_table = PrettyTable(title='confusion matrix')
     row_sums = np.sum(cm, axis=1).reshape(-1, 1)
     col_sums = np.sum(cm, axis=0).reshape(1, -1)
@@ -36,7 +36,8 @@ def print_confusion_matrix(cm):
     result_table.add_row(['0'] + list(cm_with_sums[0]))
     result_table.add_row(['1'] + list(cm_with_sums[1]))
     result_table.add_row(['sum'] + list(cm_with_sums[2]))
-    print(result_table)
+    if print_flag:
+        print(result_table)
 
     return str(result_table)
 

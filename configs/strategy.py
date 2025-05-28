@@ -3,7 +3,7 @@
 lr = 0.0001
 min_lr = 0.00001
 weight_decay = 0.001
-max_epochs = 100
+max_epochs = 50
 warmup_epoch = 5
 gamma = 0.95
 save_each_epoch = False

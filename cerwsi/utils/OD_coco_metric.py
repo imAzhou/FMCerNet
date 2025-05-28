@@ -10,6 +10,7 @@ from mmdet.structures.mask import encode_mask_results
 from mmengine.structures import InstanceData
 from mmengine.logging import MMLogger
 from mmdet.evaluation import CocoMetric
+from .metrics import print_confusion_matrix
 
 def calculate_metrics(y_true, y_pred):
     # 准确率 (Accuracy)
@@ -58,14 +59,15 @@ class ImgODCOCOMetric(BaseMetric):
         self.logger_name = logger_name
         self.save_result_dir = save_result_dir
         self.coco_metric = CocoMetric(**val_evaluator)
-        self.coco_metric.cat_ids = range(len(classes))
+        self.coco_metric.dataset_meta = dict(classes=classes)
+        self.coco_metric.img_ids = []
 
     def format_pred2coco(self, data_sample,pred_bbox):
         pred_cocoformat = dict()
         pred_cocoformat['img_id'] = data_sample['img_id']
         pred_cocoformat['bboxes'] = np.array([preditem['bbox'] for preditem in pred_bbox])
         pred_cocoformat['scores'] = np.array([preditem['score'] for preditem in pred_bbox])
-        pred_cocoformat['labels'] = np.array([preditem['cls'] for preditem in pred_bbox])
+        pred_cocoformat['labels'] = np.array([preditem['cls']-1 for preditem in pred_bbox])
         # # encode mask to RLE
         # if 'masks' in pred:
         #     pred_cocoformat['masks'] = encode_mask_results(
@@ -100,8 +102,10 @@ class ImgODCOCOMetric(BaseMetric):
         for bidx in range(bs):
             datasample = data_samples['data_samples'][bidx]
             pred_bbox = data_samples['pred_bbox'][bidx]
+            pred_bbox = [i for i in pred_bbox if i['score'] > 0.3]
             coco_result = self.format_pred2coco(datasample.to_dict(),pred_bbox)            
             result = dict(
+                img_id = datasample.img_id,
                 img_gt = bs_img_gt[bidx].item(),
                 img_pred = bs_img_pred[bidx].item(),
                 pred_bbox = pred_bbox,
@@ -146,6 +150,8 @@ class ImgODCOCOMetric(BaseMetric):
 
         '''计算目标检测的结果'''
         coco_results = [rs['coco_result'] for rs in results]
+        # 只统计阳性 Tile 的检测结果
+        self.coco_metric.img_ids = [rs['img_id'] for rs in results if rs['img_gt']==1]
         det_metrics = self.coco_metric.compute_metrics(coco_results)
         result_table_2 = PrettyTable()
         result_table_2.field_names = list(det_metrics.keys())
@@ -156,7 +162,8 @@ class ImgODCOCOMetric(BaseMetric):
         consistency_metrics = compute_consistency_metrics(results)
         result_metrics.update(consistency_metrics)
         
-        str_metric = '\n' + str(result_table_1) + '\n' + str(result_table_2)
+        cmstr = print_confusion_matrix(cm, print_flag=False)
+        str_metric = '\n' + str(result_table_1) + '\n' + str(result_table_2) + '\n' + cmstr
         logger = MMLogger.get_instance(self.logger_name)
         logger.info(str_metric)
         

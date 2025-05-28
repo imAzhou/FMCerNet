@@ -6,7 +6,7 @@ img_dir = f'{data_root}/images'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'instance'    # cls, instance
-train_bs = 32
+train_bs = 4
 val_bs = 32
 input_size = 512  # 224, 392, 448, 512, 1024
 
@@ -41,6 +41,6 @@ test_transform = [
 val_evaluator = dict(
     ann_file=val_annojson,
     metric='bbox',
-    classwise=True,
+    classwise=False,
     metric_items = ['mAP', 'mAP_50', 'mAP_75', 'mAP_s', 'mAP_m', 'mAP_l', 'AR@1000'],
     format_only=False,)
