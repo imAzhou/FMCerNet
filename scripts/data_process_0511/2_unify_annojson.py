@@ -322,7 +322,8 @@ def reset_trainval_pids(all_json_datas):
         'ZY_ONLINE_1_14', 'ZY_ONLINE_1_8',      # ASC-US
         'ZY_ONLINE_1_101', 'ZY_ONLINE_1_65',    # ASC-H
     ]
-    val_pids = [*unique_pids[:190], *zheyi_slide]
+    filter_unique_pids = [i for i in unique_pids if i not in zheyi_slide]
+    val_pids = [*filter_unique_pids[:190], *zheyi_slide]
     df_val_cls0 = df_val[df_val['kfb_clsid'] == 0]
     df_val_pid_from_pure = df_pure_train[df_pure_train['patientId'].isin(val_pids)]
     df_val_pid_from_val = df_val[df_val['patientId'].isin(val_pids)]
@@ -394,5 +395,5 @@ if __name__ == "__main__":
         jfsw_pos_slide = json.load(f)    # 876
 
     all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
-    # reset_trainval_pids(all_json_datas)
-    statistic_pids(all_json_datas, jfsw_pos_slide)
+    reset_trainval_pids(all_json_datas)
+    # statistic_pids(all_json_datas, jfsw_pos_slide)

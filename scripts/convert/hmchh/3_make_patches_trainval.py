@@ -13,11 +13,11 @@ import random
 import glob
 from prettytable import PrettyTable
 
-WINDOW_SIZE = 750
-POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
-CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
+WINDOW_SIZE = 512
+POSITIVE_CLASS = ['abnormal']
+CLASS_COLORS = [[139,0,139]]
 # data_root = '/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750'
-data_root = 'data_resource/0511/WINDOW_SIZE_750'
+data_root = 'data_resource/HMCHH/WINDOW_SIZE_512'
 
 
 def coco_format(patchlist):
@@ -60,83 +60,49 @@ def coco_format(patchlist):
 
     return format_result
 
-def ensure_exist(RoI_patchlist):
-    new_RoI_patchlist = []
-    for pInfo in tqdm(RoI_patchlist, ncols=90, desc="Ensuring patch file in RoI exist"):
-        if os.path.exists(f'{data_root}/images/{pInfo["prefix"]}/{pInfo["filename"]}'):
-            new_RoI_patchlist.append(pInfo)
-    return new_RoI_patchlist
 
-def main(use_jfsw):
-    with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/ppatches_in_NegSlide.json', 'r', encoding='utf-8') as f:
-        negslide_patchlist = json.load(f)
-    with open(f'{data_root}/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
+def main(csvfiles_dir):
+
+    with open(f'{data_root}/ann_jsons/patches_in_RoI.json', 'r', encoding='utf-8') as f:
         RoI_patchlist = json.load(f)
-    RoI_patchlist = ensure_exist(RoI_patchlist)
-    RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=300) # 控制每张病人切片的阴性 patch 数量
 
     patient2patchlist = defaultdict(list)
-    for patchInfo in [*negslide_patchlist, *RoI_patchlist]:
-    # for patchInfo in RoI_patchlist:
+    for patchInfo in RoI_patchlist:
         patient2patchlist[patchInfo['patientId']].append(patchInfo)
     
-    data_group = {
-        'puretrain': 'data_resource/0511/4_pure_train.csv',
-        # 'val': 'data_resource/0511/6_val.csv'
-    }
-    for tag,csvpath in data_group.items():
-        df_data = pd.read_csv(csvpath)
-        patchlist = []
-        for row in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80):
-            patchlist.extend(patient2patchlist[row.patientId])
-        patchInCOCO = coco_format(patchlist)
-        
-        with open(f'{data_root}/annofiles/{tag}_cocoformat_new.json', 'w', encoding='utf-8') as f:
-            json.dump(patchInCOCO, f, ensure_ascii=False)
+    CV_nums = 5
+    for i in range(CV_nums):
+        folddir = f'{csvfiles_dir}/fold{i+1}'
+        for tag in ['train', 'val']:
+            df_data = pd.read_csv(f'{folddir}/{tag}.csv')
+            unique_pid = list(set(df_data['patient_id']))
+            patchlist = []
+            for pid in tqdm(unique_pid, ncols=80):
+                patchlist.extend(patient2patchlist[pid])
+            patchInCOCO = coco_format(patchlist)
+            
+            with open(f'{data_root}/annofiles/fold{i+1}_{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
+                json.dump(patchInCOCO, f, ensure_ascii=False)
     
-        if tag == 'puretrain' and use_jfsw:
-            with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/jfswtrain_patches_in_NegSlide.json', 'r', encoding='utf-8') as f:
-                jfswtrain_negslide_patchlist = json.load(f)
-            with open(f'{data_root}/ann_jsons/patches_in_RoI_jfsw_valid.json', 'r', encoding='utf-8') as f:
-                jfsw_pos_patchdata = json.load(f)
-            df_jfswtrain = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
-            jfsw_patchdata = [*jfswtrain_negslide_patchlist, *jfsw_pos_patchdata]
-            jfsw_patchdata = [i for i in jfsw_patchdata if i['patientId'] in list(df_jfswtrain['patientId'])]
-
-            fusionPatchInCOCO = coco_format([*patchlist, *jfsw_patchdata])
-            with open(f'{data_root}/annofiles/fusiontrain_cocoformat_new.json', 'w', encoding='utf-8') as f:
-                json.dump(fusionPatchInCOCO, f, ensure_ascii=False)
+    df_test = pd.read_csv(f'{csvfiles_dir}/test.csv')
+    unique_pid = list(set(df_test['patient_id']))
+    patchlist = []
+    for pid in tqdm(unique_pid, ncols=80):
+        patchlist.extend(patient2patchlist[pid])
+    patchInCOCO = coco_format(patchlist)
+    
+    with open(f'{data_root}/annofiles/test_cocoformat.json', 'w', encoding='utf-8') as f:
+        json.dump(patchInCOCO, f, ensure_ascii=False)
         
 
-def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
 
-    neg_count = Counter()
-    for item in tqdm(RoI_patchlist, ncols=80):
-        if item["prefix"] == 'neg':
-            neg_count[item['patientId']] += 1
-    filter_pids = [k for k, v in neg_count.items() if v > neg_patch_thr]
-    random.shuffle(RoI_patchlist)
-    
-    new_RoI_patchlist = []
-    filter_neg_count = Counter()
-    for item in tqdm(RoI_patchlist, ncols=80):
-        if item["prefix"] != 'neg':
-            new_RoI_patchlist.append(item)
-            continue
-
-        pid = item['patientId']
-        if pid in filter_pids and filter_neg_count[pid] >= neg_patch_thr:
-            continue
-        
-        new_RoI_patchlist.append(item)
-        filter_neg_count[pid] += 1
-    
-    return new_RoI_patchlist
-    
 def statistic():
+    CV_nums = 5
+    foldtags = [f'fold{i+1}_{tag}' for tag in ['train', 'val'] for i in range(CV_nums)]
+    foldtags.append('test')
     txt_lines = []
-    for tag in ['fusiontrain', 'puretrain', 'val']:
-        txt_lines.append(f'{"-"*30}{tag}{"-"*30}\n')
+    for tag in foldtags:
+        txt_lines.append(f'{"-"*20}{tag}{"-"*20}\n')
         with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
             patch_COCOinfo = json.load(f)
         annoInimg = defaultdict(list)
@@ -180,13 +146,13 @@ def statistic():
 def clear_imgs():
     keep_filename = []
     for tag in ['fusiontrain','puretrain','val']:
-        with open(f'{ann_dir}/{tag}_cocoformat_new.json', 'r', encoding='utf-8') as f:
+        with open(f'{ann_dir}/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
             json_data = json.load(f)
         
         for patchinfo in tqdm(json_data['images'], ncols=80):
             keep_filename.append(patchinfo["file_name"].split('/')[1])
-            if not os.path.exists(f'{data_root}/images/{patchinfo["file_name"]}'):
-                print('ERROR: path not exist!')
+            # if not os.path.exists(f'{data_root}/images/{patchinfo["file_name"]}'):
+            #     print('ERROR: path not exist!')
     #         pn_cnt[patchinfo['diagnose']] += 1
     #     print(f'{tag}: {len(json_data["images"])}, [neg, pos]: [{pn_cnt[0]}, {pn_cnt[1]}]')
     
@@ -205,8 +171,8 @@ if __name__ == "__main__":
     ann_dir = f'{data_root}/annofiles'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
-    # main(use_jfsw=True)
+    csvfiles_dir = 'data_resource/HMCHH/csvfiles'
+    # main(csvfiles_dir)
     statistic()
     # clear_imgs()
 
-    

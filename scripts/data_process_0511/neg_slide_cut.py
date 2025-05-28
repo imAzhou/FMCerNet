@@ -17,8 +17,8 @@ LEVEL = 0
 CERTAIN_THR = 0.7
 PATCH_EDGE = 750
 SAFE_MARGIN = 100
-cut_nums_each = 40
-img_save_dir = f'data_resource/0511/WINDOW_SIZE_750/images/neg_slide'
+cut_nums_each = 80
+img_save_dir = f'data_resource/0511/WINDOW_SIZE_750/images/neg_slide_jfsw'
 os.makedirs(img_save_dir, exist_ok=True, mode=0o777)
 anno_save_dir = 'data_resource/0511/WINDOW_SIZE_750/ann_jsons'
 os.makedirs(anno_save_dir, exist_ok=True, mode=0o777)
@@ -34,7 +34,8 @@ def cut_random_neg():
     valid_model.eval()
     valid_model.load_state_dict(torch.load(valid_model_ckpt))
 
-    train_csv = pd.read_csv('data_resource/0511/4_pure_train.csv')
+    # train_csv = pd.read_csv('data_resource/0511/4_pure_train.csv')
+    train_csv = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
     val_csv = pd.read_csv('data_resource/0511/6_val.csv')
     filtered = {
         'train': train_csv[train_csv['kfb_clsid'] == 0],
@@ -46,11 +47,11 @@ def cut_random_neg():
     txt_records = []
     low_valid_records = []
     
-    for mode in ['train','val']:
+    for mode in ['train']:
         filtered[mode] = filtered[mode].reset_index(drop=True)
         for r_idx, row in filtered[mode].iterrows():
-            if r_idx > 1:
-                break
+            # if r_idx > 1:
+            #     break
             slide_patch_cnt = 0
             kfb_path, patientId = row['kfb_path'], row['patientId']
             slide = KFBSlide(kfb_path)
@@ -95,12 +96,12 @@ def cut_random_neg():
         
     print(f'Total: {total_patches} patches. \n')
     txt_records.append(f'Total: {total_patches} patches. \n')
-    with open(f'{anno_save_dir}/neg_patch_nums.txt', 'w') as f:
+    with open(f'{anno_save_dir}/jfsw_train_neg_patch_nums.txt', 'w') as f:
         f.writelines(txt_records)
         f.writelines(f"{'='*20} \n\n\n")
         f.writelines(low_valid_records)
 
-    with open(f'{anno_save_dir}/patches_in_NegSlide.json', 'w') as f:
+    with open(f'{anno_save_dir}/jfswtrain_patches_in_NegSlide.json', 'w') as f:
         json.dump(neg_patch_list, f)
 
 # def retrieve_anojson():
