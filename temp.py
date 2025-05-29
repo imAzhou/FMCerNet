@@ -4,7 +4,7 @@ import os
 
 from tqdm import tqdm
 
-for imgpath in tqdm(glob.glob('data_resource/0511/WINDOW_SIZE_750/images/neg_slide_jfsw/*.png'), ncols=80):
+for imgpath in tqdm(glob.glob('/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750/images/neg_slide/*.png'), ncols=80):
     filename = os.path.basename(imgpath)
-    descpath = f'data_resource/0511/WINDOW_SIZE_750/images/neg/{filename}'
-    shutil.copy(imgpath, descpath)
+    descpath = f'/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750/images/neg/{filename}'
+    shutil.move(imgpath, descpath)

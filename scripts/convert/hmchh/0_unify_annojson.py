@@ -9,7 +9,6 @@ import os
 import pandas as pd
 from tqdm import tqdm
 from PIL import Image
-from scripts.data_process_0511.utils import box_enclosured, deduplicate_regions
 
 
 def parse_annos(annotations, parentId):

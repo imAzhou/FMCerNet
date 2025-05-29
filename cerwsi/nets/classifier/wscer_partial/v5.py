@@ -30,8 +30,8 @@ class WSCerPartial(MetaClassifier):
         posIndx = [idx for idx,item in enumerate(databatch['data_samples']) if item.diagnose==1]
         filter_ddict_inputs = {
             'vision_features': dict_inputs['vision_features'][posIndx],
-            'vision_pos_enc': [dict_inputs['vision_pos_enc'][i] for i in posIndx],
-            'backbone_fpn': [dict_inputs['backbone_fpn'][i] for i in posIndx],
+            'vision_pos_enc': [feat[posIndx] for feat in dict_inputs['vision_pos_enc']],
+            'backbone_fpn': [feat[posIndx] for feat in dict_inputs['backbone_fpn']],
         }
         filter_databatch = {
             'inputs': databatch['inputs'][posIndx],
