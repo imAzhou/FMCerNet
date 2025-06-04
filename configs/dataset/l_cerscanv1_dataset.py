@@ -1,14 +1,14 @@
 # dataset settings 
 
 # data_root = 'data_resource/0511/WINDOW_SIZE_750'
-data_root = '/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750'
+data_root = '/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_512'
 img_dir = f'{data_root}/images'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'instance'    # cls, instance
-train_bs = 8
-val_bs = 8
-input_size = 1024  # 224, 392, 448, 512, 1024
+train_bs = 16
+val_bs = 16
+input_size = 512  # 224, 392, 448, 512, 1024
 
 train_annojson = f'{data_root}/annofiles/fusiontrain_cocoformat.json'
 albu_train_transforms = [
@@ -53,27 +53,20 @@ train_transform = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
     dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),
-    # dict(
-    #     type='Albu',
-    #     transforms=albu_train_transforms,
-    #     bbox_params=dict(
-    #         type='BboxParams',
-    #         format='pascal_voc',
-    #         label_fields=['gt_bboxes_labels', 'gt_ignore_flags'],
-    #         min_visibility=0.0,
-    #         filter_lost_elements=True),
-    #     keymap={
-    #         'img': 'image',
-    #         'gt_masks': 'masks',
-    #         'gt_bboxes': 'bboxes'
-    #     },
-    #     skip_img_without_anno=True),
     dict(
-        type='RandomOrder',
-        transforms=[
-            dict(type='Contrast', prob=0.5),
-            dict(type='Brightness', prob=0.5),
-        ]),
+        type='Albu',
+        transforms=albu_train_transforms,
+        bbox_params=dict(
+            type='BboxParams',
+            format='pascal_voc',    # bbox: [x1,y1,x2,y2]
+            label_fields=['gt_bboxes_labels', 'gt_ignore_flags'],
+            min_visibility=0.0),
+        keymap={
+            'img': 'image',
+            'gt_masks': 'masks',
+            'gt_bboxes': 'bboxes'
+        },
+        skip_img_without_anno=False),
     dict(type='RandomFlip', prob=0.5),
     dict(type='PackDetInputs')
 ]
