@@ -1,33 +1,11 @@
 from collections import defaultdict
-import json
-from sklearn.metrics import accuracy_score, confusion_matrix
 from mmengine.evaluator import BaseMetric
 from prettytable import PrettyTable
 import numpy as np
-import re
-import torch
-from mmdet.structures.mask import encode_mask_results
-from mmengine.structures import InstanceData
+import os
 from mmengine.logging import MMLogger
 from mmdet.evaluation import CocoMetric
-from .metrics import print_confusion_matrix
-
-def calculate_metrics(y_true, y_pred):
-    # 准确率 (Accuracy)
-    accuracy = accuracy_score(y_true, y_pred)
-
-    # 特异性 (Specificity)
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-    tn, fp, fn, tp = cm.ravel()
-    specificity = tn / (tn + fp)
-    sensitivity = tp / (tp + fn)
-
-    return {
-        "accuracy": round(accuracy, 4),
-        "sensitivity": round(sensitivity.item(), 4),
-        "specificity": round(specificity.item(), 4),
-        "cm": cm
-    }
+from .metrics import print_confusion_matrix,calculate_metrics
 
 
 def compute_consistency_metrics(results, thresholds=[0.3, 0.5, 0.7]):
@@ -60,14 +38,22 @@ class ImgODCOCOMetric(BaseMetric):
         self.save_result_dir = save_result_dir
         self.coco_metric = CocoMetric(**val_evaluator)
         self.coco_metric.dataset_meta = dict(classes=classes)
-        self.coco_metric.img_ids = []
 
-    def format_pred2coco(self, data_sample,pred_bbox):
+    def format_pred2coco(self, data_sample, pred_bbox):
         pred_cocoformat = dict()
         pred_cocoformat['img_id'] = data_sample['img_id']
         pred_cocoformat['bboxes'] = np.array([preditem['bbox'] for preditem in pred_bbox])
         pred_cocoformat['scores'] = np.array([preditem['score'] for preditem in pred_bbox])
         pred_cocoformat['labels'] = np.array([preditem['cls']-1 for preditem in pred_bbox])
+        
+        filename = os.path.basename(data_sample['img_path'])
+        roi_id = '_'.join(filename.split('_')[:2])
+        square_coords = data_sample['extra_info']['square_coords']
+        pred_cocoformat['roi_info'] = {
+            'roi_id': roi_id,
+            'square_coords': square_coords,
+        }
+
         # # encode mask to RLE
         # if 'masks' in pred:
         #     pred_cocoformat['masks'] = encode_mask_results(
@@ -109,7 +95,7 @@ class ImgODCOCOMetric(BaseMetric):
                 img_gt = bs_img_gt[bidx].item(),
                 img_pred = bs_img_pred[bidx].item(),
                 pred_bbox = pred_bbox,
-                prefix = datasample.prefix, # pfefix: 'neg', 'partial_pos', 'total_pos'
+                prefix = datasample.extra_info['prefix'], # pfefix: 'neg', 'partial_pos', 'total_pos'
                 coco_result = coco_result
             )
 
@@ -150,8 +136,8 @@ class ImgODCOCOMetric(BaseMetric):
 
         '''计算目标检测的结果'''
         coco_results = [rs['coco_result'] for rs in results]
-        # 只统计阳性 Tile 的检测结果
-        self.coco_metric.img_ids = [rs['img_id'] for rs in results if rs['img_gt']==1]
+        # 将 Tile 的检测结果整理回 RoI 以计算 mAP 等指标结果
+        # roi_coco_results = self.remapTile2RoI(coco_results)
         det_metrics = self.coco_metric.compute_metrics(coco_results)
         result_table_2 = PrettyTable()
         result_table_2.field_names = list(det_metrics.keys())
@@ -168,3 +154,13 @@ class ImgODCOCOMetric(BaseMetric):
         logger.info(str_metric)
         
         return result_metrics
+
+    def remapTile2RoI(self, coco_results):
+        tile_predlist = [item[1] for item in coco_results]
+        roi_tilelist = defaultdict(list)
+        for tileItem in tile_predlist:
+            roi_id = tileItem['roi_info']['roi_id']
+            roi_tilelist[roi_id].append(tileItem)
+        for roi_id,tilelist in roi_tilelist.items():
+            gt_cocoformat = dict()
+        

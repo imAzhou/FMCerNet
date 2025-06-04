@@ -511,3 +511,5 @@ class Instance_branch(nn.Module):
                 boxes[i] = torch.tensor([0, 0, 0, 0], device=masks.device, dtype=torch.float)
 
         return boxes
+
+        

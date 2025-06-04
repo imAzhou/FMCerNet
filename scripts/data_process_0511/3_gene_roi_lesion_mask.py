@@ -16,10 +16,10 @@ import multiprocessing
 from multiprocessing import Pool
 
 test_patientId = [
-    # 'ZY_ONLINE_1_45', 'ZY_ONLINE_1_21',    # 0409 Slide，0422 Slide
-    # 'JFSW_2_1486', 'JFSW_2_152',     # 空 RoI，有标注 RoI
-    # 'WXL_1_26',    # partial_pos slide in pure_train
-    # 'JFSW_2_2111', 'JFSW_2_2'     # partial_pos slide in jfsw_train
+    'ZY_ONLINE_1_45', 'ZY_ONLINE_1_21',    # 0409 Slide，0422 Slide
+    'JFSW_2_1486', 'JFSW_2_152', 'JFSW_2_239',     # 空 RoI，有标注 RoI
+    'WXL_1_26',    # partial_pos slide in pure_train
+    'JFSW_2_2111', 'JFSW_2_2'     # partial_pos slide in jfsw_train
 ]
 
 def show_mask(mask, ax, random_color=False):
@@ -217,7 +217,7 @@ def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
             sparse_mask = sparse.coo_matrix((loader['data'], (loader['row'], loader['col'])), shape=loader['shape'])
             roi_mask = sparse_mask.toarray().astype(np.int16)
             
-            SIZE_THR = 1000 if len(RoIItem['children']) > 30 else 4000
+            SIZE_THR = 2000 if len(RoIItem['children']) > 30 else 4000
             if rw > SIZE_THR or rh > SIZE_THR:
                 start_x1,start_y1 = random_cut_square((0,0,rw,rh), SIZE_THR)
                 start_x1,start_y1 = max(start_x1,0), max(start_y1,0)
@@ -248,11 +248,19 @@ def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
 def test_file_exist(all_json_datas,npz_mask_save_dir):
 
     keep_names = []
+    minw,minh = float('inf'), float('inf')
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
         for RoIItem in item['annotations']:
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
+            rx1,ry1,rx2,ry2 = RoIItem['region']
+            rw,rh = rx2-rx1, ry2-ry1
+            if rw < minw:
+                minw = rw
+            if rh < minh:
+                minh = rh
             if len(RoIItem['children']) > 0 and not os.path.exists(f"{npz_mask_save_dir}/{purename}.npz"):
                 print(f"Not exist: {purename}.npz")
+    print(f'minw:{minw}, minh:{minh}')
     # for existname in os.listdir(npz_mask_save_dir):
     #     if existname not in keep_names and os.path.exists(f"{npz_mask_save_dir}/{purename}.npz"):
     #         os.remove(f"{npz_mask_save_dir}/{purename}.npz")
@@ -279,28 +287,26 @@ def clear_npz(all_json_datas,npz_mask_save_dir):
 if __name__ == "__main__":
     set_seed(666)
     with open('data_resource/0511/zheyi_roi.json', 'r', encoding='utf-8') as f:
-        zheyi_roi_data = json.load(f)   # 951
+        zheyi_roi_data = json.load(f)   # 1287
     with open('data_resource/0511/zheyi_slide.json', 'r', encoding='utf-8') as f:
         zheyi_slide = json.load(f)  # 60
     with open('data_resource/0511/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
         wxl_pos_slide = json.load(f)    # 37
     with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
-        jfsw_pos_slide = json.load(f)    # 876
-    df_jfswtrain = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
-    jfsw_pos_slide = [i for i in jfsw_pos_slide if i['patientId'] in list(df_jfswtrain['patientId'])]
+        jfsw_pos_slide = json.load(f)    # 308
 
-    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
+    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide, *jfsw_pos_slide]
     npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
     os.makedirs(npz_mask_save_dir, exist_ok=True, mode=0o777)
     
     # cpu_num = 8
-    # set_split = np.array_split(range(len(jfsw_pos_slide)), cpu_num)
+    # set_split = np.array_split(range(len(all_json_datas)), cpu_num)
     # print(f"Number of cores: {cpu_num}, set number of per core: {len(set_split[0])}")
     # multiprocessing.set_start_method('spawn', force=True)
     # workers = Pool(processes=cpu_num)
     # processes = []
     # for proc_id, set_group in enumerate(set_split):
-    #     process_group = [jfsw_pos_slide[i] for i in set_group]
+    #     process_group = [all_json_datas[i] for i in set_group]
     #     p = workers.apply_async(gene_roi_lesion_mask, (proc_id, process_group, npz_mask_save_dir))
     #     processes.append(p)
     # for p in processes:
@@ -308,6 +314,6 @@ if __name__ == "__main__":
     # workers.close()
     # workers.join()
     
-    # test_roi_lesion_mask(jfsw_pos_slide, npz_mask_save_dir)
-    # test_file_exist(all_json_datas,npz_mask_save_dir)
+    # test_roi_lesion_mask(all_json_datas, npz_mask_save_dir)
+    test_file_exist(all_json_datas,npz_mask_save_dir)
     # clear_npz(all_json_datas,npz_mask_save_dir)

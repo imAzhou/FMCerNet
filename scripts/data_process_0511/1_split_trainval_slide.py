@@ -8,40 +8,32 @@ def main():
     df_jfsw_pos = pd.read_csv('data_resource/0511/1_jfsw_pos.csv')
     df_noann_pos = pd.read_csv('data_resource/0511/2_noann_pos.csv')
     df_neg = pd.read_csv('data_resource/0511/3_neg.csv')
-
-    df_totalpos_pure = df_zheyi_pos[df_zheyi_pos['anno_type']=='total']
-    set_totalpos_pure = list(set(df_totalpos_pure['patientId']))
-
-    random.shuffle(set_totalpos_pure)
-    val_pos_patientIds = set_totalpos_pure[:300]
-    df_top300 = df_neg.sort_values(by='priority', ascending=False).head(300)
-    val_patientIds = [*val_pos_patientIds, *list(df_top300['patientId'])]   # 600: 300 neg+300 pos
-
-    totalpos_train = df_zheyi_pos[~df_zheyi_pos['patientId'].isin(val_pos_patientIds)]
     df_sorted = df_neg.sort_values(by='priority', ascending=False)
-    totalneg_train = df_sorted.iloc[301:1201]
-    pure_train_patientIds = [*list(set(totalpos_train['patientId'])), *list(totalneg_train['patientId'])]   # 1624: 900 neg+724 pos
+
+    set_totalpos_pure = list(set(df_zheyi_pos['patientId']))
+    df_topNeg = df_sorted.iloc[0:1500]
+    pure_trainval_patientIds = [*set_totalpos_pure, *list(df_topNeg['patientId'])]   # 2823: 1500 neg+1360 pos
     
-    df_agc_sample = df_jfsw_pos[df_jfsw_pos['kfb_clsname'] == 'AGC'].sample(n=380, random_state=42)
+    df_agc_sample = df_jfsw_pos[df_jfsw_pos['kfb_clsname'] == 'AGC'].sample(n=300, random_state=42)
     df_jfsw_keep = df_jfsw_pos.drop(df_agc_sample.index)
-    exclude_pids = ['JFSW_2_62', 'JFSW_2_5']    # 有效标注区域太少
     jfsw_train_patientIds = [
-        *list(set(df_jfsw_keep['patientId'])),    # 496 pos
-        *df_sorted.iloc[1201:1701]['patientId'].to_list()    # 500 neg
-    ]   # 996: 500 neg+496 pos
-    jfsw_train_patientIds = [pid for pid in jfsw_train_patientIds if pid not in exclude_pids]   # 994
+        *list(set(df_jfsw_keep['patientId'])),    # 312 pos
+        *df_sorted.iloc[1500:1900]['patientId'].to_list()    # 400 neg
+    ]   # 712: 400 neg+312 pos
+    drop_jfsw_pids = ['JFSW_2_2293', 'JFSW_2_2276', 'JFSW_2_2147', 'JFSW_2_2288']
+    jfsw_train_patientIds = [i for i in jfsw_train_patientIds if i not in drop_jfsw_pids]
     
     test_patientIds = [
-        *df_sorted.iloc[1701:]['patientId'].to_list(),   # 3969 neg
-        *list(df_noann_pos['patientId']),    # 902 pos
-        *list(df_agc_sample['patientId']),    # 380 pos
-    ]
+        *df_sorted.iloc[1900:]['patientId'].to_list(),   # 3770 neg
+        *list(df_noann_pos['patientId']),    # 830 pos
+        *list(df_agc_sample['patientId']),    # 300 pos
+    ]   # 4900
 
     list_of_dfs = [df_zheyi_pos, df_jfsw_pos, df_noann_pos, df_neg]
     common_cols = list(set.intersection(*[set(df.columns) for df in list_of_dfs]))
     df_concat = pd.concat([df[common_cols] for df in list_of_dfs], ignore_index=True)
-    tags = ['4_pure_train','5_jfsw_train','6_val','7_test']
-    for idx,pid_groups in enumerate([pure_train_patientIds, jfsw_train_patientIds, val_patientIds, test_patientIds]):
+    tags = ['4_pure_trainval','5_jfsw_train','7_test']
+    for idx,pid_groups in enumerate([pure_trainval_patientIds, jfsw_train_patientIds, test_patientIds]):
         data_rows = []
         for pid in tqdm(pid_groups, ncols=80):
             filtered_df = df_concat[df_concat['patientId'] == pid].iloc[0]
@@ -88,5 +80,5 @@ def eval_spilt():
 
 
 if __name__ == "__main__":
-    # main()
-    eval_spilt()
+    main()
+    # eval_spilt()

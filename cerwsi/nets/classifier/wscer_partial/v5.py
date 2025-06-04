@@ -2,6 +2,7 @@ import random
 import torch
 import torch.nn as nn
 import math
+import random
 import torch.nn.functional as F
 from ..meta_classifier import MetaClassifier
 from cerwsi.utils import build_evaluator,ImgODMetric,ImgODCOCOMetric
@@ -31,7 +32,8 @@ class WSCerPartial(MetaClassifier):
         posIndx = [idx for idx,item in enumerate(databatch['data_samples']) if item.diagnose==1]
         if len(posIndx) == 0:   # 无阳性 tile，随机抽样 2 个样本
             posIndx = random.sample(range(len(databatch['data_samples'])), 2)
-        filter_ddict_inputs = {
+        
+        filter_dict_inputs = {
             'vision_features': dict_inputs['vision_features'][posIndx],
             'vision_pos_enc': [feat[posIndx] for feat in dict_inputs['vision_pos_enc']],
             'backbone_fpn': [feat[posIndx] for feat in dict_inputs['backbone_fpn']],
@@ -41,8 +43,8 @@ class WSCerPartial(MetaClassifier):
             'data_samples': [databatch['data_samples'][i] for i in posIndx],
             'image_labels': databatch['image_labels'][posIndx]
         }
-        
-        return filter_ddict_inputs,filter_databatch
+
+        return filter_dict_inputs,filter_databatch
 
     def calc_loss(self, dict_inputs: dict, databatch):
         '''
@@ -60,11 +62,12 @@ class WSCerPartial(MetaClassifier):
         # feat_size = int(math.sqrt(num_tokens))
         # binary_attnmap = binary_attnmap.reshape((bs, feat_size, feat_size)).unsqueeze(1)
         # binary_attnmap = F.interpolate(binary_attnmap, size=(feat_size*4, feat_size*4), mode='nearest')
-        
-        inst_dict_inputs,inst_databatch = self.filter4inst(dict_inputs, databatch)
-        instance_loss_dict = self.instance_branch.loss(inst_dict_inputs,inst_databatch, None)
         loss = img_loss
         loss_dict = {'img_loss': img_loss.item()}
+
+        inst_dict_inputs,inst_databatch = self.filter4inst(dict_inputs, databatch)
+        instance_loss_dict = self.instance_branch.loss(inst_dict_inputs,inst_databatch, None)
+        
         for key,value in instance_loss_dict.items():
             loss += value
             loss_dict[key] = value.item()

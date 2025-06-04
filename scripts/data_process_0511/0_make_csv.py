@@ -12,7 +12,7 @@ def imgName2patientId()->str:
     return name2PID
 
 def make_jfsw_pos():
-    df_zheyi_pos = pd.read_csv('data_resource/0511/zheyi_pos.csv')
+    df_zheyi_pos = pd.read_csv('data_resource/0511/0_zheyi_pos.csv')
     exclude_patientIds = list(df_zheyi_pos['patientId'])
     
     df_slide_year = pd.read_csv('data_resource/group_csv/slide_year.csv')
@@ -42,7 +42,7 @@ def make_zheyi_pos():
     roi_json_data = []
     for group in group_json_data.values():
         roi_json_data.extend(group)
-    new_roi_json_data = []
+
     for item in roi_json_data:
         patientId = '_'.join(item['imageName'].split('_')[:3])
         abandon_row = df_abandon[df_abandon['patientId'] == patientId]
@@ -53,9 +53,6 @@ def make_zheyi_pos():
         row_dict['media_type'] = 'roi'
         row_dict['anno_type'] = 'total'
         total_pos_data.append(row_dict)
-        new_roi_json_data.append(item)
-    with open('data_resource/zheyi_annofiles/宫颈液基细胞—RoI_filter.json', 'w', encoding='utf-8') as f:
-        json.dump(new_roi_json_data, f, ensure_ascii=False)
 
     name2PID = imgName2patientId()
     for slide_annjson in [slide0409_json_data, slide0422_json_data]:
@@ -158,9 +155,9 @@ if __name__ == "__main__":
     save_dir = 'data_resource/0511'
     os.makedirs(save_dir, exist_ok=True)
     # make_zheyi_pos()
-    make_jfsw_pos()
+    # make_jfsw_pos()
     # make_noann_pos()
     # make_neg()
 
-    # statistic_pids()
+    statistic_pids()
     

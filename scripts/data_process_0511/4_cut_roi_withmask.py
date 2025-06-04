@@ -19,8 +19,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules
 
 CERTAIN_THR = 0.7
 LEVEL = 0
-WINDOW_SIZE = 750
-STRIDE = 700
+WINDOW_SIZE = 700
+STRIDE = 650
 
 test_patientId = [
     'ZY_ONLINE_1_45', 'ZY_ONLINE_1_196',    # 0409 Slide，0422 Slide
@@ -65,8 +65,8 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
     for idx, item in enumerate(all_json_datas):
         # if item['patientId'] != 'JFSW_2_62':
         #     continue
-        if item['patientId'] != 'JFSW_2_5':
-            continue
+        # if item['patientId'] != 'JFSW_2_5':
+        #     continue
         for RoIItem in item['annotations']:
             rx1,ry1,rx2,ry2 = (np.array(RoIItem['region']).astype(np.int32)).tolist()
             rw,rh = rx2-rx1, ry2-ry1
@@ -80,13 +80,18 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
                 roi_mask = np.zeros((rh,rw), dtype=np.int16)
 
             RoI_patch_idx = 0
-            cut_points = generate_cut_regions((0,0), rw-1, rh-1, WINDOW_SIZE, STRIDE)
-            random_cut_num = 20 if rw > 5000 and rh > 5000 else 5
-            for i in range(random_cut_num):
+            if abs(rw-WINDOW_SIZE) < 100 or abs(rh-WINDOW_SIZE) < 100:
                 random_x1,random_y1 = random_cut_square([0,0,rw,rh],WINDOW_SIZE)  # 在 RoI 中的相对坐标
-                random_x2,random_y2 = random_x1+WINDOW_SIZE,random_y1+WINDOW_SIZE
-                if random_x2 < rw and random_y2 < rh:
-                    cut_points.append((random_x1,random_y1))
+                cut_points = [(random_x1,random_y1)]
+            else:
+                cut_points = generate_cut_regions((0,0), rw-1, rh-1, WINDOW_SIZE, STRIDE)
+
+            # random_cut_num = 20 if rw > 5000 and rh > 5000 else 5
+            # for i in range(random_cut_num):
+            #     random_x1,random_y1 = random_cut_square([0,0,rw,rh],WINDOW_SIZE)  # 在 RoI 中的相对坐标
+            #     random_x2,random_y2 = random_x1+WINDOW_SIZE,random_y1+WINDOW_SIZE
+            #     if random_x2 < rw and random_y2 < rh:
+            #         cut_points.append((random_x1,random_y1))
 
             for iidx,rect_coords in enumerate(cut_points):
                 x1,y1 = rect_coords
@@ -119,7 +124,7 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
                     pItem['prefix'] = 'total_pos' if RoIItem['sub_class'] == 'RoI' else 'partial_pos'
                     pItem['diagnose'] = 1
                     pItem['maskfile'] = f'{purename}_{RoI_patch_idx}.npz'
-                    # np.savez_compressed(f'{patch_npz_save_dir}/{pItem["maskfile"]}', patch_mask=patch_mask)
+                    np.savez_compressed(f'{patch_npz_save_dir}/{pItem["maskfile"]}', patch_mask=patch_mask)
                 
                     # slide = KFBSlide(pItem['source_path'])
                     # px1,py1,px2,py2 = pItem['square_coords']
@@ -243,10 +248,26 @@ def cut_patch_imgs(img_save_dir):
     with open(f'{json_save_dir}/{patches_jsonname}_valid.json', 'w', encoding='utf-8') as f:
         json.dump(valid_patches_in_RoI, f, ensure_ascii=False)
 
+def statistic_imgs():
+    with open(f'{json_save_dir}/{patches_jsonname}_valid.json', 'r', encoding='utf-8') as f:
+        json_data = json.load(f)
+    
+    pn_cnt = [0,0,0]
+    for patchinfo in tqdm(json_data, ncols=80):
+        idx = -1
+        if patchinfo['prefix'] == 'neg':
+            idx = 0
+        elif patchinfo['prefix'] == 'total_pos':
+            idx = 1
+        elif patchinfo['prefix'] == 'partial_pos':
+            idx = 2
+        pn_cnt[idx] += 1
+    print(pn_cnt)
+
 if __name__ == "__main__":
     npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
     img_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/images'
-    patch_npz_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/patch_inst_mask_jfsw'
+    patch_npz_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/patch_inst_mask'
     os.makedirs(patch_npz_save_dir, exist_ok=True, mode=0o777)
     json_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/ann_jsons'
     os.makedirs(json_save_dir, exist_ok=True, mode=0o777)
@@ -257,20 +278,20 @@ if __name__ == "__main__":
     with open('data_resource/0511/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
         wxl_pos_slide = json.load(f)
     with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
-        jfsw_pos_slide = json.load(f)    # 876
-    df_jfswtrain = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
-    jfsw_pos_slide = [i for i in jfsw_pos_slide if i['patientId'] in list(df_jfswtrain['patientId'])]
+        jfsw_pos_slide = json.load(f)
 
-    # all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
-    patches_jsonname = 'patches_in_RoI_pure'
+    all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
+    # all_json_datas = jfsw_pos_slide
+    patches_jsonname = 'patches_in_RoI_jfsw'    # patches_in_RoI_pure, patches_in_RoI_jfsw
+
     # cpu_num = 8
-    # set_split = np.array_split(range(len(jfsw_pos_slide)), cpu_num)
+    # set_split = np.array_split(range(len(all_json_datas)), cpu_num)
     # print(f"Number of cores: {cpu_num}, set number of per core: {len(set_split[0])}")
     # multiprocessing.set_start_method('spawn', force=True)
     # workers = Pool(processes=cpu_num)
     # processes = []
     # for proc_id, set_group in enumerate(set_split):
-    #     process_group = [jfsw_pos_slide[i] for i in set_group]
+    #     process_group = [all_json_datas[i] for i in set_group]
     #     p = workers.apply_async(gene_patch_jsonlist, (proc_id, process_group, npz_mask_save_dir, patch_npz_save_dir))
     #     processes.append(p)
     # patchItems = []
@@ -282,18 +303,20 @@ if __name__ == "__main__":
     # with open(f'{json_save_dir}/{patches_jsonname}.json', 'w', encoding='utf-8') as f:
     #     json.dump(patchItems, f, ensure_ascii=False)
 
-    for tag in ['neg', 'partial_pos', 'total_pos']:
-        os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
-    multiprocessing.set_start_method('spawn', force=True)
-    cut_patch_imgs(img_save_dir)
+    # for tag in ['neg', 'partial_pos', 'total_pos']:
+    #     os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
+    # # multiprocessing.set_start_method('spawn', force=True)
+    # cut_patch_imgs(img_save_dir)
 
-    # with open(f'{json_save_dir}/{patches_jsonname}.json', 'r', encoding='utf-8') as f:
-    #     json_data = json.load(f)
-    # pids = []
-    # reload_patchlist = defaultdict(list)
-    # for patchinfo in tqdm(patchItems, ncols=80):
-    #     keyname = f"{patchinfo['patientId']}_{patchinfo['media_type']}"
-    #     reload_patchlist[keyname].append(patchinfo)
-    #     pids.append(patchinfo['patientId'])
-    # drop_item = [i for i in jfsw_pos_slide if i['patientId'] not in pids and len(i['annotations'])>0]
-    # print()
+    statistic_imgs()
+
+'''
+WINDOW_SIZE = 1000, STRIDE = 950:
+['neg', 'total_pos', 'partial_pos']: [33461, 9526, 2449], [0, 0, 8950] ([33461, 9526, 11401])
+
+WINDOW_SIZE = 700, STRIDE = 650:
+['neg', 'total_pos', 'partial_pos']: [73629, 11943, 8032], [0, 0, 21249] ([73629, 11943, 29281])
+
+WINDOW_SIZE = 512, STRIDE = 450:
+['neg', 'total_pos', 'partial_pos']: [144648, 14437, 9809], [0, 0, 25676] ([144648, 14437, 35485])
+'''

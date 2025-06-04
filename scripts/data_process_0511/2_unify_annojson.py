@@ -157,6 +157,7 @@ def gene_zheyiroi_filter():
     roi_items = []
     group_path = {
         'Group1': '/nfs5/zly/codes/CerWSI/data_resource/zheyi_annofiles/group1/img/',
+        'Group2': '/nfs5/zly/codes/CerWSI/data_resource/zheyi_annofiles/group2/img/',
         'Group3': '/nfs5/zly/codes/CerWSI/data_resource/zheyi_annofiles/group3/img/',
         'Group4': '/nfs5/zly/codes/CerWSI/data_resource/zheyi_annofiles/group4/img/',
     }
@@ -248,6 +249,8 @@ def gene_jfsw_slide_filter():
                 'source_path': rowInfo.kfb_path,
                 'annotations': parent_rois
             })
+        else:
+            print(f'Empty in jfsw_pos: {rowInfo.patientId}')
     with open('data_resource/0511/jfsw_pos_slide.json', 'w', encoding='utf-8') as f:
         json.dump(slide_filter_items, f, ensure_ascii=False)
 
@@ -302,12 +305,13 @@ def gene_wxl1_slide_filter():
 
 def reset_trainval_pids(all_json_datas):
     '''
-    Val: 阳性 pid 去重后200，阴性 pid 300
+    Val: 阳性 pid 去重后300，阴性 pid 300
     Val 阳性 pid: 含阳性病变的 RoI 所在 pid，10张浙一病理slide
     '''
-    df_pure_train = pd.read_csv('data_resource/0511/4_pure_train.csv')
-    df_val = pd.read_csv('data_resource/0511/6_val.csv')
-    df_concat = pd.concat([df_pure_train, df_val])
+    df_pure_trainval = pd.read_csv('data_resource/0511/4_pure_trainval.csv')
+    df_neg = df_pure_trainval[df_pure_trainval['kfb_clsid'] == 0]
+    neg_pids = list(df_neg['patientId'])
+    random.shuffle(neg_pids)
     
     include_lesion_roi_pids = []
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
@@ -323,13 +327,12 @@ def reset_trainval_pids(all_json_datas):
         'ZY_ONLINE_1_101', 'ZY_ONLINE_1_65',    # ASC-H
     ]
     filter_unique_pids = [i for i in unique_pids if i not in zheyi_slide]
-    val_pids = [*filter_unique_pids[:190], *zheyi_slide]
-    df_val_cls0 = df_val[df_val['kfb_clsid'] == 0]
-    df_val_pid_from_pure = df_pure_train[df_pure_train['patientId'].isin(val_pids)]
-    df_val_pid_from_val = df_val[df_val['patientId'].isin(val_pids)]
-    df_new_val = pd.concat([df_val_cls0, df_val_pid_from_pure, df_val_pid_from_val], ignore_index=True)
-
-    df_new_pure_train = df_concat[~df_concat['patientId'].isin(df_new_val['patientId'])]
+    val_pos_pids = [*filter_unique_pids[:290], *zheyi_slide]
+    val_neg_pids = neg_pids[:300]
+    val_pids = [*val_pos_pids, *val_neg_pids]
+    
+    df_new_val = df_pure_trainval[df_pure_trainval['patientId'].isin(val_pids)]
+    df_new_pure_train = df_pure_trainval[~df_pure_trainval['patientId'].isin(df_new_val['patientId'])]
 
     df_new_val.to_csv('data_resource/0511/6_val.csv', index=False)
     df_new_pure_train.to_csv('data_resource/0511/4_pure_train.csv', index=False)
@@ -386,14 +389,14 @@ if __name__ == "__main__":
     # gene_jfsw_slide_filter()
 
     with open('data_resource/0511/zheyi_roi.json', 'r', encoding='utf-8') as f:
-        zheyi_roi_data = json.load(f)   # 951
+        zheyi_roi_data = json.load(f)   # 1287
     with open('data_resource/0511/zheyi_slide.json', 'r', encoding='utf-8') as f:
         zheyi_slide = json.load(f)  # 60
     with open('data_resource/0511/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
         wxl_pos_slide = json.load(f)    # 37
     with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
-        jfsw_pos_slide = json.load(f)    # 876
+        jfsw_pos_slide = json.load(f)    # 308
 
     all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
-    reset_trainval_pids(all_json_datas)
-    # statistic_pids(all_json_datas, jfsw_pos_slide)
+    # reset_trainval_pids(all_json_datas)
+    statistic_pids(all_json_datas, jfsw_pos_slide)

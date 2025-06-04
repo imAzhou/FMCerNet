@@ -57,7 +57,7 @@ class InstanceDataset(Dataset):
         output = self.transform(self.imginfo_list[idx])
 
         output['data_samples'].diagnose = self.imginfo_list[idx]['diagnose']
-        output['data_samples'].prefix = self.imginfo_list[idx]['prefix']
+        output['data_samples'].extra_info = self.imginfo_list[idx]['extra_info']
         output['data_samples'].gt_instances.masks = torch.as_tensor(
             mask2ndarray(output['data_samples'].gt_instances.masks))
         return output
