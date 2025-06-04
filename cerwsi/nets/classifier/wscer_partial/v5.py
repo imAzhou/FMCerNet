@@ -1,3 +1,4 @@
+import random
 import torch
 import torch.nn as nn
 import math
@@ -28,6 +29,8 @@ class WSCerPartial(MetaClassifier):
 
     def filter4inst(self, dict_inputs: dict, databatch):
         posIndx = [idx for idx,item in enumerate(databatch['data_samples']) if item.diagnose==1]
+        if len(posIndx) == 0:   # 无阳性 tile，随机抽样 2 个样本
+            posIndx = random.sample(range(len(databatch['data_samples'])), 2)
         filter_ddict_inputs = {
             'vision_features': dict_inputs['vision_features'][posIndx],
             'vision_pos_enc': [feat[posIndx] for feat in dict_inputs['vision_pos_enc']],

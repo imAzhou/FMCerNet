@@ -130,7 +130,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=
     configs/dataset/l_cerscanv1_dataset.py \
     configs/model/wscer_partial.py \
     configs/strategy.py \
-    --record_save_dir log/debug
+    --record_save_dir log/l_cerscanv1_750/wscer_partial
 
 CUDA_VISIBLE_DEVICES=6,7 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchClsNet.py \
     configs/dataset/cdetector_dataset.py \
