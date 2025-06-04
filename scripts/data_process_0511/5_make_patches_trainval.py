@@ -13,11 +13,11 @@ import random
 import glob
 from prettytable import PrettyTable
 
-WINDOW_SIZE = 750
+WINDOW_SIZE = 512
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
 # data_root = '/c22073/zly/datasets/CervicalDatasets/LCerScanv1_750'
-data_root = 'data_resource/0511/WINDOW_SIZE_750'
+data_root = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}'
 
 
 def coco_format(patchlist):
@@ -36,7 +36,10 @@ def coco_format(patchlist):
         format_result['images'].append(
             {'id': idx, 'width': WINDOW_SIZE, 'height': WINDOW_SIZE,
              'file_name': f"{pInfo['prefix']}/{pInfo['filename']}", 
-             'prefix': pInfo['prefix'], 
+             'extra_info': {
+                    'prefix': pInfo['prefix'],
+                    'square_coords': pInfo['square_coords']
+                },
              'diagnose': pInfo['diagnose']})
         
         if pInfo['diagnose'] == 1:
@@ -68,21 +71,21 @@ def ensure_exist(RoI_patchlist):
     return new_RoI_patchlist
 
 def main(use_jfsw):
-    with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/ppatches_in_NegSlide.json', 'r', encoding='utf-8') as f:
-        negslide_patchlist = json.load(f)
+    # with open(f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/ann_jsons/ppatches_in_NegSlide.json', 'r', encoding='utf-8') as f:
+    #     negslide_patchlist = json.load(f)
     with open(f'{data_root}/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
         RoI_patchlist = json.load(f)
     RoI_patchlist = ensure_exist(RoI_patchlist)
     RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=300) # 控制每张病人切片的阴性 patch 数量
 
     patient2patchlist = defaultdict(list)
-    for patchInfo in [*negslide_patchlist, *RoI_patchlist]:
-    # for patchInfo in RoI_patchlist:
+    # for patchInfo in [*negslide_patchlist, *RoI_patchlist]:
+    for patchInfo in RoI_patchlist:
         patient2patchlist[patchInfo['patientId']].append(patchInfo)
     
     data_group = {
         'puretrain': 'data_resource/0511/4_pure_train.csv',
-        # 'val': 'data_resource/0511/6_val.csv'
+        'val': 'data_resource/0511/6_val.csv'
     }
     for tag,csvpath in data_group.items():
         df_data = pd.read_csv(csvpath)
@@ -91,23 +94,23 @@ def main(use_jfsw):
             patchlist.extend(patient2patchlist[row.patientId])
         patchInCOCO = coco_format(patchlist)
         
-        with open(f'{data_root}/annofiles/{tag}_cocoformat_new.json', 'w', encoding='utf-8') as f:
+        with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
             json.dump(patchInCOCO, f, ensure_ascii=False)
     
         if tag == 'puretrain' and use_jfsw:
-            with open('data_resource/0511/WINDOW_SIZE_750/ann_jsons/jfswtrain_patches_in_NegSlide.json', 'r', encoding='utf-8') as f:
-                jfswtrain_negslide_patchlist = json.load(f)
+            # with open(f'{data_root}/ann_jsons/jfswtrain_patches_in_NegSlide.json', 'r', encoding='utf-8') as f:
+            #     jfswtrain_negslide_patchlist = json.load(f)
             with open(f'{data_root}/ann_jsons/patches_in_RoI_jfsw_valid.json', 'r', encoding='utf-8') as f:
                 jfsw_pos_patchdata = json.load(f)
             df_jfswtrain = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
-            jfsw_patchdata = [*jfswtrain_negslide_patchlist, *jfsw_pos_patchdata]
+            # jfsw_patchdata = [*jfswtrain_negslide_patchlist, *jfsw_pos_patchdata]
+            jfsw_patchdata = jfsw_pos_patchdata
             jfsw_patchdata = [i for i in jfsw_patchdata if i['patientId'] in list(df_jfswtrain['patientId'])]
 
             fusionPatchInCOCO = coco_format([*patchlist, *jfsw_patchdata])
-            with open(f'{data_root}/annofiles/fusiontrain_cocoformat_new.json', 'w', encoding='utf-8') as f:
+            with open(f'{data_root}/annofiles/fusiontrain_cocoformat.json', 'w', encoding='utf-8') as f:
                 json.dump(fusionPatchInCOCO, f, ensure_ascii=False)
         
-
 def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
 
     neg_count = Counter()
@@ -205,7 +208,7 @@ if __name__ == "__main__":
     ann_dir = f'{data_root}/annofiles'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
-    # main(use_jfsw=True)
+    main(use_jfsw=True)
     statistic()
     # clear_imgs()
 

@@ -179,9 +179,9 @@ if __name__ == "__main__":
     json_save_dir = f'data_resource/HMCHH/WINDOW_SIZE_{WINDOW_SIZE}/ann_jsons'
     os.makedirs(json_save_dir, exist_ok=True, mode=0o777)
 
-    # gene_patch_jsonlist()
+    gene_patch_jsonlist()
 
     img_save_dir = f'data_resource/HMCHH/WINDOW_SIZE_{WINDOW_SIZE}/images'
-    for tag in ['neg', 'partial_pos', 'total_pos']:
-        os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
-    cut_patch_imgs()
+    # for tag in ['neg', 'partial_pos', 'total_pos']:
+    #     os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
+    # cut_patch_imgs()

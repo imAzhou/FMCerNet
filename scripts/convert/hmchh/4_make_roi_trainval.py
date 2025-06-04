@@ -12,8 +12,8 @@ from PIL import Image
 
 POSITIVE_CLASS = ['abnormal']
 CLASS_COLORS = [[139,0,139]]
-data_root = '/c22073/zly/datasets/CervicalDatasets/HMCHH'
-# data_root = 'data_resource/HMCHH/WINDOW_SIZE_512'
+# data_root = '/c22073/zly/datasets/CervicalDatasets/HMCHH'
+data_root = 'data_resource/HMCHH'
 
 
 def coco_format(patchlist):
@@ -88,12 +88,13 @@ def main(csvfiles_dir):
                 patchlist.append({
                     'width':w, 'height': h,
                     'file_name': imgname,
+                    'diagnose': 1,
                     'annotations': rect_items
                 })
                 
             patchInCOCO = coco_format(patchlist)
             
-            with open(f'{data_root}/roi_annofiles/fold{i+1}_{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
+            with open(f'{data_root}/annofiles_roi/fold{i+1}_{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
                 json.dump(patchInCOCO, f, ensure_ascii=False)
     
     df_test = pd.read_csv(f'{csvfiles_dir}/test.csv')
@@ -106,12 +107,13 @@ def main(csvfiles_dir):
         rect_items = parse_annos(row.annotation)
         patchlist.append({
             'width':w, 'height': h,
+            'diagnose': 1,
             'file_name': imgname,
             'annotations': rect_items
         })
     patchInCOCO = coco_format(patchlist)
     
-    with open(f'{data_root}/annofiles/test_cocoformat.json', 'w', encoding='utf-8') as f:
+    with open(f'{ann_dir}/test_cocoformat.json', 'w', encoding='utf-8') as f:
         json.dump(patchInCOCO, f, ensure_ascii=False)
         
 
@@ -123,7 +125,7 @@ def statistic():
     txt_lines = []
     for tag in foldtags:
         txt_lines.append(f'{"-"*20}{tag}{"-"*20}\n')
-        with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
+        with open(f'{ann_dir}/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
             patch_COCOinfo = json.load(f)
         annoInimg = defaultdict(list)
         bbox_cls_cnt = [0]*len(POSITIVE_CLASS)
@@ -192,7 +194,7 @@ if __name__ == "__main__":
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
     csvfiles_dir = f'{data_root}/csvfiles'
-    main(csvfiles_dir)
-    # statistic()
+    # main(csvfiles_dir)
+    statistic()
     # clear_imgs()
 

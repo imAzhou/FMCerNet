@@ -1,15 +1,10 @@
 import os
-from PIL import Image
 import json
 import pandas as pd
-from collections import defaultdict,Counter
-import pickle
+from collections import defaultdict
 import numpy as np
 from pycocotools import mask as mask_utils
 from tqdm import tqdm
-import cv2
-import shutil
-import random
 import glob
 from prettytable import PrettyTable
 
@@ -36,7 +31,10 @@ def coco_format(patchlist):
         format_result['images'].append(
             {'id': idx, 'width': WINDOW_SIZE, 'height': WINDOW_SIZE,
              'file_name': f"{pInfo['prefix']}/{pInfo['filename']}", 
-             'prefix': pInfo['prefix'], 
+             'extra_info': {
+                 'prefix': pInfo['prefix'],
+                 'square_coords': pInfo['square_coords']
+                },
              'diagnose': pInfo['diagnose']})
         
         if pInfo['diagnose'] == 1:
@@ -81,7 +79,7 @@ def main(csvfiles_dir):
                 patchlist.extend(patient2patchlist[pid])
             patchInCOCO = coco_format(patchlist)
             
-            with open(f'{data_root}/annofiles/fold{i+1}_{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
+            with open(f'{ann_dir}/fold{i+1}_{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
                 json.dump(patchInCOCO, f, ensure_ascii=False)
     
     df_test = pd.read_csv(f'{csvfiles_dir}/test.csv')
@@ -91,11 +89,9 @@ def main(csvfiles_dir):
         patchlist.extend(patient2patchlist[pid])
     patchInCOCO = coco_format(patchlist)
     
-    with open(f'{data_root}/annofiles/test_cocoformat.json', 'w', encoding='utf-8') as f:
+    with open(f'{ann_dir}/test_cocoformat.json', 'w', encoding='utf-8') as f:
         json.dump(patchInCOCO, f, ensure_ascii=False)
         
-
-
 def statistic():
     CV_nums = 5
     foldtags = [f'fold{i+1}_{tag}' for tag in ['train', 'val'] for i in range(CV_nums)]
@@ -168,11 +164,11 @@ def clear_imgs():
 
 
 if __name__ == "__main__":
-    ann_dir = f'{data_root}/annofiles'
+    ann_dir = f'{data_root}/annofiles_tile'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
     csvfiles_dir = 'data_resource/HMCHH/csvfiles'
-    # main(csvfiles_dir)
-    statistic()
+    main(csvfiles_dir)
+    # statistic()
     # clear_imgs()
 
