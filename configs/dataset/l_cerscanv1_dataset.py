@@ -1,7 +1,7 @@
 # dataset settings 
 
-# data_root = 'data_resource/0511/WINDOW_SIZE_750'
-data_root = '/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_512'
+data_root = 'data_resource/0511/WINDOW_SIZE_1000'
+# data_root = '/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_512'
 img_dir = f'{data_root}/images'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
@@ -92,7 +92,9 @@ test_transform = [
 
 val_evaluator = dict(
     ann_file=val_annojson,
-    metric='bbox',
+    # metric='bbox',
+    metric='proposal',
     classwise=False,
-    metric_items = ['mAP', 'mAP_50', 'mAP_75', 'mAP_s', 'mAP_m', 'mAP_l', 'AR@1000'],
+    iou_thrs=[0.5],
+    # metric_items = ['mAP', 'mAP_50', 'mAP_75', 'mAP_s', 'mAP_m', 'mAP_l', 'AR@1000'],
     format_only=False,)

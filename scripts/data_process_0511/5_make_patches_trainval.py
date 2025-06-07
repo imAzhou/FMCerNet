@@ -75,8 +75,8 @@ def main(use_jfsw):
     #     negslide_patchlist = json.load(f)
     with open(f'{data_root}/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
         RoI_patchlist = json.load(f)
-    RoI_patchlist = ensure_exist(RoI_patchlist)
-    RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=300) # 控制每张病人切片的阴性 patch 数量
+    # RoI_patchlist = ensure_exist(RoI_patchlist)
+    RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=50) # 控制每张病人切片的阴性 patch 数量
 
     patient2patchlist = defaultdict(list)
     # for patchInfo in [*negslide_patchlist, *RoI_patchlist]:

@@ -200,7 +200,7 @@ class ImgODMetric(BaseMetric):
                 # {'bbox': [x1, y1, x2, y2], 'score': float, 'cls': int}
                 pred_bbox = data_samples['pred_bbox'][bidx],
                 gt_bbox = gt_bbox,
-                prefix = datasample.prefix # pfefix: 'neg', 'partial_pos', 'total_pos'
+                prefix = datasample.extra_info['prefix'] # pfefix: 'neg', 'partial_pos', 'total_pos'
             )
 
             # Save the result to `self.results`.
@@ -221,9 +221,9 @@ class ImgODMetric(BaseMetric):
         # are the collected results.
         result_metrics = dict()
 
-        if self.save_result_dir is not None:
-            with open(f'{self.save_result_dir}/pred_result.json', 'w', encoding='utf-8') as f:
-                json.dump(results, f, ensure_ascii=False, indent=4)
+        # if self.save_result_dir is not None:
+        #     with open(f'{self.save_result_dir}/pred_result.json', 'w', encoding='utf-8') as f:
+        #         json.dump(results, f, ensure_ascii=False, indent=4)
         
         '''计算图片阴阳二分类的结果'''
         img_gt = [rs['img_gt'] for rs in results]

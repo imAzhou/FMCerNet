@@ -36,6 +36,8 @@ class ImgODCOCOMetric(BaseMetric):
         super(ImgODCOCOMetric, self).__init__()
         self.logger_name = logger_name
         self.save_result_dir = save_result_dir
+        if 'iou_thrs' in val_evaluator:
+            val_evaluator['iou_thrs'] = np.array(val_evaluator['iou_thrs'])
         self.coco_metric = CocoMetric(**val_evaluator)
         self.coco_metric.dataset_meta = dict(classes=classes)
 
