@@ -43,9 +43,8 @@ class UNI(MetaBackbone):
         print('Load backbone NUI: ' + str(load_result))
 
     def forward(self, x: torch.Tensor):
-        output = self.backbone.forward_features(x)
-        output = output[:,1:,:]  # (bs, num_tokens, C)
-        return output.transpose(1,2)
+        output = self.backbone.forward_features(x) # (bs, 1+num_tokens, C)
+        return output
     
     def _pos_embed(self, x: torch.Tensor) -> torch.Tensor:
         B, H, W, C = x.shape
@@ -71,22 +70,4 @@ class UNI(MetaBackbone):
         x = self.backbone.blocks(x)
         x = self.backbone.norm(x)
         return x
-    
-    def calc_logits(self, x: torch.Tensor):
-        '''
-        Return:
-            img_logits: (bs, 1)
-            token_logits: (bs, num_tokens, 1)
-        '''
-        # feature_emb.shape: (bs,cls_token+img_token, C)
-        feature_emb = self.forward_features(x)
-        cls_token = feature_emb[:,0,:]  # (bs, C)
-
-        pred_img_logits = []
-        for i in range(self.num_classes-1):
-            pred_img_logits.append(self.cls_linear_heads[i](cls_token))  # [(bs, 1),]
-        
-        pred_img_logits = torch.cat(pred_img_logits, dim=-1)  # (bs, num_cls)
-        return pred_img_logits
-
     

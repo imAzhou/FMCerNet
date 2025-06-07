@@ -1,39 +1,41 @@
 from PIL import Image
 from torch.utils.data import Dataset
+from mmcv.transforms import Compose
 import json
 import torch
+from tqdm import tqdm
+from cerwsi.utils import is_main_process
 
 # 自定义数据集类
 class ClsDataset(Dataset):
-    def __init__(self, root_dir, annojson_path, transform, classes):
+    def __init__(self, data_cfg, annojson_path, transform):
         """
         Args:
             img_dir (str): img dir
         """
-        self.img_dir = f'{root_dir}/images'
-        self.root_dir = root_dir
-        self.annofiles_dir = f'{root_dir}/annofiles'
-        with open(f'{self.annofiles_dir}/{annojson_path}', 'r') as f:
-            self.patch_infolist = json.load(f)
-            # self.patch_infolist = self.patch_infolist[:10000]
+        self.img_dir = data_cfg.img_dir
+        self.transform = Compose(transform)
+        self.annojson_path = annojson_path
+        with open(self.annojson_path, 'r') as f:
+            self.patch_COCOinfo = json.load(f)
         
-        self.transform = transform
-        self.num_classes = len(classes)
-        self.classes = classes
+        self.format_COCO2mmpretrain()
+    
+    def format_COCO2mmpretrain(self):
+        self.imginfo_list = []
+        pbar = self.patch_COCOinfo['images']
+        if is_main_process():
+            pbar = tqdm(self.patch_COCOinfo['images'], ncols=80)
+        
+        for imginfo in pbar:
+            imginfo['img_path'] = f'{self.img_dir}/{imginfo["file_name"]}'
+            self.imginfo_list.append(imginfo)
 
     def __len__(self):
-        return len(self.patch_infolist)
+        return len(self.patch_COCOinfo['images'])
 
     def __getitem__(self, idx):
-        imginfo = self.patch_infolist[idx]
-        multi_pos_label = torch.zeros((self.num_classes-1,), dtype=torch.float32)
-        pos_label_list = list(set([tk[-1]-1 for tk in imginfo['gtmap_14']]))
-        multi_pos_label[pos_label_list] = 1
-
-        imgpath = f'{self.img_dir}/{imginfo["prefix"]}/{imginfo["filename"]}'
-        imginfo['imgpath'] = imgpath
-        image = Image.open(imgpath)
-        imginfo['origin_size'] = image.size
-        input_tensor = self.transform(image)
-        image_label = imginfo['diagnose']
-        return input_tensor,image_label,multi_pos_label
+        output = self.transform(self.imginfo_list[idx])
+        output['data_samples'].diagnose = self.imginfo_list[idx]['diagnose']
+        output['data_samples'].extra_info = self.imginfo_list[idx]['extra_info']
+        return output

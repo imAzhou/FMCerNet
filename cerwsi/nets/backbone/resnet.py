@@ -1,18 +1,27 @@
 import torch
-from timm import create_model
+from mmpretrain import get_model
 from .meta_backbone import MetaBackbone
 
 class ResNet(MetaBackbone):
     def __init__(self, args):
         super(ResNet, self).__init__(args)
-        self.module = create_model("resnet50", pretrained=False, num_classes=0)
+        self.backbone = get_model(
+            'resnet50_8xb32_in1k', 
+            pretrained=False, 
+            backbone=dict(out_indices=(0, 1, 2, 3))
+        ).backbone
 
     def load_backbone(self, ckpt):
         params_weight = torch.load(ckpt, map_location=self.device)
-        print(self.module.load_state_dict(params_weight, strict=False))
+        new_state_dict = {}
+        state_dict = params_weight['state_dict']
+        for key,value in state_dict.items():
+            new_name = key.replace('backbone.', '')
+            new_state_dict[new_name] = value
+        load_result = self.backbone.load_state_dict(new_state_dict, strict=False)
+        print('Load backbone ResNet50: ' + str(load_result))
 
     def forward(self, x: torch.Tensor):
-        # feature_emb.shape: (bs, c, h, w)
-        feature_emb = self.module.forward_features(x)
-        feature_emb = feature_emb.flatten(2).permute(0,2,1)
+        # feature_emb: tuple
+        feature_emb = self.backbone(x)
         return feature_emb

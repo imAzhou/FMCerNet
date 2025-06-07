@@ -10,6 +10,6 @@ backbone_cfg = _base_.backbone_cfgdict[backbone_type]
 neck_type = None
 
 # classifier
-classifier_type = 'chief'
+classifier_type = 'binary_linear'
 positive_thr = 0.5
-eval_prime_score = 'img_accuracy'
+eval_prime_score = 'img_sensitivity'

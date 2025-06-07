@@ -6,9 +6,9 @@ img_dir = f'{data_root}/images'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'instance'    # cls, instance
-train_bs = 16
-val_bs = 16
-input_size = 512  # 224, 392, 448, 512, 1024
+train_bs = 128
+val_bs = 128
+input_size = 224  # 224, 392, 448, 512, 1024
 
 train_annojson = f'{data_root}/annofiles/fusiontrain_cocoformat.json'
 albu_train_transforms = [

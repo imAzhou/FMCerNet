@@ -98,12 +98,20 @@ class BinaryMetric(BaseMetric):
         fpr, tpr, thresholds = roc_curve(img_gt, img_probs)
         result_metrics['AUC'] = round((auc(fpr, tpr)).item(), 4)
         img_result = calculate_metrics(img_gt,img_pred)
+        cm = img_result['cm']
+        del img_result['cm']
         for k,v in img_result.items():
-            if k != 'cm':
-                result_metrics['img_'+k] = v
+            result_metrics['img_'+k] = v
+        
+        result_table_1 = PrettyTable()
+        result_table_1.field_names = result_metrics.keys()
+        result_table_1.add_row(result_metrics.values())
+
+        cmstr = print_confusion_matrix(cm, print_flag=False)
+        str_metric = '\n' + str(result_table_1) + '\n'+ '\n' + cmstr
         
         logger = MMLogger.get_instance(self.logger_name)
-        logger.info(result_metrics)
+        logger.info(str_metric)
 
         return result_metrics
 

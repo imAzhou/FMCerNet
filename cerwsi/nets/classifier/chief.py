@@ -37,42 +37,52 @@ class CHIEF(MetaClassifier):
         num_classes = 1 # 只能做阴阳二分类
         evaluator = build_evaluator([BinaryMetric(args.logger_name, thr = args.positive_thr)])
         super(CHIEF, self).__init__(evaluator, **args)
+        
+        self.backbone_type = args.backbone_type
+        input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
+        if input_embed_dim == 384:
+            size = [384, 256, 256]
+        elif input_embed_dim == 768:
+            size = [768, 512, 256]
+        elif input_embed_dim == 1024:
+            size = [1024, 512, 384]
+        elif input_embed_dim == 2048:
+            size = [2048, 1024, 512]
+        else:
+            size = [input_embed_dim, 512, 256]
 
-        self.size_dict = {
-            'xs': [384, 256, 256], 
-            "small": [768, 512, 256], 
-            "big": [1024, 512, 384], 
-            'large': [2048, 1024, 512]
-        }
-        args = SimpleNamespace(**args)
-        size = self.size_dict[args.size_type]
-
-        fc = [nn.Linear(size[0], size[1]), nn.ReLU()]
-        if args.dropout:
-            fc.append(nn.Dropout(0.25))
-        attention_net = Attn_Net_Gated(L=size[1], D=size[2], dropout=args.dropout, n_classes=num_classes)
+        fc = [nn.Linear(size[0], size[1]), 
+            nn.ReLU(),
+            nn.Dropout(0.25)]
+        attention_net = Attn_Net_Gated(L=size[1], D=size[2], dropout=True, n_classes=num_classes)
         fc.append(attention_net)
         self.attention_net = nn.Sequential(*fc)
         self.classifiers = nn.Linear(size[1], 1)
 
 
-    def calc_logits(self, img_tokens: torch.Tensor):
-        '''
-        Args:
-            img_tokens: (bs,img_token,C)
-        Return:
-            img_logits: (bs, 1)
-        '''
+    def calc_logits(self, inputs):
+        if self.backbone_type == 'resnet':
+            feat = inputs[-1]   # (bs,c,h,w)
+            feat = feat.flatten(2).transpose(1, 2)
+        elif self.backbone_type == 'sam2':
+            feat = inputs['vision_features']   # (bs,c,h,w)
+            feat = feat.flatten(2).transpose(1, 2)
+        elif self.backbone_type in ['dinov2', 'uni']:
+            feat = inputs[:,1:,:]
+        elif self.backbone_type == 'smartccs':
+            feat = inputs['x_norm_patchtokens']
+        
+        # feat: (bs,img_token,C)
         # A: (bs, num_tokens, pos_cls_num), h: (bs, num_tokens, c=512)
-        A, h = self.attention_net(img_tokens)
+        A, h = self.attention_net(feat)
         A = A.transpose(1, 2)    # A: (bs, 1, num_tokens)
         A = F.softmax(A, dim=-1)
         cls_feature = torch.bmm(A, h)    # cls_feature: (bs, 1, c=512)
         out = self.classifiers(cls_feature)    # (bs, 1, 1)
         return out.squeeze(-1)
     
-    def calc_loss(self,feature_emb, databatch):
-        img_pn_logit = self.calc_logits(feature_emb)
+    def calc_loss(self,inputs, databatch):
+        img_pn_logit = self.calc_logits(inputs)
         img_gt = databatch['image_labels'].to(self.device).unsqueeze(-1).float()
         pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
         loss_dict = {
@@ -80,7 +90,7 @@ class CHIEF(MetaClassifier):
         }
         return pn_loss,loss_dict
 
-    def set_pred(self,feature_emb, databatch):
-        img_pn_logit = self.calc_logits(feature_emb) # (bs, num_classes-1)
+    def set_pred(self,inputs, databatch):
+        img_pn_logit = self.calc_logits(inputs) # (bs, num_classes-1)
         databatch['img_probs'] = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
         return databatch

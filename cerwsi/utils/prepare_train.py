@@ -19,6 +19,7 @@ def get_logger(record_save_dir, model, print_cfg: Config):
     os.makedirs(pth_save_dir, exist_ok=True)
     # save config file
     config_file = os.path.join(files_save_dir, 'config.py')
+    print_cfg.pop('backbone_cfgdict', None)
     print_cfg.dump(config_file)
     # save log file
     logger = MMLogger.get_instance(print_cfg.logger_name, log_file=f'{files_save_dir}/result.log')

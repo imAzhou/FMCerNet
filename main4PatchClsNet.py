@@ -126,11 +126,12 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchClsNet.py \
-    configs/dataset/l_cerscanv1_dataset.py \
-    configs/model/wscer_partial.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 main4PatchClsNet.py \
+    configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
+    configs/model/binary_linear.py \
     configs/strategy.py \
-    --record_save_dir log/WINDOW_SIZE_512
+    --record_save_dir log/WINDOW_SIZE_512/binary_linear
+    --record_save_dir log/WINDOW_SIZE_512/binary_linear
 
 CUDA_VISIBLE_DEVICES=6,7 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchClsNet.py \
     configs/dataset/cdetector_dataset.py \

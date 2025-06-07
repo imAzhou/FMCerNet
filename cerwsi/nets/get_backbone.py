@@ -7,8 +7,9 @@ from .backbone.ctranspath import CTransPath
 from .backbone.SVT_backbone import SVTBackbone
 from .backbone.SAM_backbone import SAMEncoder
 from .backbone.SAM2_backbone import SAM2Encoder
+from .backbone.SmartCCS_backbone import SmartCCS
 
-allowed_backbone_type = ['resnet', 'convnext', 'vit', 
+allowed_backbone_type = ['resnet', 'convnext', 'vit', 'smartccs',
                          'dinov2', 'uni', 'ctranspath', 'svt', 'sam', 'sam2']
 
 def get_backbone(args):
@@ -34,5 +35,7 @@ def get_backbone(args):
         backbone = SAMEncoder
     if backbone_type == 'sam2':
         backbone = SAM2Encoder
+    if backbone_type == 'smartccs':
+        backbone = SmartCCS
     
     return backbone(args)
