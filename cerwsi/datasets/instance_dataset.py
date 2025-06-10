@@ -52,8 +52,8 @@ class InstanceDataset(Dataset):
             imginfo['img_id'] = imginfo['id']
             imginfo['img_path'] = f'{self.img_dir}/{imginfo["file_name"]}'
             imginfo['instances'] = annoInimg[imginfo['id']]
-            if self.load_proposal:
-                imginfo['sam2proposals'] = self.load_proposal_fn(imginfo["file_name"])
+            # if self.load_proposal:
+            #     imginfo['sam2proposals'] = self.load_proposal_fn(imginfo["file_name"])
             
             self.imginfo_list.append(imginfo)
         print('Done to format annotaion in mmdet style.')
@@ -78,6 +78,9 @@ class InstanceDataset(Dataset):
         return len(self.patch_COCOinfo['images'])
 
     def __getitem__(self, idx):
+        if self.load_proposal:
+            self.imginfo_list[idx]['sam2proposals'] = self.load_proposal_fn(self.imginfo_list[idx]["file_name"])
+        
         output = self.transform(self.imginfo_list[idx])
 
         output['data_samples'].diagnose = self.imginfo_list[idx]['diagnose']

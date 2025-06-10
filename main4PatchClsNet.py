@@ -131,10 +131,9 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 main4PatchClsNet.py \
-    configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
+    configs/dataset/sam2_proposal/l_cerscanv1_dataset.py \
     configs/model/chief.py \
     configs/strategy.py \
-    --record_save_dir log/WINDOW_SIZE_1000/CHIEF
     --model_tag inferseg \
     --record_save_dir log/debug
     --record_save_dir log/WINDOW_SIZE_512/binary_linear

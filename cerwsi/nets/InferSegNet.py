@@ -6,6 +6,7 @@ from mmengine.structures import InstanceData
 from mmdet.models.task_modules import MaxIoUAssigner,RandomSampler
 from mmengine.optim import OptimWrapper
 import numpy as np
+from cerwsi.utils import build_evaluator,ImgODMetric,ImgODCOCOMetric
 from torchvision.ops import nms
 from sam2.build_sam import build_sam2
 from sam2.utils.amg import build_all_layer_point_grids
@@ -33,6 +34,12 @@ class InferSegNet(nn.Module):
         self.bbox_pos_thr = 0.5
         input_embed_dim = cfg.backbone_cfg['backbone_output_dim'][-1]
         self.classifier = nn.Linear(input_embed_dim, 1)
+        save_result_dir = getattr(cfg, 'save_result_dir', None)
+        evaluator = build_evaluator([ImgODCOCOMetric(
+            cfg.logger_name,save_result_dir,
+            cfg.val_evaluator,cfg.classes
+        )])
+        self.classifier.evaluator = evaluator
 
         self.assigner = MaxIoUAssigner(
             pos_iou_thr=0.5,
@@ -161,7 +168,7 @@ class InferSegNet(nn.Module):
         proposal_feats = self.calc_proposal_feat(input_len, proposals)  # (bs, k, C)
         pred_scores = torch.sigmoid(self.classifier(proposal_feats))  # (bs, k, 1)
         
-        pred_bboxes = []
+        pred_bboxes,img_probs = [],[]
         for proposal_bboxes,proposal_scores,datasample in zip(proposals, pred_scores, databatch['data_samples']):
             bboxes,scores = [],[]
             for box, score in zip(proposal_bboxes, proposal_scores):
@@ -172,13 +179,16 @@ class InferSegNet(nn.Module):
                     bboxes.append([x1, y1, x2, y2])
                     scores.append(score.item())
             iou_threshold = 0.5
+            bboxes, scores = torch.Tensor(bboxes),torch.Tensor(scores)
             keep_idx = nms(bboxes, scores, iou_threshold)
             bboxes = bboxes[keep_idx]
             scores = scores[keep_idx]
 
             image_boxes = [{'bbox':bbox, 'score':score, 'cls':1} for bbox, score in zip(bboxes, scores)]
-        pred_bboxes.append(image_boxes)
+            pred_bboxes.append(image_boxes)
+            img_probs.append(1. if len(image_boxes)>0 else 0.)
         
         databatch['pred_bbox'] = pred_bboxes
+        databatch['img_probs'] = torch.Tensor(img_probs)
         return databatch
     
