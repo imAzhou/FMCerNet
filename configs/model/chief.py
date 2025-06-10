@@ -11,5 +11,5 @@ neck_type = None
 
 # classifier
 classifier_type = 'chief'
-positive_thr = 0.5
+positive_thr = 0.3
 eval_prime_score = 'img_accuracy'

@@ -36,6 +36,7 @@ class ClsDataset(Dataset):
 
     def __getitem__(self, idx):
         output = self.transform(self.imginfo_list[idx])
+        output['data_samples'].img_id = self.imginfo_list[idx]['id']
         output['data_samples'].diagnose = self.imginfo_list[idx]['diagnose']
         output['data_samples'].extra_info = self.imginfo_list[idx]['extra_info']
         return output

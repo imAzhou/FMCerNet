@@ -1,3 +1,4 @@
+import json
 from sklearn.metrics import (
     roc_curve, auc,
     accuracy_score, recall_score, f1_score, confusion_matrix,classification_report)
@@ -45,9 +46,10 @@ class BinaryMetric(BaseMetric):
     '''
     只需预测图片阴阳的概率
     '''
-    def __init__(self, logger_name, thr=0.3) -> None:
+    def __init__(self, logger_name, thr=0.3, save_result_dir=None) -> None:
         self.thr = thr
         self.logger_name = logger_name
+        self.save_result_dir = save_result_dir
         super(BinaryMetric, self).__init__()
 
     def process(self, data_batch, data_samples):
@@ -68,9 +70,10 @@ class BinaryMetric(BaseMetric):
 
         for bidx in range(bs):
             result = dict(
-                img_gt = bs_img_gt[bidx],
-                img_pred = bs_img_pred[bidx],
-                img_probs = data_samples['img_probs'][bidx]
+                img_id = data_samples['data_samples'][bidx].img_id,
+                img_gt = bs_img_gt[bidx].item(),
+                img_pred = bs_img_pred[bidx].item(),
+                img_probs = data_samples['img_probs'][bidx].item()
             )
 
             # Save the result to `self.results`.
@@ -112,6 +115,10 @@ class BinaryMetric(BaseMetric):
         
         logger = MMLogger.get_instance(self.logger_name)
         logger.info(str_metric)
+
+        if self.save_result_dir is not None:
+            with open(f'{self.save_result_dir}/pred_result.json', 'w', encoding='utf-8') as f:
+                json.dump(results, f)
 
         return result_metrics
 

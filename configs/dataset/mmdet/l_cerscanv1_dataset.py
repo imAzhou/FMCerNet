@@ -1,11 +1,12 @@
 # dataset settings 
 
-data_root = 'data_resource/0511/WINDOW_SIZE_1000'
-# data_root = '/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_512'
+# data_root = 'data_resource/0511/WINDOW_SIZE_1000'
+data_root = '/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_1000'
 img_dir = f'{data_root}/images'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'instance'    # cls, instance
+load_proposal = False
 train_bs = 128
 val_bs = 128
 input_size = 224  # 224, 392, 448, 512, 1024
@@ -95,6 +96,6 @@ val_evaluator = dict(
     # metric='bbox',
     metric='proposal',
     classwise=False,
-    iou_thrs=[0.5],
+    iou_thrs=[0.3],
     # metric_items = ['mAP', 'mAP_50', 'mAP_75', 'mAP_s', 'mAP_m', 'mAP_l', 'AR@1000'],
     format_only=False,)

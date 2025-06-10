@@ -12,7 +12,6 @@ optim_wrapper = dict(
     # clip_grad=dict(max_norm=1.0, norm_type=2)  # 添加梯度裁剪
 )
 
-
 logger_name = 'wscer_partial'
 apply_auxiliary = 'random'  # random, logit
 load_from = None
