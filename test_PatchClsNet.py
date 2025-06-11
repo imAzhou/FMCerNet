@@ -68,8 +68,8 @@ if __name__ == '__main__':
     # analyze(f'{args.save_dir}/pred_results_0.5.json')
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12341 test_PatchClsNet.py \
-    log/WINDOW_SIZE_512/2025_06_04_11_18_59/config.py \
-    log/WINDOW_SIZE_512/2025_06_04_11_18_59/checkpoints/best.pth \
-    log/WINDOW_SIZE_512/2025_06_04_11_18_59
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 test_PatchClsNet.py \
+    log/WINDOW_SIZE_1000/CHIEF/sam2_512/config.py \
+    log/WINDOW_SIZE_1000/CHIEF/sam2_512/checkpoints/best.pth \
+    log/WINDOW_SIZE_1000/CHIEF/sam2_512
 '''

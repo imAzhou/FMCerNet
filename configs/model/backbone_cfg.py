@@ -50,8 +50,8 @@ backbone_cfgdict = {
     'smartccs': dict(
         backbone_output_dim = [1024],
         backbone_ckpt = 'checkpoints/CCS_vitl_100M.pth',
-        frozen_backbone = False,
-        use_peft = False, 
+        frozen_backbone = True,
+        use_peft = 'lora', 
         default_input_size = 224
     ),
 }

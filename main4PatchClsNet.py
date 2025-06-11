@@ -7,7 +7,7 @@ import argparse
 from mmengine.config import Config
 import torchvision
 torchvision.disable_beta_transforms_warning()
-from cerwsi.nets import PatchClsNet
+from cerwsi.nets import PatchClsNet,InferSegNet
 from cerwsi.datasets import load_data
 from cerwsi.utils import set_seed, init_distributed_mode, get_logger, get_train_strategy,reduce_loss,is_main_process
 
@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('dataset_config_file', type=str)
 parser.add_argument('model_config_file', type=str)
 parser.add_argument('strategy_config_file', type=str)
+parser.add_argument('--model_tag', default='patchcls', type=str)
 parser.add_argument('--record_save_dir', type=str)
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--print_interval', type=int, default=10, help='random seed')
@@ -107,8 +108,11 @@ def main():
     cfg = Config()
     for sub_cfg in [d_cfg, m_cfg, s_cfg]:
         cfg.merge_from_dict(sub_cfg.to_dict())
-    
-    model = PatchClsNet(cfg).to(device)
+    cfg.save_result_dir = None
+    if args.model_tag == 'patchcls':
+        model = PatchClsNet(cfg).to(device)
+    elif args.model_tag == 'inferseg':
+        model = InferSegNet(cfg).to(device)
     model_without_ddp = model
     
     if args.distributed:
@@ -119,19 +123,20 @@ def main():
         model_without_ddp.load_ckpt(cfg.load_from)
     train_net(cfg, model, model_without_ddp)
 
-    if args.distributed:
-        dist.destroy_process_group()
+    # if args.distributed:
+    #     dist.destroy_process_group()
 
 if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12341 main4PatchClsNet.py \
-    configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 main4PatchClsNet.py \
+    configs/dataset/sam2_proposal/l_cerscanv1_dataset.py \
     configs/model/chief.py \
     configs/strategy.py \
-    --record_save_dir log/WINDOW_SIZE_512/chief
-    --record_save_dir log/WINDOW_SIZE_512/chief
+    --model_tag inferseg \
+    --record_save_dir log/debug
+    --record_save_dir log/WINDOW_SIZE_512/binary_linear
 
 CUDA_VISIBLE_DEVICES=6,7 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchClsNet.py \
     configs/dataset/cdetector_dataset.py \

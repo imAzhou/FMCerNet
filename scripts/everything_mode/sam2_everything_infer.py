@@ -123,7 +123,8 @@ def everything_infer(proc_id, device, json_save_dir, set_group):
 def main():
     set_seed(1234)
     device = torch.device('cuda:0')
-    data_root = 'data_resource/0511/WINDOW_SIZE_1000'
+    # data_root = 'data_resource/0511/WINDOW_SIZE_1000'
+    data_root = '/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_1000'
     json_save_dir = f'{data_root}/sam2Infer'
     for tag in ['neg', 'partial_pos', 'total_pos']:
         os.makedirs(f'{json_save_dir}/{tag}', exist_ok=True, mode=0o777)

@@ -16,3 +16,7 @@ print("Level count:", slide.level_count)
 print("Level dimensions:", slide.level_dimensions)
 print("Level downsamples:", slide.level_downsamples)
 
+wsi_path = glob.glob('/nfs-medical/vipa-medical/zheyi/zly/NILM中霉菌滴虫线索细胞/2025-06-03/**.svs')
+data_list = []
+for path in wsi_path:
+    data_list.append([])
