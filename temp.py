@@ -5,9 +5,14 @@ import os
 import pandas as pd
 from collections import defaultdict
 from tqdm import tqdm
+import openslide
+from PIL import Image
 
-df_data = pd.read_csv('data_resource/0511/2_noann_pos.csv')
-df_data = df_data[~df_data['kfb_source'].isin(['JFSW_1', 'JFSW_2'])]
-print(len(df_data))
-counts = df_data['kfb_clsname'].value_counts()
-print(counts)
+wsi_path = glob.glob('/nfs-medical/vipa-medical/zheyi/zly/NILM中霉菌滴虫线索细胞/2025-06-03/**.svs')
+demo_path = wsi_path[0]
+# slide = openslide.OpenSlide(demo_path)
+slide = openslide.open_slide(demo_path)
+print("Level count:", slide.level_count)
+print("Level dimensions:", slide.level_dimensions)
+print("Level downsamples:", slide.level_downsamples)
+
