@@ -32,7 +32,7 @@ def draw_image(coco, img_path, anns, save_dir):
     plt.imsave(save_path, image)
 
 def main():
-    resultdir = 'log/WINDOW_SIZE_512/CHIEF/sam2_512'
+    resultdir = 'log/WINDOW_SIZE_1000/CHIEF/smartccs_518_fusiontrain'
     with open(f'{resultdir}/pred_result.json', 'r', encoding='utf-8') as f:
         pred_datas = json.load(f)
     cfg = Config.fromfile(f'{resultdir}/config.py')
@@ -64,9 +64,9 @@ def main():
                 else:
                     area_distribution['large'] += 1
             
-            # if random.random() < 0.2:
-            #     save_dir = f'{resultdir}/FN'
-            #     draw_image(coco, img_path, anns, save_dir)
+            if random.random() < 0.1:
+                save_dir = f'{resultdir}/FN'
+                draw_image(coco, img_path, anns, save_dir)
 
     
     cat_id_to_name = {cat['id']: cat['name'] for cat in coco.loadCats(list(category_count.keys()))}
@@ -82,15 +82,16 @@ if __name__ == "__main__":
     main()
 
 '''
+FN ann box 分析：
 BBox 类别分布：
-  - HSIL (5): 1587 个
-  - ASC-US (2): 968 个
-  - LSIL (3): 397 个
-  - ASC-H (4): 798 个
-  - AGC (1): 22 个
+  - LSIL (3): 240 个
+  - HSIL (5): 1333 个
+  - ASC-US (2): 622 个
+  - ASC-H (4): 529 个
+  - AGC (1): 16 个
 
 BBox 面积分布：
-  - small: 331 个
-  - medium: 2732 个
-  - large: 709 个
+  - small: 270 个
+  - medium: 2018 个
+  - large: 452 个
 '''

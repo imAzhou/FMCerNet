@@ -130,12 +130,12 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 main4PatchClsNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchClsNet.py \
     configs/dataset/sam2_proposal/l_cerscanv1_dataset.py \
     configs/model/chief.py \
     configs/strategy.py \
     --model_tag inferseg \
-    --record_save_dir log/debug
+    --record_save_dir log/WINDOW_SIZE_1000/sam2proposal
     --record_save_dir log/WINDOW_SIZE_512/binary_linear
 
 CUDA_VISIBLE_DEVICES=6,7 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchClsNet.py \

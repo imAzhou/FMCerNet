@@ -69,7 +69,7 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 test_PatchClsNet.py \
-    log/WINDOW_SIZE_1000/CHIEF/sam2_512/config.py \
-    log/WINDOW_SIZE_1000/CHIEF/sam2_512/checkpoints/best.pth \
-    log/WINDOW_SIZE_1000/CHIEF/sam2_512
+    log/WINDOW_SIZE_1000/CHIEF/smartccs_518_fusiontrain/config.py \
+    log/WINDOW_SIZE_1000/CHIEF/smartccs_518_fusiontrain/checkpoints/best.pth \
+    log/WINDOW_SIZE_1000/CHIEF/smartccs_518_fusiontrain
 '''
