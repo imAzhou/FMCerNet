@@ -13,7 +13,7 @@ from multiprocessing import Pool
 import glob
 import random
 from cerwsi.utils import set_seed
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
 
 def show_anns_on_image(image, anns, borders=True):
