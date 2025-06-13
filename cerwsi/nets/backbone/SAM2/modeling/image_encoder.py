@@ -16,8 +16,7 @@ class ImageEncoder(nn.Module):
         self,
         trunk: nn.Module,
         neck: nn.Module,
-        scalp: int = 0,
-        use_dtcwt_indexes: Tuple[int, ...] = (),  # [0,1]
+        scalp: int = 0
     ):
         super().__init__()
         self.trunk = trunk

@@ -431,7 +431,6 @@ class Instance_branch(nn.Module):
         pred_mask_logits, pred_cls_logits = self(dict_inputs, mask_input)
         bs = databatch['inputs'].shape[0]
         pred_bboxes = []
-
         for i in range(bs):
             # 1. 分类 logits 做 softmax
             cls_probs = F.softmax(pred_cls_logits[i], dim=-1)  # (num_queries, num_classes)

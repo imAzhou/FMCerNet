@@ -67,6 +67,8 @@ class CHIEF(MetaClassifier):
         if self.backbone_type == 'resnet':
             feat = inputs[-1]   # (bs,c,h,w)
             feat = feat.flatten(2).transpose(1, 2)
+        elif self.backbone_type == 'sam':
+            feat = inputs   # (bs,h*w,c)
         elif self.backbone_type == 'sam2':
             feat = inputs['vision_features']   # (bs,c,h,w)
             feat = feat.flatten(2).transpose(1, 2)

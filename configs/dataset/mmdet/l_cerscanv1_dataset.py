@@ -7,26 +7,23 @@ classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'instance'    # cls, instance
 load_proposal = False
-train_bs = 128
-val_bs = 128
-input_size = 224  # 224, 392, 448, 512, 1024
+train_bs = 32
+val_bs = 32
+input_size = 512  # 224, 392, 448, 512, 1024
 
 train_annojson = f'{data_root}/annofiles/fusiontrain_cocoformat.json'
 albu_train_transforms = [
-    dict(
-        type='ShiftScaleRotate',
+    dict(type='ShiftScaleRotate',
         shift_limit=0.0625,
         scale_limit=0.0,
         rotate_limit=15,    # 随机在 [-15°, +15°] 之间旋转；
         interpolation=1,
         p=0.5),
-    dict(
-        type='RandomBrightnessContrast',
-        brightness_limit=[0.1, 0.3],
-        contrast_limit=[0.1, 0.3],
+    dict(type='RandomBrightnessContrast',
+        brightness_limit=[-0.9, 0.9],
+        contrast_limit=[-0.9, 0.9],
         p=0.2),
-    dict(
-        type='OneOf',
+    dict(type='OneOf',
         transforms=[
             dict(
                 type='RGBShift',
@@ -48,7 +45,7 @@ albu_train_transforms = [
             dict(type='Blur', blur_limit=3, p=1.0),
             dict(type='MedianBlur', blur_limit=3, p=1.0)
         ],
-        p=0.1),
+        p=0.5),
 ]
 train_transform = [
     dict(type='LoadImageFromFile'),
@@ -96,6 +93,7 @@ val_evaluator = dict(
     # metric='bbox',
     metric='proposal',
     classwise=False,
-    iou_thrs=[0.3],
-    # metric_items = ['mAP', 'mAP_50', 'mAP_75', 'mAP_s', 'mAP_m', 'mAP_l', 'AR@1000'],
+    iou_thrs=[0.3, 0.5],
+    metric_items = ['mAP', 'mAP_50', 'mAP_s', 'mAP_m', 'mAP_l', 
+                    'AR@1000', 'AR_s@1000', 'AR_m@1000', 'AR_l@1000'],
     format_only=False,)

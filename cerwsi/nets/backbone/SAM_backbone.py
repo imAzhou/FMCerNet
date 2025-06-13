@@ -51,7 +51,7 @@ def get_backbone_config(backbone_type):
 class SAMEncoder(MetaBackbone):
     def __init__(self, args):
         super(SAMEncoder, self).__init__(args)
-        image_size = args.img_size
+        image_size = args.input_size
         backbone_ckpt = args.backbone_cfg['backbone_ckpt']
         use_peft = args.backbone_cfg['use_peft']
         frozen_backbone = args.backbone_cfg['frozen_backbone']
@@ -110,8 +110,12 @@ class SAMEncoder(MetaBackbone):
         pos_embed = F.interpolate(pos_embed, (self.token_size, self.token_size), mode='bilinear', align_corners=False)
         pos_embed = pos_embed.permute(0, 2, 3, 1)  # [b, h, w, c]
         state_dict['pos_embed'] = pos_embed
-        rel_pos_keys = [k for k in state_dict.keys() if 'rel_pos' in k]
-        global_rel_pos_keys = [k for k in rel_pos_keys if '2' in k or '5' in  k or '8' in k or '11' in k]
+
+        global_rel_pos_keys = [
+            f'blocks.{i}.attn.rel_pos_{d}'
+            for i in self.backbone.global_attn_indexes
+            for d in ('h', 'w')
+        ]
         for k in global_rel_pos_keys:
             rel_pos_params = state_dict[k]
             h, w = rel_pos_params.shape
