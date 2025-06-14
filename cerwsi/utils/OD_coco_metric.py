@@ -96,8 +96,8 @@ class ImgODCOCOMetric(BaseMetric):
             # pred_imgprob = data_samples['img_probs'][bidx]
             # if pred_imgprob < 0.3:
             #     pred_bbox = []
-            if datasample.diagnose == 0:
-                pred_bbox = []
+            # if datasample.diagnose == 0:
+            #     pred_bbox = []
             coco_result = self.format_pred2coco(datasample.to_dict(), pred_bbox)            
             result = dict(
                 img_id = datasample.img_id,

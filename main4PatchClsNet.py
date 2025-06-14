@@ -136,7 +136,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=
     configs/dataset/mmdet/l_cerscanv1_dataset.py \
     configs/model/wscer_partial.py \
     configs/strategy.py \
-    --record_save_dir log/debug
+    --record_save_dir log/WINDOW_SIZE_1000/instance
     --model_tag inferseg \
     --record_save_dir log/WINDOW_SIZE_1000/sam2proposal
     
