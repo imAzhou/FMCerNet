@@ -11,7 +11,7 @@ train_bs = 32
 val_bs = 32
 input_size = 512  # 224, 392, 448, 512, 1024
 
-train_annojson = f'{data_root}/annofiles/fusiontrain_cocoformat.json'
+train_annojson = f'{data_root}/annofiles/puretrain_cocoformat.json'
 albu_train_transforms = [
     dict(type='ShiftScaleRotate',
         shift_limit=0.0625,
@@ -94,7 +94,7 @@ val_evaluator = dict(
     # metric='bbox',
     metric='proposal',
     classwise=False,
-    iou_thrs=[0.3, 0.5],
-    metric_items = ['mAP', 'mAP_50', 'mAP_s', 'mAP_m', 'mAP_l', 
+    iou_thrs=[0.3],
+    metric_items = ['mAP', 'mAP_s', 'mAP_m', 'mAP_l', 
                     'AR@1000', 'AR_s@1000', 'AR_m@1000', 'AR_l@1000'],
     format_only=False,)
