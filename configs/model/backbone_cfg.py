@@ -44,7 +44,7 @@ backbone_cfgdict = {
         backbone_ckpt = 'checkpoints/sam2.1_hiera_large.pt',
         frozen_backbone = True,
         use_peft = 'lora', 
-        use_dtcwt_indexes = [],
+        use_dtcwt_indexes = [0,1],
         default_input_size = 1024
     ),
     'smartccs': dict(

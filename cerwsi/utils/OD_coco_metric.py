@@ -96,8 +96,8 @@ class ImgODCOCOMetric(BaseMetric):
             # pred_imgprob = data_samples['img_probs'][bidx]
             # if pred_imgprob < 0.3:
             #     pred_bbox = []
-            if datasample.diagnose == 0:
-                pred_bbox = []
+            # if datasample.diagnose == 0:
+            #     pred_bbox = []
             coco_result = self.format_pred2coco(datasample.to_dict(), pred_bbox)            
             result = dict(
                 img_id = datasample.img_id,
@@ -151,6 +151,8 @@ class ImgODCOCOMetric(BaseMetric):
         result_table_2 = PrettyTable()
         result_table_2.field_names = list(det_metrics.keys())
         result_table_2.add_row(list(det_metrics.values()))
+        if len(det_metrics.keys()) == 0:
+            det_metrics['mAP'] = 0.
         result_metrics.update(det_metrics)
 
         '''计算图片二分类以及目标检测的一致性'''
