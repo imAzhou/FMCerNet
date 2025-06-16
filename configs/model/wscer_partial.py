@@ -11,7 +11,7 @@ neck_type = None
 
 # classifier
 classifier_type = 'wscer_partial'
-binary_branch_input_dim = 576
+binary_branch_input_dim = 256
 num_instance_queries = 50
 instance_ckpt = 'checkpoints/sam2.1_hiera_large.pt'
 eval_prime_score = 'mAP'

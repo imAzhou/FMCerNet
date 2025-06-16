@@ -53,8 +53,8 @@ class WSCerPartial(MetaClassifier):
             vision_pos_enc: List[Tensor]: [bs, c, h1,w1]...
             backbone_fpn: List[Tensor]: [bs, c, h1,w1]...
         '''
-        # img_logits = self.binary_cls_branch(dict_inputs['vision_features'])
-        img_logits = self.binary_cls_branch(dict_inputs['inter_features'])
+        img_logits = self.binary_cls_branch(dict_inputs['vision_features'])
+        # img_logits = self.binary_cls_branch(dict_inputs['inter_features'])
         binary_loss_fn = nn.BCEWithLogitsLoss()
         img_gt = databatch['image_labels'].unsqueeze(1).float()
         img_loss = binary_loss_fn(img_logits, img_gt)
@@ -77,7 +77,7 @@ class WSCerPartial(MetaClassifier):
         return loss, loss_dict
     
     def set_pred(self, dict_inputs, databatch):
-        img_logits = self.binary_cls_branch(dict_inputs['inter_features'])
+        img_logits = self.binary_cls_branch(dict_inputs['vision_features'])
         databatch['img_probs'] = torch.sigmoid(img_logits)
         
         # bs,num_tokens = binary_attnmap.shape
