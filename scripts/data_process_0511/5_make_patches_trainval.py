@@ -16,8 +16,8 @@ from prettytable import PrettyTable
 WINDOW_SIZE = 512
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
-data_root = f'/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_{WINDOW_SIZE}'
-# data_root = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}'
+# data_root = f'/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_{WINDOW_SIZE}'
+data_root = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}'
 
 
 def coco_format(patchlist):

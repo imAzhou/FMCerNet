@@ -229,11 +229,11 @@ def multiprocess_inference():
     print('='*10 + 'Models Load Done!' + '='*10)
     if args.record_save_dir:
         os.makedirs(args.record_save_dir, exist_ok=True)
-    logger = MMLogger.get_instance('test_wsi', log_file=f'{args.record_save_dir}/test_wsi_v22.log')
+    logger = MMLogger.get_instance('test_wsi', log_file=f'{args.record_save_dir}/test_wsi_v32.log')
 
     low_valid_kfb_info = []
     for row in all_kfb_info.itertuples(index=True):
-        if row.Index+1 <= 181:
+        if row.Index+1 <= 189:
             continue
         start_time = time.time()
         print('collecting start points... ')
@@ -323,8 +323,8 @@ if __name__ == '__main__':
 Time of process kfb elapsed: 805.35 seconds, valid: 6126, invalid: 1108, uncertain: 72, total: 7306
 Time of process kfb elapsed: 71.05 seconds, valid: 6126, invalid: 1108,  uncertain: 72, total: 7306
 
-CUDA_VISIBLE_DEVICES=0 python test_wsi_online.py \
-    data_resource/0511/4_pure_train_negslide_v2.csv \
+CUDA_VISIBLE_DEVICES=2 python test_wsi_online_151.py \
+    data_resource/0511/4_pure_train_negslide_v3.csv \
     checkpoints/valid_cls_best.pth \
     log/WINDOW_SIZE_1000/smartccs_518_fusiontrain/config.py \
     log/WINDOW_SIZE_1000/smartccs_518_fusiontrain/checkpoints/best.pth \

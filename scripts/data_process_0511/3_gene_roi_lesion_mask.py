@@ -19,7 +19,8 @@ test_patientId = [
     'ZY_ONLINE_1_45', 'ZY_ONLINE_1_21',    # 0409 Slide，0422 Slide
     'JFSW_2_1486', 'JFSW_2_152', 'JFSW_2_239',     # 空 RoI，有标注 RoI
     'WXL_1_26',    # partial_pos slide in pure_train
-    'JFSW_2_2111', 'JFSW_2_2'     # partial_pos slide in jfsw_train
+    'JFSW_2_2111', 'JFSW_2_2',     # partial_pos slide in jfsw_train
+    'JFSW_2_302',
 ]
 
 def show_mask(mask, ax, random_color=False):
@@ -29,35 +30,90 @@ def show_mask(mask, ax, random_color=False):
         color = np.array([30/255, 144/255, 255/255, 0.6])
     h, w = mask.shape[-2:]
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    ax.imshow(mask_image) 
+    ax.imshow(mask_image)
 
-def show_box(box, ax):
+def show_box(box, ax, color='green', linestyle='-'):
     x0, y0 = box[0], box[1]
     w, h = box[2] - box[0], box[3] - box[1]
-    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0,0,0,0), lw=2))  
+    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor=color, linestyle=linestyle,
+                               facecolor=(0, 0, 0, 0), lw=2))
 
 def vis_sample(image, roi_masks, roi_item, filename):
     plt.figure(figsize=(20, 20))
     plt.imshow(image)
 
-    rx1,ry1,rx2,ry2 = roi_item['region']
+    rx1, ry1, rx2, ry2 = roi_item['region']
+
+    # 1. 绘制 children 中的红色虚线框
     for child in roi_item['children']:
-        bx1,by1,bx2,by2 = child['region']
-        box = [bx1-rx1,by1-ry1,bx2-rx1,by2-ry1]
-        show_box(box, plt.gca())
-    
+        bx1, by1, bx2, by2 = child['region']
+        box = [bx1 - rx1, by1 - ry1, bx2 - rx1, by2 - ry1]
+        show_box(box, plt.gca(), color='red', linestyle='--')
+
+    # 2. 绘制 mask 和 mask 的外接框
     annids = np.unique(roi_masks)
-    for annid_idx in annids[1:]:   # 第一个是 0
+    for annid_idx in annids[1:]:  # 第一个是 0
         mask = roi_masks == annid_idx
-        show_mask(mask, plt.gca(), random_color=True)
+        # show_mask(mask, plt.gca(), random_color=True)
         plt.contour(mask, levels=[0.5], colors='lime', linewidths=2)
-        
+
+        # 外接框（绿色实线）
+        yx = np.argwhere(mask)
+        if yx.size > 0:
+            y_min, x_min = yx.min(axis=0)
+            y_max, x_max = yx.max(axis=0)
+            show_box([x_min, y_min, x_max, y_max], plt.gca(), color='green', linestyle='-')
+
     plt.axis('off')
     plt.tight_layout()
     os.makedirs('statistic_results/0511/sam2_infer_RoI', exist_ok=True, mode=0o777)
     plt.savefig(f'statistic_results/0511/sam2_infer_RoI/{filename}')
     plt.close()
 
+def postprocess_mask(masks, input_boxes, input_boxes_annid, sort_by_area=True):
+    '''
+    mask: ndarry (n, h, w)
+    input_boxes: ndarry (n, 4)
+    input_boxes_annid: list of ann item annid
+
+    如果 input_boxes 中的某个 bbox 是被其他bbox包含，
+    且两者对应的 mask 有交集(该bbox的mask有一半及以上在父box的mask中)，就把这个bbox丢弃
+    '''
+
+    bool_masks = masks.astype(bool)
+    num_masks = len(bool_masks)
+    to_remove = [False] * num_masks
+
+    for i in range(num_masks):
+        for j in range(num_masks):
+            if i == j or to_remove[i]:
+                continue
+
+            if is_bbox_inside(input_boxes[i], input_boxes[j], 5):
+                mask_i = bool_masks[i]
+                mask_j = bool_masks[j]
+                intersection = np.logical_and(mask_i, mask_j).sum()
+                area_i = mask_i.sum()
+
+                if area_i > 0 and intersection / area_i >= 0.3:
+                    to_remove[i] = True
+                    break
+
+    keep_indices = [i for i, remove in enumerate(to_remove) if not remove]
+
+    filtered_masks = [masks[i] for i in keep_indices]
+    filtered_boxes = [input_boxes[i] for i in keep_indices]
+    filtered_annids = [input_boxes_annid[i] for i in keep_indices]
+
+    if sort_by_area:
+        areas = [mask.astype(bool).sum() for mask in filtered_masks]
+        sorted_idx = sorted(range(len(filtered_masks)), key=lambda i: -areas[i])
+        filtered_masks = [filtered_masks[i] for i in sorted_idx]
+        filtered_boxes = [filtered_boxes[i] for i in sorted_idx]
+        filtered_annids = [filtered_annids[i] for i in sorted_idx]
+
+    return np.array(filtered_masks), filtered_annids
+        
 def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
     sam2_checkpoint = "checkpoints/sam2.1_hiera_large.pt"
     model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
@@ -71,6 +127,9 @@ def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
 
     empty_mask = defaultdict(int)
     for idx, item in enumerate(all_json_datas):
+        # if item['patientId'] not in test_patientId:
+        #     continue
+
         if item['media_type'] == 'roi':
             roi_img = Image.open(item['source_path'])
         elif item['media_type'] == 'slide':
@@ -78,12 +137,18 @@ def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
 
         for RoIItem in item['annotations']:
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
-            if os.path.exists(f'{npz_mask_save_dir}/{purename}.npz'):
-                continue
+            # if os.path.exists(f'{npz_mask_save_dir}/{purename}.npz'):
+            #     continue
 
             rx1,ry1,rx2,ry2 = RoIItem['region']
             rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
             roi_mask = np.zeros((rh,rw), dtype=np.int16)
+            # 按照bbox area 从大到小排序
+            RoIItem['children'] = sorted(
+                RoIItem['children'],
+                key=lambda annitem: (annitem['region'][2] - annitem['region'][0]) * (annitem['region'][3] - annitem['region'][1]),
+                reverse=True  # 从大到小排序
+            )
             annid_list = [child['annid'] for child in RoIItem['children']]
             [child.update({'inst_infer': False}) for child in RoIItem['children']]
             for annitem in RoIItem['children']:
@@ -137,23 +202,9 @@ def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
                 if len(masks.shape) == 3:
                     masks = masks[None,:]
                 masks = masks.squeeze(1)  # (n, h, w)
-                bool_masks = masks.astype(bool)
-                num_masks = len(bool_masks)
-                is_fully_contained = [False] * num_masks
-                # 检查每个 mask 是否被其它任意一个完全包含
-                for i in range(num_masks):
-                    for j in range(num_masks):
-                        if i == j:
-                            continue
-                        # 如果 mask i 被 mask j 完全包含（即 i 为 True 的地方 j 也为 True）
-                        if np.all(bool_masks[j][bool_masks[i]]):
-                            is_fully_contained[i] = True
-                            break  # 一旦发现被包含即可跳过
+                masks, input_boxes_annid = postprocess_mask(masks, input_boxes, input_boxes_annid,sort_by_area=False)
 
-                # 遍历未被完全包裹的 mask
                 for i, (mask, annid) in enumerate(zip(masks, input_boxes_annid)):
-                    if is_fully_contained[i]:
-                        continue  # 跳过被完全包裹的 mask
                     if np.sum(mask) == 0:
                         empty_mask[purename] += 1
                     ys, xs = np.where(mask)     # 获取当前 mask 为 True 的位置坐标
@@ -244,6 +295,29 @@ def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
             vis_sample(sample_img, roi_mask, RoIItem, f'{purename}.png')
             draw_cnt += 1
             
+def statistic_roi_anncnts(all_json_datas,npz_mask_save_dir):
+    annos_cnt, annos_cnt_filterd = 0,0
+    for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
+        for RoIItem in item['annotations']:
+            
+            rx1,ry1,rx2,ry2 = RoIItem['region']
+            rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
+            purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
+            # if purename != 'JFSW_2_88_5205493336944':
+            #     continue
+            # if os.path.exists(f'statistic_results/0511/sam2_infer_RoI/{purename}.png'):
+            #     continue
+            if len(RoIItem['children']) == 0:
+                continue
+            loader = np.load(f"{npz_mask_save_dir}/{purename}.npz")
+            sparse_mask = sparse.coo_matrix((loader['data'], (loader['row'], loader['col'])), shape=loader['shape'])
+            roi_mask = sparse_mask.toarray().astype(np.int16)
+            annids = np.unique(roi_mask)
+            annos_cnt_filterd += len(annids[1:])
+            annos_cnt += len(RoIItem['children'])
+    
+    print(f'{annos_cnt_filterd}/{annos_cnt}')
+
 
 def test_file_exist(all_json_datas,npz_mask_save_dir):
 
@@ -315,5 +389,7 @@ if __name__ == "__main__":
     # workers.join()
     
     # test_roi_lesion_mask(all_json_datas, npz_mask_save_dir)
-    test_file_exist(all_json_datas,npz_mask_save_dir)
+    # test_file_exist(all_json_datas,npz_mask_save_dir)
     # clear_npz(all_json_datas,npz_mask_save_dir)
+    statistic_roi_anncnts(all_json_datas, npz_mask_save_dir)    # 39447/40844
+    
