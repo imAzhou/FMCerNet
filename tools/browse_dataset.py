@@ -58,7 +58,7 @@ def main():
     args = parser.parse_args()
     os.makedirs(args.save_dir, exist_ok=True, mode=0o777)
     d_cfg = Config.fromfile(args.dataset_config_file)
-    dataloader = load_data(d_cfg, ['train'])
+    dataloader = load_data(d_cfg, ['val'])
     metainfo = {
         'classes': dataloader.dataset.classes,
         'palette': dataloader.dataset.palette,
@@ -70,7 +70,9 @@ def main():
         
         for idx,data_sample in enumerate(sampled_batch['data_samples']):
             filename = data_sample.img_path.split('/')[-1]
-            # patientId = '_'.join(filename.split('_')[:3])
+            patientId = '_'.join(filename.split('_')[:3])
+            if patientId != 'JFSW_2_302':
+                continue
             if data_sample.diagnose == 0:
                 continue
 
@@ -97,7 +99,7 @@ if __name__ == '__main__':
 
 '''
 python tools/browse_dataset.py \
-    configs/dataset/l_cerscanv1_dataset.py \
-    statistic_results/visual_results/gt_visual_512_fusiontrain \
-    --vis_batch_nums 5
+    configs/dataset/mmdet/l_cerscanv1_dataset.py \
+    statistic_results/visual_results/gt_visual_512_val \
+    --vis_batch_nums -1
 '''

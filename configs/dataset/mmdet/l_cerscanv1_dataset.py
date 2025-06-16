@@ -1,7 +1,7 @@
 # dataset settings 
 
 # data_root = 'data_resource/0511/WINDOW_SIZE_1000'
-data_root = '/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_512'
+data_root = '/c23030/zly/datasets/CervicalDatasets/WINDOW_SIZE_512'    # c22073, c23030
 img_dir = f'{data_root}/images'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
