@@ -23,6 +23,18 @@ def get_peft_config(peft_type:str):
             scaling = 300.0
         )
 
+def get_dtcwt_featsize(input_size, trunk_cfg):
+    stages = trunk_cfg['stages']
+    downsample_ratio = 2
+    featsize = []
+    cur_size = input_size // 4  # stage0 之前都做4倍下采样
+    for stage_idx, num_blocks in enumerate(stages):
+        for _ in range(num_blocks):
+            featsize.append(cur_size)
+        cur_size = cur_size // downsample_ratio  # 每个 stage 结束后下采样
+
+    return featsize
+
 class SAM2Encoder(MetaBackbone):
     def __init__(self, args):
         super(SAM2Encoder, self).__init__(args)
@@ -40,13 +52,16 @@ class SAM2Encoder(MetaBackbone):
         del encoder_cfg.neck['_target_'], encoder_cfg.neck['position_encoding']
         del position_encoding_cfg['_target_']
         self.backbone = ImageEncoder(
-            trunk = Hiera(**encoder_cfg.trunk),
+            trunk = Hiera(
+                **encoder_cfg.trunk,
+                use_dtcwt_indexes = use_dtcwt_indexes,
+                dtcwt_featsize = get_dtcwt_featsize(args.input_size, encoder_cfg.trunk)
+            ),
             neck = FpnNeck(
                 position_encoding = PositionEmbeddingSine(**position_encoding_cfg),
                 **encoder_cfg.neck,
             ),
-            scalp = encoder_cfg.scalp,
-            use_dtcwt_indexes=use_dtcwt_indexes
+            scalp = encoder_cfg.scalp
         )
 
         if backbone_ckpt is not None:

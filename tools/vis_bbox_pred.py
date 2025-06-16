@@ -110,7 +110,7 @@ def test_net(cfg, model, model_without_ddp):
     if is_main_process():
         pbar = tqdm(valloader, ncols=80)
     for idx, data_batch in enumerate(pbar):
-        if idx > 20:
+        if idx > 5:
             break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
@@ -120,10 +120,10 @@ def test_net(cfg, model, model_without_ddp):
             # filename = os.path.basename(datasample.img_path)
             # if filename != 'ZY_ONLINE_1_1475_2040767916693_247.png':
             #     continue
-            prefix = datasample.prefix
+            prefix = datasample.extra_info['prefix']
             os.makedirs(f'{vis_save_dir}/{prefix}', exist_ok=True)
-            # if random.random() < 0.1:
-            if prefix == 'neg':
+            if random.random() < 0.1:
+            # if prefix == 'neg':
                 sf = datasample.scale_factor
                 bbox_in_origin = bbox_mapping_back(
                     datasample.gt_instances.bboxes.tensor,
@@ -140,7 +140,7 @@ def test_net(cfg, model, model_without_ddp):
                 filename = os.path.basename(img_path)
 
                 pred_bboxes = outputs['pred_bbox'][bidx]
-                pred_bboxes = [i for i in pred_bboxes if i['score'] > 0.5]
+                pred_bboxes = [i for i in pred_bboxes if i['score'] > 0.3]
                 binary_attnmap = None
                 # binary_attnmap = outputs['binary_attnmap'][bidx][0].detach().cpu().numpy()
                 # binary_attnmap = cv2.resize(binary_attnmap, (w, h), interpolation=cv2.INTER_NEAREST)
@@ -177,6 +177,6 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 tools/vis_bbox_pred.py \
-    log/l_cerscanv1_750/wscer_partial/2025_05_27_14_47_05/config.py \
-    log/l_cerscanv1_750/wscer_partial/2025_05_27_14_47_05/checkpoints/best.pth
+    log/WINDOW_SIZE_1000/instance/mAP_11/config.py \
+    log/WINDOW_SIZE_1000/instance/mAP_11/checkpoints/best.pth
 '''

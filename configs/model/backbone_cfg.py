@@ -23,15 +23,15 @@ backbone_cfgdict = {
     'uni': dict(
         backbone_output_dim = [1024],
         backbone_ckpt = 'checkpoints/uni.bin',
-        frozen_backbone = False,
-        use_peft = None,   # None, lora, FourierFT, dtcwt
+        frozen_backbone = True,
+        use_peft = 'lora',   # None, lora, FourierFT, dtcwt
         vit_patch_size = 16,
         default_input_size = 224
     ),
     'sam': dict(
-        backbone_output_dim = [768],
-        backbone_ckpt = 'checkpoints/sam_vit_b_01ec64.pth',
-        backbone_size_type = 'vit_b',
+        backbone_output_dim = [1024],   # vit_b: 768, vit_l: 1024, vit_h: 1280
+        backbone_ckpt = 'checkpoints/sam_vit_l_0b3195.pth',
+        backbone_size_type = 'vit_l',
         frozen_backbone = True,
         use_peft = 'lora', 
         use_dtcwt_indexes = [],
@@ -44,7 +44,7 @@ backbone_cfgdict = {
         backbone_ckpt = 'checkpoints/sam2.1_hiera_large.pt',
         frozen_backbone = True,
         use_peft = 'lora', 
-        use_dtcwt_indexes = [],
+        use_dtcwt_indexes = [0,1],
         default_input_size = 1024
     ),
     'smartccs': dict(

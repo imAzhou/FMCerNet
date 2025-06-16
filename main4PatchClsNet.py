@@ -1,4 +1,6 @@
 import torch
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, message=r"^xFormers is available \(.*\)")
 import os
 import time
 from tqdm import tqdm
@@ -86,6 +88,7 @@ def train_net(cfg, model, model_without_ddp):
             metrics = model_without_ddp.classifier.evaluator.evaluate(len(valloader.dataset))
             if is_main_process():
                 pbar.close()
+                print(metrics)
                 if cfg.save_each_epoch:
                     torch.save(model_without_ddp.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
                 prime_score_type = cfg.eval_prime_score
@@ -131,12 +134,13 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 main4PatchClsNet.py \
-    configs/dataset/sam2_proposal/l_cerscanv1_dataset.py \
-    configs/model/chief.py \
+    configs/dataset/mmdet/l_cerscanv1_dataset.py \
+    configs/model/wscer_partial.py \
     configs/strategy.py \
+    --record_save_dir log/WINDOW_SIZE_512/instance
     --model_tag inferseg \
-    --record_save_dir log/debug
-    --record_save_dir log/WINDOW_SIZE_512/binary_linear
+    --record_save_dir log/WINDOW_SIZE_1000/sam2proposal
+    
 
 CUDA_VISIBLE_DEVICES=6,7 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchClsNet.py \
     configs/dataset/cdetector_dataset.py \

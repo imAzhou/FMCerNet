@@ -70,6 +70,12 @@ class Instance_branch(nn.Module):
             ),
             activation(),
         )
+        # self.final_upscaled = nn.Sequential(
+        #     nn.ConvTranspose2d(
+        #         transformer_dim // 8, transformer_dim // 8, kernel_size=2, stride=2
+        #     ),
+        #     activation()
+        # )
         self.backbone_stride = 16
         self.img_input_size = img_input_size
         self.sam_image_embedding_size = self.img_input_size // self.backbone_stride
@@ -104,7 +110,7 @@ class Instance_branch(nn.Module):
                 dict(type='DiceCost', weight=5.0, pred_act=True, eps=1.0)
             ])
         self.sampler = MaskPseudoSampler()
-        self.num_points = 56*56
+        self.num_points = 112*112
         self.oversample_ratio = 3.0
         self.importance_sample_ratio = 0.75
 
@@ -175,6 +181,7 @@ class Instance_branch(nn.Module):
         dc1, ln1, act1, dc2, act2 = self.output_upscaling
         upscaled_embedding = act1(ln1(dc1(src) + feat_s1))
         upscaled_embedding = act2(dc2(upscaled_embedding) + feat_s0)
+        # upscaled_embedding = self.final_upscaled(upscaled_embedding)
 
         hyper_in_list: List[torch.Tensor] = []
         for i in range(self.instance_queries):
@@ -431,7 +438,6 @@ class Instance_branch(nn.Module):
         pred_mask_logits, pred_cls_logits = self(dict_inputs, mask_input)
         bs = databatch['inputs'].shape[0]
         pred_bboxes = []
-
         for i in range(bs):
             # 1. 分类 logits 做 softmax
             cls_probs = F.softmax(pred_cls_logits[i], dim=-1)  # (num_queries, num_classes)

@@ -16,8 +16,7 @@ class ImageEncoder(nn.Module):
         self,
         trunk: nn.Module,
         neck: nn.Module,
-        scalp: int = 0,
-        use_dtcwt_indexes: Tuple[int, ...] = (),  # [0,1]
+        scalp: int = 0
     ):
         super().__init__()
         self.trunk = trunk
@@ -29,14 +28,15 @@ class ImageEncoder(nn.Module):
 
     def forward(self, sample: torch.Tensor):
         # Forward through backbone
-        trunk_outputs = self.trunk(sample)
-        features, pos = self.neck(trunk_outputs)
+        trunk_outputs = self.trunk(sample)  # list([bs, 144, 128, 128],[bs, 288, 64, 64],[bs, 576, 32, 32],[bs, 1152, 16, 16])
+        features, pos = self.neck(trunk_outputs)  # list([bs, 256, 128, 128],[bs, 256, 64, 64],[bs, 256, 32, 32],[bs, 256, 16, 16])
         if self.scalp > 0:
             # Discard the lowest resolution features
-            features, pos = features[: -self.scalp], pos[: -self.scalp]
+            features, pos = features[: -self.scalp], pos[: -self.scalp]  # list([bs, 256, 128, 128],[bs, 256, 64, 64],[bs, 256, 32, 32])
 
         src = features[-1]
         output = {
+            "inter_features": trunk_outputs[-2],
             "vision_features": src,
             "vision_pos_enc": pos,
             "backbone_fpn": features,

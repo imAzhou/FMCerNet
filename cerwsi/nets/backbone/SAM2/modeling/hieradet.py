@@ -15,6 +15,7 @@ from iopath.common.file_io import g_pathmgr
 
 from .utils import PatchEmbed, window_partition, window_unpartition
 from sam2.modeling.sam2_utils import DropPath, MLP
+from cerwsi.nets.backbone.PEFT.peft_ours import DTCWTModule
 
 
 def do_pool(x: torch.Tensor, pool: nn.Module, norm: nn.Module = None) -> torch.Tensor:
@@ -192,13 +193,28 @@ class Hiera(nn.Module):
         ),
         weights_path=None,
         return_interm_layers=True,  # return feats from every stage
+        use_dtcwt_indexes: Tuple[int, ...] = (),  # [0,1]
+        dtcwt_featsize: Tuple[int, ...] = (),  # [0,1]  # 每一层layer的featmap边长
     ):
         super().__init__()
 
         assert len(stages) == len(window_spec)
         self.window_spec = window_spec
+        self.use_dtcwt_indexes = use_dtcwt_indexes
 
         depth = sum(stages)
+        if len(self.use_dtcwt_indexes) > 0:
+            self.dtxwts = nn.ModuleList()
+            for i in range(depth):
+                if i in self.use_dtcwt_indexes:
+                    self.dtxwts.append(DTCWTModule(
+                        dim=embed_dim,
+                        num_heads=num_heads,
+                        feat_size=dtcwt_featsize[i]
+                    ))
+                else:
+                    self.dtxwts.append(nn.Identity())
+
         self.q_stride = q_stride
         self.stage_ends = [sum(stages[:i]) - 1 for i in range(1, len(stages) + 1)]
         assert 0 <= q_pool <= len(self.stage_ends[:-1])
@@ -283,8 +299,12 @@ class Hiera(nn.Module):
         x = x + self._get_pos_embed(x.shape[1:3])
 
         outputs = []
+        feat_len = []
         for i, blk in enumerate(self.blocks):
             x = blk(x)
+            if len(self.use_dtcwt_indexes) > 0:
+                x = self.dtxwts[i](x)
+            feat_len.append(x.shape[1])
             if (i == self.stage_ends[-1]) or (
                 i in self.stage_ends and self.return_interm_layers
             ):

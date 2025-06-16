@@ -3,6 +3,7 @@ from mmengine.evaluator import BaseMetric
 from prettytable import PrettyTable
 import numpy as np
 import os
+import copy
 from mmengine.logging import MMLogger
 from mmdet.evaluation import CocoMetric
 from .metrics import print_confusion_matrix,calculate_metrics
@@ -36,6 +37,7 @@ class ImgODCOCOMetric(BaseMetric):
         super(ImgODCOCOMetric, self).__init__()
         self.logger_name = logger_name
         self.save_result_dir = save_result_dir
+        val_evaluator = copy.deepcopy(val_evaluator)
         if 'iou_thrs' in val_evaluator:
             val_evaluator['iou_thrs'] = np.array(val_evaluator['iou_thrs'])
         self.coco_metric = CocoMetric(**val_evaluator)
@@ -84,14 +86,19 @@ class ImgODCOCOMetric(BaseMetric):
         """
         data_samples = data_samples[0]
         bs_img_gt = data_samples['image_labels']
-        bs_img_pred = (data_samples['img_probs'] > 0.5).int()
+        bs_img_pred = (data_samples['img_probs'] > 0.3).int()
         bs = bs_img_gt.shape[0]
 
         for bidx in range(bs):
             datasample = data_samples['data_samples'][bidx]
             pred_bbox = data_samples['pred_bbox'][bidx]
             pred_bbox = [i for i in pred_bbox if i['score'] > 0.3]
-            coco_result = self.format_pred2coco(datasample.to_dict(),pred_bbox)            
+            # pred_imgprob = data_samples['img_probs'][bidx]
+            # if pred_imgprob < 0.3:
+            #     pred_bbox = []
+            # if datasample.diagnose == 0:
+            #     pred_bbox = []
+            coco_result = self.format_pred2coco(datasample.to_dict(), pred_bbox)            
             result = dict(
                 img_id = datasample.img_id,
                 img_gt = bs_img_gt[bidx].item(),
@@ -144,6 +151,8 @@ class ImgODCOCOMetric(BaseMetric):
         result_table_2 = PrettyTable()
         result_table_2.field_names = list(det_metrics.keys())
         result_table_2.add_row(list(det_metrics.values()))
+        if len(det_metrics.keys()) == 0:
+            det_metrics['mAP'] = 0.
         result_metrics.update(det_metrics)
 
         '''计算图片二分类以及目标检测的一致性'''
@@ -151,7 +160,7 @@ class ImgODCOCOMetric(BaseMetric):
         result_metrics.update(consistency_metrics)
         
         cmstr = print_confusion_matrix(cm, print_flag=False)
-        str_metric = '\n' + str(result_table_1) + '\n' + str(result_table_2) + '\n' + cmstr
+        str_metric = '\n' + str(result_table_1) + '\n' + str(result_table_2) + '\n' + cmstr + '\n' + str(consistency_metrics)
         logger = MMLogger.get_instance(self.logger_name)
         logger.info(str_metric)
         
