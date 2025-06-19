@@ -459,7 +459,7 @@ class Instance_branch(nn.Module):
             masks = mask_logits_resized.sigmoid() > 0.5
 
             # 4. 过滤掉空 mask
-            valid = masks.flatten(1).sum(dim=1) > 0  # (num_keep,), mask有前景的
+            valid = masks.flatten(1).sum(dim=1) > 20*20  # (num_keep,), mask有前景的
             if valid.sum() == 0:
                 pred_bboxes.append([])
                 continue
