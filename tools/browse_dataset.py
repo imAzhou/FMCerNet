@@ -58,7 +58,7 @@ def main():
     args = parser.parse_args()
     os.makedirs(args.save_dir, exist_ok=True, mode=0o777)
     d_cfg = Config.fromfile(args.dataset_config_file)
-    dataloader = load_data(d_cfg, ['val'])
+    dataloader = load_data(d_cfg, ['train'])
     metainfo = {
         'classes': dataloader.dataset.classes,
         'palette': dataloader.dataset.palette,
@@ -71,11 +71,14 @@ def main():
         for idx,data_sample in enumerate(sampled_batch['data_samples']):
             filename = data_sample.img_path.split('/')[-1]
             patientId = '_'.join(filename.split('_')[:3])
-            if patientId != 'JFSW_2_302':
+            prefix = data_sample.extra_info['prefix']
+            if prefix != 'paste_pos':
                 continue
+            # if patientId != 'JFSW_2_302':
+            #     continue
+            # if filename != 'JFSW_1_40_paste_1.png':
+            #     continue
             if data_sample.diagnose == 0:
-                continue
-            if filename != 'JFSW_2_302_2246572373322_6.png':
                 continue
             img = sampled_batch['inputs'][idx].permute(1, 2, 0).int().numpy()
             img = img[..., [2, 1, 0]]  # bgr to rgb
@@ -101,6 +104,6 @@ if __name__ == '__main__':
 '''
 python tools/browse_dataset.py \
     configs/dataset/mmdet/l_cerscanv1_dataset.py \
-    statistic_results/visual_results/gt_visual_512_val \
-    --vis_batch_nums -1
+    statistic_results/visual_results/gt_puretrain_aug \
+    --vis_batch_nums 20
 '''

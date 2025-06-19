@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 
 class Attn_Net_Gated(nn.Module):
@@ -48,21 +49,31 @@ class BinaryClsBranch(nn.Module):
         img_tokens = vision_features.flatten(2).transpose(1,2)
         # A: (bs, num_tokens, pos_cls_num), h: (bs, num_tokens, c=512)
         A, h = self.attention_net(img_tokens)
+        A_raw = A    # A_raw: (bs, num_tokens, 1)
         A = A.transpose(1, 2)    # A: (bs, 1, num_tokens)
         A = F.softmax(A, dim=-1)
         cls_feature = torch.bmm(A, h)    # cls_feature: (bs, 1, c=512)
         out = self.classifiers(cls_feature)    # (bs, 1, 1)
-        return out.squeeze(-1)
+        inter_var = {
+            'A_raw': A_raw,
+            'token_feats': h,
+        }
+        return out.squeeze(-1), inter_var
 
-    def loss(self, vision_features: torch.Tensor, databatch):
-        '''
-        Args:
-            vision_features: (bs, c, h, w)
-        Return:
-            loss: float
-        '''
-        loss_fn = nn.BCEWithLogitsLoss()
-        img_logits = self.forward(vision_features)
-        img_gt = databatch['image_labels'].unsqueeze(1).float()
-        img_loss = loss_fn(img_logits, img_gt)
-        return img_loss
+    def patch_probs(self, inter_var, scale):
+        A_raw = inter_var['A_raw']  # A_raw: (bs, num_tokens, 1)
+        h = inter_var['token_feats']    # h: (bs, num_tokens, c=512)
+        with torch.no_grad():
+            patch_logits = torch.sigmoid(self.classifiers(h))    # h: (bs, num_tokens, 1)
+            patch_probs = torch.sigmoid(A_raw.squeeze()) * patch_logits.squeeze()
+
+        bs,num_tokens = patch_probs.shape
+        feat_size = int(math.sqrt(num_tokens))
+        patch_probs = patch_probs.reshape((bs, feat_size, feat_size)).unsqueeze(1).detach()
+        patch_probs = F.interpolate(patch_probs, size=(feat_size*scale, feat_size*scale), mode='bilinear')
+
+        # return {
+        #     'patch_prob': patch_prob,  # A_raw: (bs, num_tokens)
+        #     'attention_raw': A_raw.squeeze()  # A_raw: (bs, num_tokens)
+        # }
+        return patch_probs   # (bs, 1, h, w)

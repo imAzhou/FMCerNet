@@ -5,6 +5,7 @@ from torchvision.ops import nms
 from tqdm import tqdm
 import torch.distributed as dist
 import math
+import torch.nn.functional as F
 import argparse
 from mmengine.config import Config
 from cerwsi.datasets import load_data
@@ -32,6 +33,7 @@ parser = argparse.ArgumentParser()
 # base args
 parser.add_argument('config_file', type=str)
 parser.add_argument('ckpt', type=str)
+parser.add_argument('vis_save_dir', type=str)
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--print_interval', type=int, default=10, help='random seed')
 parser.add_argument('--world_size', default=3, type=int, help='number of distributed processes')
@@ -42,7 +44,7 @@ args = parser.parse_args()
 def draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, binary_attnmap, output_path):
     w,h = img.size
     # 创建画布
-    col = 3 if binary_attnmap else 2
+    col = 3 if binary_attnmap is not None else 2
     fig, axes = plt.subplots(1, col, figsize=(col*5, 6))
     fig.subplots_adjust(wspace=0.01)
     # ========== 子图 1：原图 + Bounding Boxes ==========
@@ -81,7 +83,7 @@ def draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, binary_attnmap, out
     axes[1].axis("off")
 
     # ========== 子图 3：Token Probabilities 热力图 ==========
-    if binary_attnmap != None:
+    if binary_attnmap is not None:
         axes[2].imshow(img)
         norm_attnmap = cv2.normalize(binary_attnmap, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
         norm_attnmap = norm_attnmap.astype(np.uint8)
@@ -103,7 +105,7 @@ def draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, binary_attnmap, out
     plt.savefig(output_path, bbox_inches='tight', dpi=100)
     plt.close(fig)
 
-def test_net(cfg, model, model_without_ddp):
+def test_net(cfg, model):
     valloader = load_data(cfg, ['val'])
     model.eval()
     pbar = valloader
@@ -141,12 +143,11 @@ def test_net(cfg, model, model_without_ddp):
 
                 pred_bboxes = outputs['pred_bbox'][bidx]
                 pred_bboxes = [i for i in pred_bboxes if i['score'] > 0.3]
-                binary_attnmap = None
-                # binary_attnmap = outputs['binary_attnmap'][bidx][0].detach().cpu().numpy()
-                # binary_attnmap = cv2.resize(binary_attnmap, (w, h), interpolation=cv2.INTER_NEAREST)
+                patch_probs = F.interpolate(outputs['patch_probs'][bidx].unsqueeze(0), size=(h, w), mode='bilinear', align_corners=False)
+                patch_probs = patch_probs.squeeze(0).squeeze(0).detach().cpu().numpy()
                 
                 output_path = f'{vis_save_dir}/{prefix}/{filename}'
-                draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, binary_attnmap, output_path)
+                draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, patch_probs, output_path)
 
 def main():
     init_distributed_mode(args)
@@ -164,19 +165,20 @@ def main():
         model_without_ddp = model.module
     
     model_without_ddp.load_ckpt(args.ckpt)
-    test_net(cfg, model, model_without_ddp)
+    test_net(cfg, model)
 
     if args.distributed:
         dist.destroy_process_group()
 
 if __name__ == '__main__':
 
-    vis_save_dir = 'statistic_results/vis_bbox_pred'
+    vis_save_dir = args.vis_save_dir
     os.makedirs(vis_save_dir, exist_ok=True)
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12341 tools/vis_bbox_pred.py \
-    log/WINDOW_SIZE_1000/instance/mAP_11/config.py \
-    log/WINDOW_SIZE_1000/instance/mAP_11/checkpoints/best.pth
+CUDA_VISIBLE_DEVICES=0,1,3,4,5 torchrun  --nproc_per_node=5 --master_port=12341 tools/vis_bbox_pred.py \
+    log/WINDOW_SIZE_512/instance/mAP_30.6/config.py \
+    log/WINDOW_SIZE_512/instance/mAP_30.6/checkpoints/best.pth \
+    log/WINDOW_SIZE_512/instance/mAP_30.6/visual_pred
 '''
