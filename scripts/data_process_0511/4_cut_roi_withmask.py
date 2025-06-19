@@ -19,8 +19,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules
 
 CERTAIN_THR = 0.7
 LEVEL = 0
-WINDOW_SIZE = 700
-STRIDE = 650
+WINDOW_SIZE = 512
+STRIDE = 450
 
 test_patientId = [
     'ZY_ONLINE_1_45', 'ZY_ONLINE_1_196',    # 0409 Slide，0422 Slide
@@ -63,9 +63,7 @@ def vis_patch_sample(image, roi_masks, bboxes, filename):
 def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_save_dir):
     patchitems = []
     for idx, item in enumerate(all_json_datas):
-        # if item['patientId'] != 'JFSW_2_62':
-        #     continue
-        # if item['patientId'] != 'JFSW_2_5':
+        # if item['patientId'] != 'JFSW_2_302':
         #     continue
         for RoIItem in item['annotations']:
             rx1,ry1,rx2,ry2 = (np.array(RoIItem['region']).astype(np.int32)).tolist()
@@ -93,6 +91,12 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
             #     if random_x2 < rw and random_y2 < rh:
             #         cut_points.append((random_x1,random_y1))
 
+            # 按照bbox area 从大到小排序
+            RoIItem['children'] = sorted(
+                RoIItem['children'],
+                key=lambda annitem: (annitem['region'][2] - annitem['region'][0]) * (annitem['region'][3] - annitem['region'][1]),
+                reverse=True  # 从大到小排序
+            )
             for iidx,rect_coords in enumerate(cut_points):
                 x1,y1 = rect_coords
                 x2,y2 = x1+WINDOW_SIZE,y1+WINDOW_SIZE
@@ -159,7 +163,7 @@ def calc_patch_anns(patch_coords, RoIItem, roi_mask):
             ann_clsnames.append(annitem['sub_class'])
             new_patch_mask[annmask] = len(ann_bboxes)   # id: 1,2,...
     
-    if np.sum(new_patch_mask>0) < 50*50:    # 总的阳性病变面积太小则忽略
+    if np.sum(new_patch_mask>0) < 20*20:    # 总的阳性病变面积太小则忽略
         return [], [], np.zeros_like(patch_mask)
     
     return ann_bboxes, ann_clsnames, new_patch_mask
@@ -282,7 +286,7 @@ if __name__ == "__main__":
 
     all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
     # all_json_datas = jfsw_pos_slide
-    patches_jsonname = 'patches_in_RoI_jfsw'    # patches_in_RoI_pure, patches_in_RoI_jfsw
+    patches_jsonname = 'patches_in_RoI_pure'    # patches_in_RoI_pure, patches_in_RoI_jfsw
 
     # cpu_num = 8
     # set_split = np.array_split(range(len(all_json_datas)), cpu_num)
@@ -305,7 +309,7 @@ if __name__ == "__main__":
 
     # for tag in ['neg', 'partial_pos', 'total_pos']:
     #     os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
-    # # multiprocessing.set_start_method('spawn', force=True)
+    # multiprocessing.set_start_method('spawn', force=True)
     # cut_patch_imgs(img_save_dir)
 
     statistic_imgs()
@@ -319,4 +323,5 @@ WINDOW_SIZE = 700, STRIDE = 650:
 
 WINDOW_SIZE = 512, STRIDE = 450:
 ['neg', 'total_pos', 'partial_pos']: [144648, 14437, 9809], [0, 0, 25676] ([144648, 14437, 35485])
+['neg', 'total_pos', 'partial_pos']: [138951, 20250, 10071], [0, 0, 37348] ([138951, 20250, 47419])
 '''
