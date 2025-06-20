@@ -71,8 +71,8 @@ if __name__ == '__main__':
     # analyze(f'{args.save_dir}/pred_results_0.5.json')
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 test_PatchClsNet.py \
-    log/WINDOW_SIZE_1000/instance/2025_06_13_23_06_03/config.py \
-    log/WINDOW_SIZE_1000/instance/2025_06_13_23_06_03/checkpoints/best.pth \
-    log/WINDOW_SIZE_1000/instance/2025_06_13_23_06_03
+CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12340 test_PatchClsNet.py \
+    log/WINDOW_SIZE_512/mAP_30.6/config.py \
+    log/WINDOW_SIZE_512/mAP_30.6/checkpoints/best.pth \
+    log/WINDOW_SIZE_512/mAP_30.6
 '''
