@@ -1,7 +1,6 @@
 # dataset settings 
 
-# data_root = 'data_resource/0511/WINDOW_SIZE_1000'
-data_root = '/c23030/zly/datasets/CervicalDatasets/WINDOW_SIZE_512'    # c22073, c23030
+data_root = 'data_resource/0511/WINDOW_SIZE_512'
 img_dir = f'{data_root}/images'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
@@ -11,7 +10,7 @@ train_bs = 32
 val_bs = 32
 input_size = 512  # 224, 392, 448, 512, 1024
 
-train_annojson = f'{data_root}/annofiles/fusiontrain_cocoformat.json'
+train_annojson = f'{data_root}/annofiles/puretrain_aug_cocoformat.json'
 albu_train_transforms = [
     dict(type='ShiftScaleRotate',
         shift_limit=0.0625,

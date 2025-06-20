@@ -1,20 +1,19 @@
 # dataset settings 
 
-# data_root = 'data_resource/0511/WINDOW_SIZE_750'
-data_root = '/c22073/zly/datasets/CervicalDatasets/WINDOW_SIZE_512'
+data_root = 'data_resource/0511/WINDOW_SIZE_512'
 img_dir = f'{data_root}/images'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'cls'    # cls, instance
-train_bs = 64
-val_bs = 64
-input_size = 224  # 224, 392, 448, 512, 1024
+train_bs = 32
+val_bs = 32
+input_size = 512  # 224, 392, 448, 512, 1024
 
-train_annojson = f'{data_root}/annofiles/fusiontrain_cocoformat.json'
+train_annojson = f'{data_root}/annofiles/puretrain_cocoformat.json'
 rand_increasing_policies = [
     dict(type='AutoContrast'),
     dict(type='Equalize'),
-    dict(type='Rotate', magnitude_key='angle', magnitude_range=(0, 30), prob=0.5),
+    dict(type='Rotate', magnitude_key='angle', magnitude_range=(-15, 15), prob=0.5),
     dict(type='Contrast', magnitude_range=(-0.9, 0.9), prob=0.5),
     dict(type='Brightness', magnitude_key='magnitude', magnitude_range=(-0.9, 0.9), prob=0.5),
     dict(type='Sharpness', magnitude_key='magnitude', magnitude_range=(0, 9), prob=0.5),

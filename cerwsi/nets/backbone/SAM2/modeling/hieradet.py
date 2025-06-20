@@ -194,6 +194,7 @@ class Hiera(nn.Module):
         weights_path=None,
         return_interm_layers=True,  # return feats from every stage
         use_dtcwt_indexes: Tuple[int, ...] = (),  # [0,1]
+        dtcwt_embed_dim: Tuple[int, ...] = (),  # [0,1]  # 每一层layer的featmap channel 数
         dtcwt_featsize: Tuple[int, ...] = (),  # [0,1]  # 每一层layer的featmap边长
     ):
         super().__init__()
@@ -208,7 +209,7 @@ class Hiera(nn.Module):
             for i in range(depth):
                 if i in self.use_dtcwt_indexes:
                     self.dtxwts.append(DTCWTModule(
-                        dim=embed_dim,
+                        dim=dtcwt_embed_dim[i],
                         num_heads=num_heads,
                         feat_size=dtcwt_featsize[i]
                     ))

@@ -25,12 +25,12 @@ class Instance_branch(nn.Module):
     def __init__(
         self,
         *,
-        transformer_dim: int,
         img_input_size: int,
         num_instance_queries: int,
         num_classes: int,   # 0:阴性，>0:阳性类别
         activation: Type[nn.Module] = nn.GELU,
         pretrain_ckpt = None,
+        featcfg: dict
     ) -> None:
         """
         Predicts masks given an image and prompt embeddings, using a
@@ -48,25 +48,28 @@ class Instance_branch(nn.Module):
             used to predict mask quality
         """
         super().__init__()
-        self.transformer_dim = transformer_dim
+        input_feat = featcfg['input_feat']
+        upscaled_feat = featcfg['upscaled_feat']
+
+        self.transformer_dim = input_feat[0][0]
         self.transformer = TwoWayTransformer(
             depth=2,
-            embedding_dim=transformer_dim,
+            embedding_dim=self.transformer_dim,
             mlp_dim=2048,
             num_heads=8,
         )
         self.instance_queries = num_instance_queries
         self.num_classes = num_classes
-        self.mask_tokens = nn.Embedding(self.instance_queries, transformer_dim)
+        self.mask_tokens = nn.Embedding(self.instance_queries, self.transformer_dim)
 
         self.output_upscaling = nn.Sequential(
             nn.ConvTranspose2d(
-                transformer_dim, transformer_dim // 4, kernel_size=2, stride=2
+                input_feat[0][0], upscaled_feat[0][0], kernel_size=2, stride=2
             ),
-            LayerNorm2d(transformer_dim // 4),
+            LayerNorm2d(upscaled_feat[0][0]),
             activation(),
             nn.ConvTranspose2d(
-                transformer_dim // 4, transformer_dim // 8, kernel_size=2, stride=2
+                upscaled_feat[0][0], upscaled_feat[1][0], kernel_size=2, stride=2
             ),
             activation(),
         )
@@ -76,33 +79,29 @@ class Instance_branch(nn.Module):
         #     ),
         #     activation()
         # )
-        self.backbone_stride = 16
+
         self.img_input_size = img_input_size
-        self.sam_image_embedding_size = self.img_input_size // self.backbone_stride
         self.sam_prompt_encoder = PromptEncoder(
-            embed_dim=transformer_dim,
-            image_embedding_size=(
-                self.sam_image_embedding_size,
-                self.sam_image_embedding_size,
-            ),
+            embed_dim=self.transformer_dim,
+            image_embedding_size=(input_feat[0][1], input_feat[0][2]),
             input_image_size=(self.img_input_size, self.img_input_size),
             mask_in_chans=16,
         )
-        for name, param in self.sam_prompt_encoder.named_parameters():
-            param.requires_grad = False
+        # for name, param in self.sam_prompt_encoder.named_parameters():
+        #     param.requires_grad = False
 
-        self.conv_s0 = nn.Conv2d(transformer_dim, transformer_dim // 8, kernel_size=1, stride=1)
-        self.conv_s1 = nn.Conv2d(transformer_dim, transformer_dim // 4, kernel_size=1, stride=1)
+        self.conv_s0 = nn.Conv2d(input_feat[2][0], upscaled_feat[1][0], kernel_size=1, stride=1)   # featchannel smaller
+        self.conv_s1 = nn.Conv2d(input_feat[1][0], upscaled_feat[0][0], kernel_size=1, stride=1)   # featchannel larger
         self.output_hypernetworks_mlps = nn.ModuleList(
             [
-                MLP(transformer_dim, transformer_dim, transformer_dim // 8, 3)
+                MLP(self.transformer_dim, 256, upscaled_feat[1][0], 3)
                 for i in range(self.instance_queries)
             ]
         )
 
-        self.cls_prediction_head = MLP(transformer_dim, 256, num_classes, 3)
+        self.cls_prediction_head = MLP(self.transformer_dim, 256, num_classes, 3)
         # a single token to indicate no memory embedding from previous frames
-        self.no_mem_embed = torch.nn.Parameter(torch.zeros(1, 1, transformer_dim))
+        self.no_mem_embed = torch.nn.Parameter(torch.zeros(1, 1, self.transformer_dim))
 
         self.assigner = HungarianAssigner(match_costs=[
                 dict(type='ClassificationCost', weight=2.0),
@@ -176,8 +175,8 @@ class Instance_branch(nn.Module):
         src = src.transpose(1, 2).view(b, c, h, w)
 
         # get high_res_features
-        feat_s0 = self.conv_s0(dict_inputs['backbone_fpn'][0])    # NxCxHxW
-        feat_s1 = self.conv_s1(dict_inputs['backbone_fpn'][1])    # NxCxHxW
+        feat_s0 = self.conv_s0(dict_inputs['backbone_fpn'][0])    # NxCxHxW   featsize larger
+        feat_s1 = self.conv_s1(dict_inputs['backbone_fpn'][1])    # NxCxHxW   featsize smaller
         dc1, ln1, act1, dc2, act2 = self.output_upscaling
         upscaled_embedding = act1(ln1(dc1(src) + feat_s1))
         upscaled_embedding = act2(dc2(upscaled_embedding) + feat_s0)
@@ -459,7 +458,7 @@ class Instance_branch(nn.Module):
             masks = mask_logits_resized.sigmoid() > 0.5
 
             # 4. 过滤掉空 mask
-            valid = masks.flatten(1).sum(dim=1) > 0  # (num_keep,), mask有前景的
+            valid = masks.flatten(1).sum(dim=1) > 20*20  # (num_keep,), mask有前景的
             if valid.sum() == 0:
                 pred_bboxes.append([])
                 continue

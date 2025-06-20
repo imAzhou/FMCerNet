@@ -137,8 +137,8 @@ def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
     
 def statistic():
     txt_lines = []
-    # for tag in ['fusiontrain', 'puretrain', 'val']:
-    for tag in ['puretrain']:
+    for tag in ['fusiontrain', 'puretrain', 'puretrain_aug', 'val']:
+    # for tag in ['puretrain']:
         txt_lines.append(f'{"-"*30}{tag}{"-"*30}\n')
         with open(f'{data_root}/annofiles/{tag}_cocoformat_v50.json', 'r', encoding='utf-8') as f:
             patch_COCOinfo = json.load(f)
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     ann_dir = f'{data_root}/annofiles'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
-    main(use_jfsw=False)
+    # main(use_jfsw=False)
     statistic()
     # clear_imgs()
 
