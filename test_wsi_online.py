@@ -28,7 +28,7 @@ from cerwsi.nets import ValidClsNet, PatchClsNet
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules.conv")
 
 LEVEL = 0
-PATCH_EDGE = 1000
+PATCH_EDGE = 512
 CERTAIN_THR = 0.7
 NEGATIVE_THR = 0.5
 positive_ratio_thr = 0.05
@@ -138,7 +138,10 @@ def inference_batch_pn(pn_model, valid_input, save_prefix, downsample_ratio):
     ])
     img_inputs = [transform(item['image']) for item in valid_input]
     images_tensor = torch.stack(img_inputs, dim=0).to(pn_model.device)
-    data_batch = dict(inputs=images_tensor)
+    data_batch = dict(
+        inputs=images_tensor,
+        data_samples = [DataSample(ori_shape=(PATCH_EDGE,PATCH_EDGE)) for i in range(len(valid_input))]
+    )
 
     with torch.no_grad():
         outputs = pn_model(data_batch, 'val')
@@ -229,12 +232,12 @@ def multiprocess_inference():
     print('='*10 + 'Models Load Done!' + '='*10)
     if args.record_save_dir:
         os.makedirs(args.record_save_dir, exist_ok=True)
-    logger = MMLogger.get_instance('test_wsi', log_file=f'{args.record_save_dir}/test_wsi_v22.log')
+    logger = MMLogger.get_instance('test_wsi', log_file=f'{args.record_save_dir}/test_wsi_v11.log')
 
     low_valid_kfb_info = []
     for row in all_kfb_info.itertuples(index=True):
-        if row.Index+1 <= 181:
-            continue
+        # if row.Index+1 <= 181:
+        #     continue
         start_time = time.time()
         print('collecting start points... ')
         slide = KFBSlide(row.kfb_path)
@@ -324,15 +327,15 @@ Time of process kfb elapsed: 805.35 seconds, valid: 6126, invalid: 1108, uncerta
 Time of process kfb elapsed: 71.05 seconds, valid: 6126, invalid: 1108,  uncertain: 72, total: 7306
 
 CUDA_VISIBLE_DEVICES=0 python test_wsi_online.py \
-    data_resource/0511/4_pure_train_negslide_v2.csv \
+    data_resource/0511/4_pure_train_negslide_v1.csv \
     checkpoints/valid_cls_best.pth \
-    log/WINDOW_SIZE_1000/smartccs_518_fusiontrain/config.py \
-    log/WINDOW_SIZE_1000/smartccs_518_fusiontrain/checkpoints/best.pth \
-    --record_save_dir log/WINDOW_SIZE_1000/smartccs_518_fusiontrain \
+    log/WINDOW_SIZE_512/mAP_30.6/config.py \
+    log/WINDOW_SIZE_512/mAP_30.6/checkpoints/best.pth \
+    --record_save_dir log/WINDOW_SIZE_512/mAP_30.6 \
     --cpu_num 8 \
-    --test_bs 24 \
+    --test_bs 8 \
     --visual_pred 1 \
-    --pred_save_dir log/WINDOW_SIZE_1000/smartccs_518_fusiontrain/posInNeg \
+    --pred_save_dir log/WINDOW_SIZE_512/mAP_30.6/posInNeg \
     --only_valid \
     --visual_pred invalid valid 1
 

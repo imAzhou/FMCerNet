@@ -140,7 +140,7 @@ def statistic():
     for tag in ['fusiontrain', 'puretrain', 'puretrain_aug', 'val']:
     # for tag in ['puretrain_aug']:
         txt_lines.append(f'{"-"*30}{tag}{"-"*30}\n')
-        with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
+        with open(f'{data_root}/annofiles/{tag}_cocoformat_v50.json', 'r', encoding='utf-8') as f:
             patch_COCOinfo = json.load(f)
         annoInimg = defaultdict(list)
         bbox_cls_cnt = [0]*len(POSITIVE_CLASS)
@@ -177,7 +177,7 @@ def statistic():
         print(result_table)
         txt_lines.append(str(result_table))
         txt_lines.append('\n\n')
-    with open(f'{ann_dir}/statistic_result.txt', 'w') as f:
+    with open(f'{ann_dir}/statistic_result_v50.txt', 'w') as f:
         f.writelines(txt_lines)
 
 def clear_imgs():
