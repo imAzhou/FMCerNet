@@ -143,8 +143,9 @@ def test_net(cfg, model):
 
                 pred_bboxes = outputs['pred_bbox'][bidx]
                 pred_bboxes = [i for i in pred_bboxes if i['score'] > 0.3]
-                patch_probs = F.interpolate(outputs['patch_probs'][bidx].unsqueeze(0), size=(h, w), mode='bilinear', align_corners=False)
-                patch_probs = patch_probs.squeeze(0).squeeze(0).detach().cpu().numpy()
+                patch_probs = None
+                # patch_probs = F.interpolate(outputs['patch_probs'][bidx].unsqueeze(0), size=(h, w), mode='bilinear', align_corners=False)
+                # patch_probs = patch_probs.squeeze(0).squeeze(0).detach().cpu().numpy()
                 
                 output_path = f'{vis_save_dir}/{prefix}/{filename}'
                 draw_vis(img,bboxes_coords, bboxes_clsname, pred_bboxes, patch_probs, output_path)
@@ -178,7 +179,7 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,3,4,5 torchrun  --nproc_per_node=5 --master_port=12341 tools/vis_bbox_pred.py \
-    log/WINDOW_SIZE_512/instance/mAP_30.6/config.py \
-    log/WINDOW_SIZE_512/instance/mAP_30.6/checkpoints/best.pth \
-    log/WINDOW_SIZE_512/instance/mAP_30.6/visual_pred
+    log/WINDOW_SIZE_700/instance_only/2025_06_22_08_13_20/config.py \
+    log/WINDOW_SIZE_700/instance_only/2025_06_22_08_13_20/checkpoints/best.pth \
+    log/WINDOW_SIZE_700/instance_only/2025_06_22_08_13_20/visual_pred
 '''

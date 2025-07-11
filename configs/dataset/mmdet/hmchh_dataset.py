@@ -51,21 +51,21 @@ train_transform = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=with_mask),
     dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),
-    dict(
-        type='Albu',
-        transforms=albu_train_transforms,
-        bbox_params=dict(
-            type='BboxParams',
-            format='pascal_voc',    # bbox: [x1,y1,x2,y2]
-            label_fields=['gt_bboxes_labels', 'gt_ignore_flags'],
-            min_visibility=0.0),
-        keymap={
-            'img': 'image',
-            'gt_masks': 'masks',
-            'gt_bboxes': 'bboxes'
-        },
-        skip_img_without_anno=False),
-    dict(type='RandomFlip', prob=0.5),
+    # dict(
+    #     type='Albu',
+    #     transforms=albu_train_transforms,
+    #     bbox_params=dict(
+    #         type='BboxParams',
+    #         format='pascal_voc',    # bbox: [x1,y1,x2,y2]
+    #         label_fields=['gt_bboxes_labels', 'gt_ignore_flags'],
+    #         min_visibility=0.0),
+    #     keymap={
+    #         'img': 'image',
+    #         'gt_masks': 'masks',
+    #         'gt_bboxes': 'bboxes'
+    #     },
+    #     skip_img_without_anno=False),
+    # dict(type='RandomFlip', prob=0.5),
     dict(type='PackDetInputs')
 ]
 

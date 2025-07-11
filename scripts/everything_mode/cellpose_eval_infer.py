@@ -368,11 +368,37 @@ if __name__ == "__main__":
 Small: 21, Medium: 2702, Large: 9455
 
 
-diameter = 60+120
- Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=100 ] = 0.469
- Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=300 ] = 0.698
- Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=1000 ] = 0.842
- Average Recall     (AR) @[ IoU=0.30:0.30 | area=medium | maxDets=1000 ] = 0.548
- Average Recall     (AR) @[ IoU=0.30:0.30 | area= large | maxDets=1000 ] = 0.928
+diameter = 120
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=300 ] = 0.652
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=1000 ] = 0.671
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=2000 ] = 0.671
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=medium | maxDets=2000 ] = 0.315
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area= large | maxDets=2000 ] = 0.775
 
+diameter = 120 + 扩展每个bbox
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=300 ] = 0.667
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=1000 ] = 0.694
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=2000 ] = 0.694
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=medium | maxDets=2000 ] = 0.310
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area= large | maxDets=2000 ] = 0.806
+
+diameter = 120 + 扩展每个bbox + 生成规则化bboxes
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=300 ] = 0.689
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=1000 ] = 0.797
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=2000 ] = 0.916
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=medium | maxDets=2000 ] = 0.724
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area= large | maxDets=2000 ] = 0.973
+
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | maxDets=300 ] = 0.603
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | maxDets=1000 ] = 0.682
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | maxDets=2000 ] = 0.758
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=medium | maxDets=2000 ] = 0.377
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area= large | maxDets=2000 ] = 0.868
+
+diameter = 90 + 扩展每个bbox + 生成规则化bboxes
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | maxDets=300 ] = 0.586
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | maxDets=1000 ] = 0.672
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | maxDets=2000 ] = 0.756
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=medium | maxDets=2000 ] = 0.441
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area= large | maxDets=2000 ] = 0.848
 '''

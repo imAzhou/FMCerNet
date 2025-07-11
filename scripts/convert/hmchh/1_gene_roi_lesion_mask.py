@@ -10,6 +10,8 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 from cerwsi.utils import KFBSlide,random_cut_square,calc_relative_coord,is_bbox_inside,set_seed
 from scipy import sparse
 from collections import defaultdict
+import multiprocessing
+from multiprocessing import Pool
 
 test_patientId = [
     '1657bj008',
@@ -54,7 +56,7 @@ def vis_sample(image, roi_masks, roi_item, filename):
     plt.savefig(f'statistic_results/HMCHH/sam2_infer_RoI/{filename}')
     plt.close()
 
-def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
+def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
     sam2_checkpoint = "checkpoints/sam2.1_hiera_large.pt"
     model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
     device = torch.device("cuda:1")
@@ -80,6 +82,12 @@ def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
             rx1,ry1,rx2,ry2 = RoIItem['region']
             rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
             roi_mask = np.zeros((rh,rw), dtype=np.int16)
+            # 按照bbox area 从大到小排序
+            RoIItem['children'] = sorted(
+                RoIItem['children'],
+                key=lambda annitem: (annitem['region'][2] - annitem['region'][0]) * (annitem['region'][3] - annitem['region'][1]),
+                reverse=True  # 从大到小排序
+            )
             annid_list = [child['annid'] for child in RoIItem['children']]
             [child.update({'inst_infer': False}) for child in RoIItem['children']]
             for annitem in RoIItem['children']:
@@ -127,35 +135,14 @@ def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
                 if len(masks.shape) == 3:
                     masks = masks[None,:]
                 masks = masks.squeeze(1)  # (n, h, w)
-                bool_masks = masks.astype(bool)
-                num_masks = len(bool_masks)
-                is_fully_contained = [False] * num_masks
-                # 检查每个 mask 是否被其它任意一个完全包含
-                for i in range(num_masks):
-                    for j in range(num_masks):
-                        if i == j:
-                            continue
-                        # 如果 mask i 被 mask j 完全包含（即 i 为 True 的地方 j 也为 True）
-                        if np.all(bool_masks[j][bool_masks[i]]):
-                            is_fully_contained[i] = True
-                            break  # 一旦发现被包含即可跳过
 
-                # 遍历未被完全包裹的 mask
                 for i, (mask, annid) in enumerate(zip(masks, input_boxes_annid)):
-                    if is_fully_contained[i]:
-                        continue  # 跳过被完全包裹的 mask
                     if np.sum(mask) == 0:
                         empty_mask[purename] += 1
                     ys, xs = np.where(mask)     # 获取当前 mask 为 True 的位置坐标
                     annid_idx = annid_list.index(annid) + 1     # 索引从 1 开始，0 是默认的背景
                     shift_y, shift_x = int(square_y1 - ry1), int(square_x1 - rx1)
                     roi_mask[ys + shift_y, xs + shift_x] = annid_idx
-                
-                # start_x1,start_y1,start_x2,start_y2 = square_x1 - rx1,square_y1 - ry1,square_x2 - rx1,square_y2 - ry1
-                # roi_mask = roi_mask[start_y1:start_y2, start_x1:start_x2]
-                # RoIItem['children'] = [i for i in RoIItem['children'] if i['annid'] in input_boxes_annid]
-                # RoIItem['region'] = parent_patch_coords
-                # vis_sample(image, roi_mask, RoIItem, f'{purename}.png')
             
             for annitem in RoIItem['children']:
                 if not annitem['inst_infer']:
@@ -171,67 +158,25 @@ def gene_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
                     col=sparse_mask.col,
                     shape=roi_mask.shape)
         
-
+        print(f'Core {proc_id} processed : {idx+1}/{len(all_json_datas)}.')
+        
 def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
-        # if idx != 1585:
-        #     continue
-        # if item['patientId'] != 'JFSW_2_107':
-        #     continue
+
         if item['patientId'] not in test_patientId:
             continue
-        if item['media_type'] == 'roi':
-            roi_img = Image.open(item['source_path'])
-        elif item['media_type'] == 'slide':
-            slide = KFBSlide(item['source_path'])
+        roi_img = Image.open(item['source_path'])
 
-        draw_cnt = 0
         for RoIItem in item['annotations']:
-            if draw_cnt > 3:
-                break
-            # if len(RoIItem['children']) > 50:
-            #     continue
-            # if str(RoIItem['annid']) != '1457140814755':
-            #     continue
             rx1,ry1,rx2,ry2 = RoIItem['region']
             rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
-            # if purename != 'JFSW_2_88_5205493336944':
-            #     continue
-            # if os.path.exists(f'statistic_results/0511/sam2_infer_RoI/{purename}.png'):
-            #     continue
-            if len(RoIItem['children']) == 0:
-                continue
             loader = np.load(f"{npz_mask_save_dir}/{purename}.npz")
             sparse_mask = sparse.coo_matrix((loader['data'], (loader['row'], loader['col'])), shape=loader['shape'])
-            roi_mask = sparse_mask.toarray().astype(np.int16)
-            
-            SIZE_THR = 1000 if len(RoIItem['children']) > 30 else 4000
-            if rw > SIZE_THR or rh > SIZE_THR:
-                start_x1,start_y1 = random_cut_square((0,0,rw,rh), SIZE_THR)
-                start_x1,start_y1 = max(start_x1,0), max(start_y1,0)
-                start_x2,start_y2 = min(start_x1+SIZE_THR,rw), min(start_y1+SIZE_THR,rh)
-                RoIItem['region'] = [start_x1+rx1, start_y1+ry1, start_x2+rx1, start_y2+ry1]
-                RoIItem['children'] = [i for i in RoIItem['children'] if is_bbox_inside(i['region'],RoIItem['region'],tolerance=10)]
-                roi_mask = roi_mask[start_y1:start_y2, start_x1:start_x2]
+            roi_mask = sparse_mask.toarray().astype(np.int16)                
+            print(f'\nDrawing {purename}.png, (width,height) is {roi_img.size}')
+            vis_sample(roi_img, roi_mask, RoIItem, f'{purename}.png')
 
-                if item['media_type'] == 'roi':
-                    sample_img = roi_img.crop([start_x1,start_y1,start_x2,start_y2])
-                elif item['media_type'] == 'slide':
-                    rx1,ry1,rx2,ry2 = RoIItem['region']
-                    rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
-                    location, level, size = (rx1,ry1), 0, (rw,rh)
-                    sample_img = Image.fromarray(slide.read_region(location, level, size))
-            else:
-                if item['media_type'] == 'roi':
-                    sample_img = roi_img
-                elif item['media_type'] == 'slide':
-                    location, level, size = (rx1,ry1), 0, (rw,rh)
-                    sample_img = Image.fromarray(slide.read_region(location, level, size))
-
-            print(f'\nDrawing {purename}.png, (width,height) is {sample_img.size}')
-            vis_sample(sample_img, roi_mask, RoIItem, f'{purename}.png')
-            draw_cnt += 1
 
 def test_file_exist(all_json_datas,npz_mask_save_dir):
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
@@ -253,11 +198,25 @@ def test_file_exist(all_json_datas,npz_mask_save_dir):
 
 if __name__ == "__main__":
     set_seed(666)
-    with open('data_resource/HMCHH/annofiles/unify_ann.json', 'r', encoding='utf-8') as f:
+    with open('data_resource/HMCHH/annofiles_roi/unify_ann.json', 'r', encoding='utf-8') as f:
         roi_data = json.load(f)
 
     npz_mask_save_dir = 'data_resource/HMCHH/roi_inst_mask'
     os.makedirs(npz_mask_save_dir, exist_ok=True, mode=0o777)
-    gene_roi_lesion_mask(roi_data, npz_mask_save_dir)
+
+    # cpu_num = 8
+    # set_split = np.array_split(range(len(roi_data)), cpu_num)
+    # print(f"Number of cores: {cpu_num}, set number of per core: {len(set_split[0])}")
+    # multiprocessing.set_start_method('spawn', force=True)
+    # workers = Pool(processes=cpu_num)
+    # processes = []
+    # for proc_id, set_group in enumerate(set_split):
+    #     process_group = [roi_data[i] for i in set_group]
+    #     p = workers.apply_async(gene_roi_lesion_mask, (proc_id, process_group, npz_mask_save_dir))
+    #     processes.append(p)
+    # for p in processes:
+    #     p.get()
+    # workers.close()
+    # workers.join()
     
-    # test_roi_lesion_mask(roi_data, npz_mask_save_dir)
+    test_roi_lesion_mask(roi_data, npz_mask_save_dir)

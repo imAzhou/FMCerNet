@@ -362,10 +362,9 @@ def format_mask(instmask, ctype, minsize=50):
         x1, x2 = max(0, slc[1].start - shiftlen), min(W, slc[1].stop + shiftlen)
         w, h = x2 - x1, y2 - y1
         if w>minsize and h>minsize:
-            # annmask = instmask == instid
             # rle = mask_utils.encode(np.asfortranarray(annmask))
             # rle['counts'] = rle['counts'].decode('utf-8')
-            inst_crop = (instmask[y1:y2, x1:x2] == instid)
+            # inst_crop = (instmask[y1:y2, x1:x2] == instid)
             masklist.append({
                 "id": instid,
                 "image_id": -1,

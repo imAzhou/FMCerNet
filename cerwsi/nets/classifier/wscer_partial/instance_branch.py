@@ -87,8 +87,8 @@ class Instance_branch(nn.Module):
             input_image_size=(self.img_input_size, self.img_input_size),
             mask_in_chans=16,
         )
-        # for name, param in self.sam_prompt_encoder.named_parameters():
-        #     param.requires_grad = False
+        for name, param in self.sam_prompt_encoder.named_parameters():
+            param.requires_grad = False
 
         self.conv_s0 = nn.Conv2d(input_feat[2][0], upscaled_feat[1][0], kernel_size=1, stride=1)   # featchannel smaller
         self.conv_s1 = nn.Conv2d(input_feat[1][0], upscaled_feat[0][0], kernel_size=1, stride=1)   # featchannel larger
