@@ -7,9 +7,10 @@ import torch.distributed as dist
 import argparse
 from mmengine.config import Config
 from cerwsi.datasets import load_data
-from cerwsi.nets import PatchClsNet
+from cerwsi.nets import PatchNet
+from mmengine.registry import init_default_scope
 from cerwsi.utils import set_seed, init_distributed_mode, is_main_process
-
+from mmdet.models.detectors import FasterRCNN
 
 parser = argparse.ArgumentParser()
 # base args
@@ -36,9 +37,9 @@ def test_net(cfg, model, model_without_ddp):
         #     break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
-        model_without_ddp.classifier.evaluator.process(data_samples=[outputs], data_batch=None)
+        model_without_ddp.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
     
-    metrics = model_without_ddp.classifier.evaluator.evaluate(len(valloader.dataset))
+    metrics = model_without_ddp.taskhead.evaluator.evaluate(len(valloader.dataset))
     if is_main_process():
         pbar.close()
         print(metrics)
@@ -49,17 +50,20 @@ def main():
     device = torch.device(f'cuda:{os.getenv("LOCAL_RANK")}')
 
     cfg = Config.fromfile(args.config_file)
-    cfg.save_result_dir = args.save_dir
-    cfg.backbone_cfg['backbone_ckpt'] = None
-    cfg.instance_ckpt = None
-    model = PatchClsNet(cfg).to(device)
+    del cfg.model.type
+    cfg.dataset_type = 'instance'
+    cfg.val_annojson = cfg.val_dataset.data_root + cfg.val_dataset.ann_file
+    cfg.val_transform = cfg.val_dataset.pipeline
+    cfg.img_dir = cfg.val_dataset.data_root + cfg.val_dataset.data_prefix['img'][:-1]
+    model = FasterRCNN(**cfg.model).to(device)
     model_without_ddp = model
 
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
     
-    model_without_ddp.load_ckpt(args.ckpt)
+    ckpt = torch.load(args.ckpt,weights_only=False,map_location=device)['state_dict']
+    model_without_ddp.load_state_dict(ckpt)
     test_net(cfg, model, model_without_ddp)
 
     # if args.distributed:
@@ -67,12 +71,13 @@ def main():
     #     dist.destroy_process_group()
 
 if __name__ == '__main__':
+    init_default_scope('mmdet')
     main()
     # analyze(f'{args.save_dir}/pred_results_0.5.json')
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12340 test_PatchClsNet.py \
-    log/WINDOW_SIZE_512/mAP_30.6/config.py \
-    log/WINDOW_SIZE_512/mAP_30.6/checkpoints/best.pth \
-    log/WINDOW_SIZE_512/mAP_30.6
+CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12340 test_MMdetNet.py \
+    log/WINDOW_SIZE_1000/faster-rcnn/vis_data/config.py \
+    log/WINDOW_SIZE_1000/faster-rcnn/epoch_10.pth \
+    log/WINDOW_SIZE_1000/faster-rcnn
 '''

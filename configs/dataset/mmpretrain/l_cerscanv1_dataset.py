@@ -1,13 +1,13 @@
 # dataset settings 
 
-data_root = 'data_resource/0511/WINDOW_SIZE_512'
+data_root = 'data_resource/0511/WINDOW_SIZE_700'
 img_dir = f'{data_root}/images'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'cls'    # cls, instance
 train_bs = 32
 val_bs = 32
-input_size = 512  # 224, 392, 448, 512, 1024
+input_size = 448  # 224, 392, 448, 512, 1024
 
 train_annojson = f'{data_root}/annofiles/puretrain_cocoformat.json'
 rand_increasing_policies = [

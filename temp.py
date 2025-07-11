@@ -1,84 +1,31 @@
-import numpy as np
-from cellpose import models, core, io, plot, utils, transforms
-from pathlib import Path
-from tqdm import trange
-import matplotlib.pyplot as plt
-import cv2
+import torch
+from cerwsi.nets import PatchNet
+from mmengine.config import Config
 
-io.logger_setup() # run this to get printing of progress
+device = torch.device(f'cpu')
 
-#Check if colab notebook instance has GPU access
-if core.use_gpu()==False:
-  raise ImportError("No GPU access, change your runtime")
+ckpt = 'checkpoints/detr_r50_8xb2-150e_coco_20221023_153551-436d03e8.pth'
+params_weight = torch.load(ckpt, map_location=device, weights_only=False)['state_dict']
 
-model = models.CellposeModel(gpu=True)
+new_state_dict = {}
+for key,value in params_weight.items():
+    if 'bbox_head.fc_cls' in key:
+        continue
+    if 'backbone' in key:
+        new_name = key.replace('backbone.', 'backbone.backbone.')
+    else:
+        new_name = 'taskhead.' + key
+    new_state_dict[new_name] = value
 
-# filename = "data_resource/cellpose/imgs_cyto3.npz"
-# dat = np.load(filename, allow_pickle=True)["arr_0"].item()
-# imgs = dat["imgs"]  # list of ndarray (2, imgh, imgw)
-# masks_true = dat["masks_true"]  # list of ndarray (imgh, imgw)
+torch.save(new_state_dict, f'checkpoints/detr_r50_rename.pth')
 
-# plt.figure(figsize=(8,3))
-# for i, iex in enumerate([9, 16, 21]):
-#     img = imgs[iex].squeeze()
-#     plt.subplot(1,3,1+i)
-#     plt.imshow(img[0], cmap="gray", vmin=0, vmax=1)
-#     plt.axis('off')
-# plt.tight_layout()
-# plt.savefig('data_resource/cellpose/test.png')
-img_url = 'data_resource/cellpose/JFSW_1_0_1211906498145_74.png'
-img = cv2.imread(img_url)
-img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-imgs = [img]
-masks_pred, flows, styles = model.eval(imgs, 
-                                       niter=1000, 
-                                       max_size_fraction=1,
-                                       diameter=7.5) # using more iterations for bacteria
-nimg = len(imgs)
-for idx in range(nimg):
-    maski = masks_pred[idx]
-    flowi = flows[idx][0]
+# d_cfg = Config.fromfile('configs/dataset/mmdet/hmchh_dataset.py')
+# m_cfg = Config.fromfile('configs/model/detr.py')
+# s_cfg = Config.fromfile('configs/strategy.py')
 
-    fig = plt.figure(figsize=(12,5))
-    plot.show_segmentation(fig, imgs[idx], maski, flowi)
-    plt.tight_layout()
-    plt.savefig('data_resource/cellpose/infer_cervical.png')
-
-# titles = [
-#         "Cellpose", "Nuclei", "Tissuenet", "Livecell", "YeaZ",
-#          "Omnipose\nphase-contrast", "Omnipose\nfluorescent",
-#         "DeepBacs"
-#     ]
-
-# plt.figure(figsize=(12,6))
-# ly = 400
-# for iex in range(len(imgs)):
-#     img = imgs[iex].squeeze().copy()
-#     img = np.clip(transforms.normalize_img(img, axis=0), 0, 1) # normalize images across channel axis
-#     ax = plt.subplot(3, 8, (iex%3)*8 + (iex//3) +1)
-#     if img[1].sum()==0:
-#         img = img[0]
-#         ax.imshow(img, cmap="gray")
-#     else:
-#         # make RGB from 2 channel image
-#         img = np.concatenate((np.zeros_like(img)[:1], img), axis=0).transpose(1,2,0)
-#         ax.imshow(img)
-#     ax.set_ylim([0, min(400, img.shape[0])])
-#     ax.set_xlim([0, min(400, img.shape[1])])
-
-
-#     # GROUND-TRUTH = PURPLE
-#     # PREDICTED = YELLOW
-#     outlines_gt = utils.outlines_list(masks_true[iex])
-#     outlines_pred = utils.outlines_list(masks_pred[iex])
-#     for o in outlines_gt:
-#         plt.plot(o[:,0], o[:,1], color=[0.7,0.4,1], lw=0.5)
-#     for o in outlines_pred:
-#         plt.plot(o[:,0], o[:,1], color=[1,1,0.3], lw=0.75, ls="--")
-#     plt.axis('off')
-
-#     if iex%3 == 0:
-#         ax.set_title(titles[iex//3])
-
-# plt.tight_layout()
-# plt.savefig('data_resource/cellpose/test_infer_result.png')
+# cfg = Config()
+# for sub_cfg in [d_cfg, m_cfg, s_cfg]:
+#     cfg.merge_from_dict(sub_cfg.to_dict())
+# cfg.save_result_dir = None
+# model = PatchNet(cfg).to(device)
+# print(model.load_state_dict(new_state_dict, strict=False))
