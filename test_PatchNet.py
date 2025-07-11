@@ -7,7 +7,7 @@ import torch.distributed as dist
 import argparse
 from mmengine.config import Config
 from cerwsi.datasets import load_data
-from cerwsi.nets import PatchClsNet
+from cerwsi.nets import PatchNet
 from cerwsi.utils import set_seed, init_distributed_mode, is_main_process
 
 
@@ -36,9 +36,9 @@ def test_net(cfg, model, model_without_ddp):
         #     break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
-        model_without_ddp.classifier.evaluator.process(data_samples=[outputs], data_batch=None)
+        model_without_ddp.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
     
-    metrics = model_without_ddp.classifier.evaluator.evaluate(len(valloader.dataset))
+    metrics = model_without_ddp.taskhead.evaluator.evaluate(len(valloader.dataset))
     if is_main_process():
         pbar.close()
         print(metrics)
@@ -52,7 +52,7 @@ def main():
     cfg.save_result_dir = args.save_dir
     cfg.backbone_cfg['backbone_ckpt'] = None
     cfg.instance_ckpt = None
-    model = PatchClsNet(cfg).to(device)
+    model = PatchNet(cfg).to(device)
     model_without_ddp = model
 
     if args.distributed:
@@ -71,8 +71,8 @@ if __name__ == '__main__':
     # analyze(f'{args.save_dir}/pred_results_0.5.json')
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 test_PatchClsNet.py \
-    log/WINDOW_SIZE_512/instance/mAP_30.6/config.py \
-    log/WINDOW_SIZE_512/instance/mAP_30.6/checkpoints/best.pth \
-    log/WINDOW_SIZE_512/instance/mAP_30.6
+CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12340 test_PatchNet.py \
+    log/hmchh/detr/2025_07_06_22_41_45/config.py \
+    log/hmchh/detr/2025_07_06_22_41_45/checkpoints/best.pth \
+    log/hmchh/detr/2025_07_06_22_41_45
 '''

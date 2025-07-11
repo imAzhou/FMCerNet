@@ -153,6 +153,7 @@ class ImgODCOCOMetric(BaseMetric):
         result_table_2.add_row(list(det_metrics.values()))
         if len(det_metrics.keys()) == 0:
             det_metrics['mAP'] = 0.
+            det_metrics['bbox_mAP'] = 0.
         result_metrics.update(det_metrics)
 
         '''计算图片二分类以及目标检测的一致性'''

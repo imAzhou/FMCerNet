@@ -13,7 +13,7 @@ import random
 import glob
 from prettytable import PrettyTable
 
-WINDOW_SIZE = 512
+WINDOW_SIZE = 700
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
 data_root = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}'
@@ -138,7 +138,7 @@ def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
 def statistic():
     txt_lines = []
     for tag in ['fusiontrain', 'puretrain', 'puretrain_aug', 'val']:
-    # for tag in ['puretrain']:
+    # for tag in ['puretrain_aug']:
         txt_lines.append(f'{"-"*30}{tag}{"-"*30}\n')
         with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
             patch_COCOinfo = json.load(f)

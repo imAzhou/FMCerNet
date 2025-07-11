@@ -46,7 +46,7 @@ backbone_cfgdict = {
         default_input_size = 1024
     ),
     'sam2': dict(
-        backbone_output_dim = [256],
+        backbone_output_dim = [144, 288, 576, 1152],
         config_file = 'cerwsi/nets/backbone/SAM2/configs/sam2.1/sam2.1_hiera_l.yaml',
         backbone_ckpt = 'checkpoints/sam2.1_hiera_large.pt',
         frozen_backbone = True,

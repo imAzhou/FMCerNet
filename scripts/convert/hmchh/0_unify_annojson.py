@@ -63,8 +63,8 @@ def gene_filter():
 
 
 if __name__ == "__main__":
-    data_root = '/medical-data/data/cervix/HMCHH'
-    ann_savedir = f'data_resource/HMCHH/annofiles'
+    data_root = 'data_resource/HMCHH'
+    ann_savedir = f'{data_root}/annofiles_roi'
     os.makedirs(ann_savedir, exist_ok=True, mode=0o777)
     df_train = pd.read_csv('data_resource/HMCHH/csvfiles/fold1/train.csv')
     df_val = pd.read_csv('data_resource/HMCHH/csvfiles/fold1/val.csv')
