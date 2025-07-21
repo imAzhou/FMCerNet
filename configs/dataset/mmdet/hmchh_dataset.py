@@ -65,7 +65,7 @@ train_transform = [
     #         'gt_bboxes': 'bboxes'
     #     },
     #     skip_img_without_anno=False),
-    # dict(type='RandomFlip', prob=0.5),
+    dict(type='RandomFlip', prob=0.5),
     dict(type='PackDetInputs')
 ]
 
@@ -79,7 +79,6 @@ val_transform = [
 
 test_transform = [
     dict(type='LoadImageFromFile'),
-    dict(type='LoadAnnotations', with_bbox=True, with_mask=with_mask),
     dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),
     # If you don't have a gt annotation, delete the pipeline
     dict(

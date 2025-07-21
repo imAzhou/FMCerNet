@@ -4,8 +4,6 @@ import json
 from mmcv.transforms import Compose
 from collections import defaultdict
 from mmdet.models.utils import mask2ndarray
-import numpy as np
-from tqdm import tqdm
 from pycocotools.coco import COCO
 from pycocotools import mask as mask_utils
 from mmdet.structures.bbox import bbox_mapping
@@ -20,10 +18,7 @@ class InstanceDataset(Dataset):
         self.img_dir = data_cfg.img_dir
         self.num_classes = data_cfg.num_classes
         self.classes = data_cfg.classes
-        self.load_proposal = data_cfg.get('load_proposal', False)
-        if self.load_proposal:
-            self.proposal_dir = f'{data_cfg.data_root}/sam2Infer'
-        
+
         self.transform = Compose(transform)
         self.load_mask = [i['with_mask'] for i in transform if i['type'] == 'LoadAnnotations'][0]
         self.annojson_path = annojson_path
@@ -54,39 +49,17 @@ class InstanceDataset(Dataset):
             annoInimg[annoinfo['image_id']].append(new_annoinfo)
 
         self.imginfo_list = []
-        for imginfo in tqdm(self.patch_COCOinfo['images'], ncols=80):
+        for imginfo in self.patch_COCOinfo['images']:
             imginfo['img_id'] = imginfo['id']
             imginfo['img_path'] = f'{self.img_dir}/{imginfo["file_name"]}'
             imginfo['instances'] = annoInimg[imginfo['id']]
-            # if self.load_proposal:
-            #     imginfo['sam2proposals'] = self.load_proposal_fn(imginfo["file_name"])
-            
             self.imginfo_list.append(imginfo)
         print('Done to format annotaion in mmdet style.')
-
-    def load_proposal_fn(self, filename):
-        jsonfilename = filename.replace('.png', '.json')
-        with open(f"{self.proposal_dir}/{jsonfilename}", 'r', encoding='utf-8') as f:
-            self.proposals = json.load(f)
-        bboxes,scores,masks = [],[],[]
-        for proposalinfo in self.proposals:
-            x1, y1, w, h = proposalinfo['bbox']
-            bboxes.append([x1, y1, x1+w, y1+h])
-            scores.append(proposalinfo['stability_score'])
-            # masks.append(mask_utils.decode(proposalinfo['segmentation']))
-        return {
-            'bboxes': np.array(bboxes), 
-            'scores': np.array(scores),
-            # 'masks': np.array(masks)
-        }
 
     def __len__(self):
         return len(self.patch_COCOinfo['images'])
 
     def __getitem__(self, idx):
-        if self.load_proposal:
-            self.imginfo_list[idx]['sam2proposals'] = self.load_proposal_fn(self.imginfo_list[idx]["file_name"])
-        
         output = self.transform(self.imginfo_list[idx])
 
         output['data_samples'].diagnose = self.imginfo_list[idx]['diagnose']
@@ -98,18 +71,4 @@ class InstanceDataset(Dataset):
             output['data_samples'].gt_instances.masks = torch.as_tensor(
                 mask2ndarray(output['data_samples'].gt_instances.masks))
         
-        if self.load_proposal:
-            sf = output['data_samples'].scale_factor
-            sam2proposals = self.imginfo_list[idx]['sam2proposals']
-            proposal_bbox = bbox_mapping(
-                torch.Tensor(sam2proposals['bboxes']),
-                output['data_samples'].img_shape,
-                (sf[0], sf[1], sf[0], sf[1]),
-                flip=output['data_samples'].get('flip', False),
-                flip_direction=output['data_samples'].get('flip_direction', None)
-            )
-            output['data_samples'].sam2proposal = {
-                'bboxes': proposal_bbox,
-                'scores': torch.Tensor(sam2proposals['scores'])
-            }
         return output

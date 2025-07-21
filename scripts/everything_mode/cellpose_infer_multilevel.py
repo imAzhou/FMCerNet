@@ -8,11 +8,12 @@ from PIL import Image
 from torchvision.ops import nms
 from torchvision import transforms as T
 from scipy import ndimage
-# from cellpose import models,utils,transforms,dynamics
+from cellpose import models,utils,transforms,dynamics
 from pycocotools import mask as mask_utils
 from mmdet.evaluation import CocoMetric
 from scipy.spatial import ConvexHull
 from tqdm import tqdm
+from mmdet.evaluation import DumpProposals
 
 
 def visual_scored_masks(orig_image, annlist, primary_metric, save_path, topk=100, minsize=30*30, mode='top'):
@@ -351,73 +352,51 @@ def mask_score_fn(inst_mask,
         'final': final_score
     }
 
-def format_mask(instmask, ctype, minsize=50):
+def format_mask(instmask, ctype):
     H,W = instmask.shape
-    shiftlen = 10
     masklist = []
     slices = ndimage.find_objects(instmask)
-    
     for instid, slc in enumerate(slices, start=1):
-        y1, y2 = max(0, slc[0].start - shiftlen), min(H, slc[0].stop + shiftlen)
-        x1, x2 = max(0, slc[1].start - shiftlen), min(W, slc[1].stop + shiftlen)
+        y1, y2 = max(0, slc[0].start), min(H, slc[0].stop)
+        x1, x2 = max(0, slc[1].start), min(W, slc[1].stop)
         w, h = x2 - x1, y2 - y1
-        if w>minsize and h>minsize:
-            # rle = mask_utils.encode(np.asfortranarray(annmask))
-            # rle['counts'] = rle['counts'].decode('utf-8')
-            # inst_crop = (instmask[y1:y2, x1:x2] == instid)
-            masklist.append({
-                "id": instid,
-                "image_id": -1,
-                "category_id": -1,
-                # "segmentation": rle,
-                "bbox": [x1,y1,w,h],
-                "area": w*h,
-                "iscrowd": 0,
-                "ctype": ctype,
-                # "scores": mask_score_fn(inst_crop),
-                "scores": {'final': 1.},
-            })
+        # rle = mask_utils.encode(np.asfortranarray(annmask))
+        # rle['counts'] = rle['counts'].decode('utf-8')
+        # inst_crop = (instmask[y1:y2, x1:x2] == instid)
+        masklist.append({
+            "id": instid,
+            "image_id": -1,
+            "category_id": -1,
+            # "segmentation": rle,
+            "bbox": [x1,y1,w,h],
+            "area": w*h,
+            "iscrowd": 0,
+            "ctype": ctype,
+            # "scores": mask_score_fn(inst_crop),
+            "scores": {'final': 1.},
+        })
     return masklist
 
-def merge_multimask(masklist, iou_thresh=0.8, size_thresh=30):
-    """
-    对 masklist 执行基于 mask IoU 的 NMS，保留高分 mask，去除低分重叠。
-    
-    Args:
-        masklist (list): 包含多个 dict，每个 dict 至少包含 'segmentation'（RLE） 和 'scores'。
-        iou_thresh (float): IoU 阈值，大于此阈值的低分 mask 将被移除。
-        
-    Returns:
-        List of filtered masks.
-    """
+def merge_multimask(masklist, iou_thresh=0.8):
+
     if len(masklist) == 0:
         return []
     
-    small_objs,large_objs = [],[]
-    for m in masklist:
-        x, y, w, h = m['bbox']
-        if w < size_thresh and h < size_thresh:
-            small_objs.append(m)
-        else:
-            large_objs.append(m)
-
-    if not large_objs:
-        return small_objs
-
     # 构建 bboxes 和 scores
     bboxes,scores = [],[]
-    for m in large_objs:
+    for m in masklist:
         x, y, w, h = m['bbox']
         bboxes.append([x, y, x + w, y + h])
-        scores.append(m["scores"]["final"])
+        # scores.append(m["scores"]["final"])
+        scores.append(w*h)
 
     bboxes = torch.tensor(bboxes, dtype=torch.float32)
     scores = torch.tensor(scores, dtype=torch.float32)
 
     keep_indices = nms(bboxes, scores, iou_thresh)
-    filtered_large_objs = [large_objs[i] for i in keep_indices]
+    filtered_large_objs = [masklist[i] for i in keep_indices]
 
-    return small_objs + filtered_large_objs
+    return filtered_large_objs
 
 def infer_single_img(img_RGB, model):
     cell_config = {
@@ -575,11 +554,11 @@ def merge_multilevel():
             multi_masks = []
             for ctype in ['nucleus', 'cytoplasm', 'cluster']:
                 instmask = np.load(f'{mask_savedir}/{ctype}.npy')
-                mask_instlist = format_mask(instmask, ctype, minsize=5)
+                mask_instlist = format_mask(instmask, ctype)
                 multi_masks.extend(mask_instlist)
             
-            merged_mask = merge_multimask(multi_masks, iou_thresh=0.6, size_thresh=5)
-            with open(f'{mask_savedir}/merged_result.json', 'w', encoding='utf-8') as f:
+            merged_mask = merge_multimask(multi_masks, iou_thresh=0.5)
+            with open(f'{mask_savedir}/merged_result_byarea.json', 'w', encoding='utf-8') as f:
                 json.dump(merged_mask, f, ensure_ascii=False)
             
             pred_bboxes,pred_scores = [],[]
@@ -598,7 +577,7 @@ def merge_multilevel():
             areas = (pred_bboxes[:, 2] - pred_bboxes[:, 0]) * (pred_bboxes[:, 3] - pred_bboxes[:, 1])
             sorted_indices = torch.argsort(areas, descending=True)
             pred_instances = dict(
-                bboxes=pred_bboxes[sorted_indices],
+                bboxes=pred_bboxes[sorted_indices], # x1,y1,x2,y2
                 scores=pred_scores[sorted_indices],
                 labels=pred_labels[sorted_indices],
             )
@@ -620,7 +599,7 @@ def merge_multilevel_fast():
             ann_file=jsonfile,
             metric='proposal',
             classwise=False,
-            # iou_thrs=[0.5],
+            iou_thrs=[0.3],
             proposal_nums=(100, 300, 1000)
         )
         coco_metric.dataset_meta = dict(classes=['abnormal'])
@@ -630,15 +609,21 @@ def merge_multilevel_fast():
         for imgitem in tqdm(json_data['images'], ncols=80):
             purename = imgitem["file_name"].split('.')[0]
             mask_savedir = f'{root_dir}/cellpose_infer/{purename}'
-            with open(f'{mask_savedir}/merged_result.json', 'r', encoding='utf-8') as f:
+            with open(f'{mask_savedir}/merged_result_byarea.json', 'r', encoding='utf-8') as f:
                 merged_mask = json.load(f)
 
             pred_bboxes,pred_scores = [],[]
             for maskitem in merged_mask:
                 x, y, w, h = maskitem['bbox']
-                if w<20 and h<20:
+                if w<10 and h<10:
                     continue
-                pred_bboxes.append([x, y, x + w, y + h])
+                if w<50 and h<50:
+                    shift = 10
+                elif w<100 and h<100:
+                    shift = 15
+                else:
+                    shift = 20
+                pred_bboxes.append([x-shift, y-shift, x + w+shift, y + h+shift])
                 pred_scores.append(maskitem["scores"]["final"])
 
             pred_bboxes = torch.as_tensor(pred_bboxes)
@@ -663,38 +648,59 @@ def merge_multilevel_fast():
         eval_results = coco_metric.evaluate(size=len(json_data['images']))
         print(eval_results)
  
-def mergeresult2coco():
+def mergeresult2proposal():
+    maxdet = 300
     for tag in ['fold1_train', 'fold1_val']:
         jsonfile = f'{root_dir}/annofiles_roi/{tag}.json'
         with open(jsonfile, 'r', encoding='utf-8') as f:
             json_data = json.load(f)
 
-        predinfo = []
+        dump_handle = DumpProposals(
+            output_dir = f'{proposal_savedir}/',
+            proposals_file = f'{tag}_maxdet{maxdet}.pkl',
+            num_max_proposals = maxdet
+        )
         for imgitem in tqdm(json_data['images'], ncols=80):
             purename = imgitem["file_name"].split('.')[0]
             mask_savedir = f'{root_dir}/cellpose_infer/{purename}'
-            with open(f'{mask_savedir}/merged_result.json', 'r', encoding='utf-8') as f:
+            with open(f'{mask_savedir}/merged_result_byarea.json', 'r', encoding='utf-8') as f:
                 merged_mask = json.load(f)
 
-            filtered_bboxes = [
-                maskitem['bbox'] for maskitem in merged_mask
-                if maskitem['bbox'][2] >= 20 and maskitem['bbox'][3] >= 20
-            ]
+            pred_bboxes = []
+            for maskitem in merged_mask:
+                x, y, w, h = maskitem['bbox']
+                if w<10 and h<10:
+                    continue
+                if w<50 and h<50:
+                    shift = 10
+                elif w<100 and h<100:
+                    shift = 15
+                else:
+                    shift = 20
+                pred_bboxes.append([x-shift, y-shift, x + w+shift, y + h+shift])
 
-            pred_bboxes = torch.tensor(filtered_bboxes)
-            areas = pred_bboxes[:, 2] * pred_bboxes[:, 3]
+            pred_bboxes = torch.as_tensor(pred_bboxes)
+            pred_scores = torch.as_tensor([1.] * len(pred_bboxes))
+
+            # 计算每个框的面积，按面积从大到小排序
+            areas = (pred_bboxes[:, 2] - pred_bboxes[:, 0]) * (pred_bboxes[:, 3] - pred_bboxes[:, 1])
             sorted_indices = torch.argsort(areas, descending=True)
+            sorted_indices = sorted_indices[:maxdet]
+            if len(sorted_indices) != maxdet:
+                print(f'{purename} max proposal num: {len(sorted_indices)}')
+            pred_instances = dict(
+                bboxes=pred_bboxes[sorted_indices],
+                scores=pred_scores[sorted_indices],
+            )
 
-            for bbox in pred_bboxes[sorted_indices]:
-                predinfo.append({
-                    'image_id': imgitem['id'],
-                    'category_id': 1,
-                    'score': 1.,
-                    'bbox': bbox.tolist()  # 转为 list 以避免 JSON 序列化错误
-                })
-
-        with open(f'data_resource/HMCHH/proposals_file/{tag}.json', 'w', encoding='utf-8') as f:
-            json.dump(predinfo, f, ensure_ascii=False)
+            dump_handle.process(None, [{
+                'pred_instances': pred_instances,
+                'img_path': f'data_resource/HMCHH/JPEGImages/{imgitem["file_name"]}'
+            }])
+        
+        dump_handle.evaluate(size=len(json_data['images']))
+            
+            
 
 if __name__ == "__main__":
     # infer_multilevel_testdemo()
@@ -711,8 +717,8 @@ if __name__ == "__main__":
     proposal_savedir = f'{root_dir}/proposals_file'
     os.makedirs(proposal_savedir, exist_ok=True, mode=0o777)
     # merge_multilevel()
-    merge_multilevel_fast()
-    # mergeresult2coco()
+    # merge_multilevel_fast()
+    mergeresult2proposal()
 
 '''
 fold1_train:
@@ -723,6 +729,14 @@ fold1_train:
  Average Recall     (AR) @[ IoU=0.30:0.30 | area= small | maxDets=1000 ] = 0.143
  Average Recall     (AR) @[ IoU=0.30:0.30 | area=medium | maxDets=1000 ] = 0.849
  Average Recall     (AR) @[ IoU=0.30:0.30 | area= large | maxDets=1000 ] = 0.946
+
+ by_area
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=100 ] = 0.731
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=300 ] = 0.924
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=   all | maxDets=1000 ] = 0.925
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area= small | maxDets=1000 ] = 0.143
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area=medium | maxDets=1000 ] = 0.831
+ Average Recall     (AR) @[ IoU=0.30:0.30 | area= large | maxDets=1000 ] = 0.954
 
  Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | maxDets=100 ] = 0.642
  Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | maxDets=300 ] = 0.821

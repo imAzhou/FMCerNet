@@ -248,7 +248,7 @@ def visualize_fn(coco_gt, pred_info, missed_anns, image_root, num_images=5, maxD
 def missed_analyze():
     jsonfile = 'data_resource/HMCHH/annofiles_roi/fold1_train.json'
     coco_gt = COCO(jsonfile)
-    with open('data_resource/HMCHH/proposals_file/fold1_train.json', 'r', encoding='utf-8') as f:
+    with open('data_resource/HMCHH/proposals_file/fold1_train_byarea.json', 'r', encoding='utf-8') as f:
         pred_info = json.load(f)
     coco_dt = coco_gt.loadRes(pred_info)
     coco_eval = COCOeval(coco_gt, coco_dt, iouType='bbox')
@@ -359,8 +359,8 @@ def make_infer2proposal():
 if __name__ == "__main__":
     root_dir = 'data_resource/HMCHH'
     # main()
-    # missed_analyze()
-    make_infer2proposal()
+    missed_analyze()
+    # make_infer2proposal()
 
     
 
