@@ -6,116 +6,95 @@ import numpy as np
 from pycocotools import mask as mask_utils
 from tqdm import tqdm
 import glob
+from scipy import sparse
 from prettytable import PrettyTable
 from PIL import Image
 
 
 POSITIVE_CLASS = ['abnormal']
 CLASS_COLORS = [[139,0,139]]
-# data_root = '/c22073/zly/datasets/CervicalDatasets/HMCHH'
 data_root = 'data_resource/HMCHH'
 
 
-def coco_format(patchlist):
-    format_result = {
-        'categories': [{
-            'id': idx+1,
-            'name': clsname,
-            'color': clscolor,
-        } for idx, clsname,clscolor in zip(range(len(POSITIVE_CLASS)), POSITIVE_CLASS, CLASS_COLORS)],
-        'images': [],
-        'annotations': []
-    }
-
-    annid = 0
-    for idx,pInfo in enumerate(tqdm(patchlist, ncols=80)):
-        pInfo['id'] = idx
-        annos = pInfo['annotations']
-        del pInfo['annotations']
-        format_result['images'].append(pInfo)
-        
-        for ann in annos:
-            x1,y1,x2,y2 = ann['region']
-            w,h = x2-x1, y2-y1
-            clsname = ann['sub_class']
-            format_result['annotations'].append({
-                "id": annid,
-                "image_id": idx,
-                "category_id": POSITIVE_CLASS.index(clsname) + 1,
-                "bbox": [x1,y1,w,h],
-                "area": w*h,
-                "iscrowd": 0,
-            })
-            annid += 1
-
-    return format_result
-
-def parse_annos(annotations):
-    rect_items = []
-    for anno in annotations.split(';'):
-        x,y = [],[]
-        anno = anno[2:]  # one box coord str
-        anno = anno.split(" ")
-        for i in range(len(anno)):
-            if i % 2 == 0:
-                x.append(float(anno[i]))
-            else:
-                y.append(float(anno[i]))
-
-        xmin,xmax = min(x),max(x)
-        ymin,ymax = min(y),max(y)
-        rect_items.append(dict(
-            sub_class='abnormal', region=[xmin, ymin, xmax, ymax],
-        ))
-    
-    return rect_items
-
-def main(csvfiles_dir):
+def main(csvfiles_dir, imgname2ann):
 
     CV_nums = 5
+    tag_list = []
     for i in range(CV_nums):
         folddir = f'{csvfiles_dir}/fold{i+1}'
         for tag in ['train', 'val']:
-            df_data = pd.read_csv(f'{folddir}/{tag}.csv')
-            
-            patchlist = []
-            for row in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80):
-                imgname = os.path.basename(row.image_path)
-                imgpath = f'{data_root}/JPEGImages/{imgname}'
-                img = Image.open(imgpath)
-                w,h = img.size
-                rect_items = parse_annos(row.annotation)
-                patchlist.append({
-                    'width':w, 'height': h,
-                    'file_name': imgname,
-                    'diagnose': 1,
-                    'annotations': rect_items
+            tag_list.append({
+                'name': f'fold{i+1}_{tag}',
+                'csvpath': f'{folddir}/{tag}.csv'
+            })
+    tag_list.append({
+        'name': 'test',
+        'csvpath': f'{csvfiles_dir}/test.csv'
+    })
+
+    for tagitem in tag_list:
+        df_data = pd.read_csv(tagitem['csvpath'])
+        format_result = {
+            'categories': [{
+                'id': idx+1,
+                'name': clsname,
+                'color': clscolor,
+            } for idx, clsname,clscolor in zip(range(len(POSITIVE_CLASS)), POSITIVE_CLASS, CLASS_COLORS)],
+            'images': [],
+            'annotations': []
+        }
+        annid = 0
+        for row in tqdm(df_data.itertuples(index=True), total=len(df_data), ncols=80):
+            imgname = os.path.basename(row.image_path)
+            imgpath = f'{data_root}/JPEGImages/{imgname}'
+            img = Image.open(imgpath)
+            w,h = img.size
+            rect_items = imgname2ann[imgname]
+            # 按照bbox area 从大到小排序
+            rect_items = sorted(
+                rect_items,
+                key=lambda annitem: (annitem['region'][2] - annitem['region'][0]) * (annitem['region'][3] - annitem['region'][1]),
+                reverse=True  # 从大到小排序
+            )
+            pInfo = {
+                'id': row.Index, 
+                'width':w, 'height': h,
+                'file_name': imgname,
+                'diagnose': 1,
+                'extra_info': {
+                    'prefix': '',
+                    'square_coords': [0,0,w,h]
+                }
+            }
+            format_result['images'].append(pInfo)
+
+            purename = pInfo['file_name'].split('.')[0]
+            loader = np.load(f"{npz_mask_save_dir}/{purename}.npz")
+            sparse_mask = sparse.coo_matrix((loader['data'], (loader['row'], loader['col'])), shape=loader['shape'])
+            roi_mask = sparse_mask.toarray().astype(np.int16)
+            annid_list = [child['annid'] for child in rect_items]
+
+            for ann in rect_items:
+                x1,y1,x2,y2 = ann['region']
+                w,h = x2-x1, y2-y1
+                clsname = ann['sub_class']
+                inst_id = annid_list.index(ann['annid']) + 1
+                annmask = roi_mask == inst_id
+                rle = mask_utils.encode(np.asfortranarray(annmask))
+                rle['counts'] = rle['counts'].decode('utf-8')
+                format_result['annotations'].append({
+                    "id": annid,
+                    "image_id": row.Index,
+                    "category_id": POSITIVE_CLASS.index(clsname) + 1,
+                    "bbox": [x1,y1,w,h],
+                    "segmentation": rle,
+                    "area": w*h,
+                    "iscrowd": 0,
                 })
-                
-            patchInCOCO = coco_format(patchlist)
+                annid += 1
             
-            with open(f'{data_root}/annofiles_roi/fold{i+1}_{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
-                json.dump(patchInCOCO, f, ensure_ascii=False)
-    
-    df_test = pd.read_csv(f'{csvfiles_dir}/test.csv')
-    patchlist = []
-    for row in tqdm(df_test.itertuples(index=False), total=len(df_test), ncols=80):
-        imgname = os.path.basename(row.image_path)
-        imgpath = f'{data_root}/JPEGImages/{imgname}'
-        img = Image.open(imgpath)
-        w,h = img.size
-        rect_items = parse_annos(row.annotation)
-        patchlist.append({
-            'width':w, 'height': h,
-            'diagnose': 1,
-            'file_name': imgname,
-            'annotations': rect_items
-        })
-    patchInCOCO = coco_format(patchlist)
-    
-    with open(f'{ann_dir}/test_cocoformat.json', 'w', encoding='utf-8') as f:
-        json.dump(patchInCOCO, f, ensure_ascii=False)
-        
+        with open(f'{data_root}/annofiles_roi/{tagitem["name"]}.json', 'w', encoding='utf-8') as f:
+            json.dump(format_result, f, ensure_ascii=False)
 
 
 def statistic():
@@ -125,7 +104,7 @@ def statistic():
     txt_lines = []
     for tag in foldtags:
         txt_lines.append(f'{"-"*20}{tag}{"-"*20}\n')
-        with open(f'{ann_dir}/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
+        with open(f'{ann_dir}/{tag}.json', 'r', encoding='utf-8') as f:
             patch_COCOinfo = json.load(f)
         annoInimg = defaultdict(list)
         bbox_cls_cnt = [0]*len(POSITIVE_CLASS)
@@ -165,36 +144,24 @@ def statistic():
     with open(f'{ann_dir}/statistic_result.txt', 'w') as f:
         f.writelines(txt_lines)
 
-def clear_imgs():
-    keep_filename = []
-    for tag in ['fusiontrain','puretrain','val']:
-        with open(f'{ann_dir}/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
-            json_data = json.load(f)
-        
-        for patchinfo in tqdm(json_data['images'], ncols=80):
-            keep_filename.append(patchinfo["file_name"].split('/')[1])
-            # if not os.path.exists(f'{data_root}/images/{patchinfo["file_name"]}'):
-            #     print('ERROR: path not exist!')
-    #         pn_cnt[patchinfo['diagnose']] += 1
-    #     print(f'{tag}: {len(json_data["images"])}, [neg, pos]: [{pn_cnt[0]}, {pn_cnt[1]}]')
-    
-    exists_imgpath = glob.glob(f'{data_root}/images/**/*.png')
-    print(f'keep_filename nums: {len(set(keep_filename))}')
-    print(f'exists_imgpath nums: {len(exists_imgpath)}')
-
-    # for imgpath in tqdm(exists_imgpath, ncols=80):
-    #     filename = os.path.basename(imgpath)
-    #     if filename not in keep_filename:
-    #         os.remove(imgpath)
-
-
+def format_imgname2ann(roi_data):
+    result = {}
+    for roiItem in roi_data:
+        roi_annid = roiItem['annotations'][0]['annid']
+        imagname = f"{roiItem['patientId']}_{roi_annid}.png"
+        result[imagname] = roiItem['annotations'][0]['children']
+    return result
 
 if __name__ == "__main__":
     ann_dir = f'{data_root}/annofiles_roi'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
-    
+    npz_mask_save_dir = 'data_resource/HMCHH/roi_inst_mask'
+
     csvfiles_dir = f'{data_root}/csvfiles'
-    # main(csvfiles_dir)
+    with open('data_resource/HMCHH/annofiles_roi/unify_ann.json', 'r', encoding='utf-8') as f:
+        roi_data = json.load(f)
+    imgname2ann = format_imgname2ann(roi_data)
+    main(csvfiles_dir, imgname2ann)
     statistic()
     # clear_imgs()
 

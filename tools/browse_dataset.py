@@ -26,10 +26,14 @@ parser.add_argument('--vis_batch_nums', type=int, default=-1)
 def draw_dataset_gt(img, data_sample: DetDataSample, save_path, metainfo):
     classes = metainfo['classes']
     palette = metainfo['palette']
+    load_mask = metainfo['load_mask']
 
-    gt_mask = data_sample.gt_instances.masks
     gt_boxes = data_sample.gt_instances.bboxes
     boxes_clsids = data_sample.gt_instances.labels
+    if load_mask:
+        gt_mask = data_sample.gt_instances.masks
+    else:
+        gt_mask = [None]*len(gt_boxes)
 
     fig = plt.figure(figsize=(13,13))
     ax = fig.add_subplot(111)
@@ -38,10 +42,13 @@ def draw_dataset_gt(img, data_sample: DetDataSample, save_path, metainfo):
     for box,cls_id,mask in zip(gt_boxes, boxes_clsids, gt_mask): 
         cls_color = palette[cls_id]
         edgecolor = np.array([cls_color[0]/255, cls_color[1]/255, cls_color[2]/255, 1])
+        x1, y1, x2, y2 = box
+        w,h = x2-x1, y2-y1
         show_box(box, ax, edgecolor=edgecolor)
-        show_mask(mask, ax, rgb=cls_color)
-        plt.contour(mask, levels=[0.5], colors='lime', linewidths=2)
-        x1, y1 = box[:2]
+        if mask:
+            show_mask(mask, ax, rgb=cls_color)
+            plt.contour(mask, levels=[0.5], colors='lime', linewidths=2)
+        
         class_name = classes[cls_id]
         ax.text(x1, y1, class_name, fontsize=10, color='white',
                 bbox=dict(facecolor=np.array(cls_color)/255., alpha=0.5, edgecolor='none'))
@@ -63,6 +70,7 @@ def main():
     metainfo = {
         'classes': dataloader.dataset.classes,
         'palette': dataloader.dataset.palette,
+        'load_mask': dataloader.dataset.load_mask,
     }
     for i_batch, sampled_batch in enumerate(tqdm(dataloader, ncols=70)):
 

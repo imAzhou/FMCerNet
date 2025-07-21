@@ -36,7 +36,7 @@ class ImageEncoder(nn.Module):
 
         src = features[-1]
         output = {
-            "inter_features": trunk_outputs[-2],
+            "trunk_outputs": trunk_outputs,
             "vision_features": src,
             "vision_pos_enc": pos,
             "backbone_fpn": features,

@@ -146,7 +146,7 @@ def main(visual_img_num):
 
     init_cnt = img_id_counter
     for pId, tiles in tqdm(filtered_patientTileList.items(), ncols=80):
-        # if img_id_counter - init_cnt > 100:
+        # if img_id_counter - init_cnt > 50:
         #     break
         positive_tiles = [tile for tile in tiles if tile['diagnose'] == 1]
         negative_tiles = [tile for tile in tiles if tile['diagnose'] == 0]
@@ -170,9 +170,10 @@ def main(visual_img_num):
         for ann in src_lesions:
             image_id = ann['image_id']
             tile = imgId2tile[image_id]     # 当前 lesion 所在的 tile 信息
+            
             src_img = cv2.imread(f'{img_rootdir}/{tile["file_name"]}')
             src_img = cv2.cvtColor(src_img, cv2.COLOR_BGR2RGB)
-            noself_target_tiles = [item for item in target_tiles if item['id']!=ann['image_id']]
+            noself_target_tiles = [item for item in target_tiles if item['id'] != image_id]
             tgt_tile = random.choice(noself_target_tiles)
 
             tgt_img_path = f'{img_rootdir}/{tgt_tile["file_name"]}'
@@ -208,11 +209,12 @@ def main(visual_img_num):
         json.dump(updated_json, f, ensure_ascii=False)
 
 if __name__ == "__main__":
-    dataroot = 'data_resource/0511/WINDOW_SIZE_512'
+    WS = 700
+    dataroot = f'data_resource/0511/WINDOW_SIZE_{WS}'
     pastimg_savedir = f'{dataroot}/images/paste_pos'
     os.makedirs(pastimg_savedir, exist_ok=True, mode=0o777)
     set_seed(666)
-    visual_savedir = 'statistic_results/aug_copypaste'
+    visual_savedir = f'statistic_results/aug_copypaste/WS{WS}'
     os.makedirs(visual_savedir, exist_ok=True, mode=0o777)
     visual_img_num_eachpid = 5
     main(visual_img_num_eachpid)

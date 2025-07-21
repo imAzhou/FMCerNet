@@ -22,17 +22,18 @@ import copy
 from torchvision import transforms
 from mmengine.logging import MMLogger
 from cerwsi.utils import KFBSlide, set_seed
-from cerwsi.nets import ValidClsNet, PatchClsNet
+from cerwsi.nets import ValidClsNet
+from mmdet.models.detectors import DINO
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules.conv")
 
 LEVEL = 0
-PATCH_EDGE = 512
+PATCH_EDGE = 1600
 CERTAIN_THR = 0.7
 NEGATIVE_THR = 0.5
 positive_ratio_thr = 0.05
-POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
+POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL', 'SCC']
 
 def inference_valid_batch(valid_model, read_result_pool, curent_id, save_prefix):
     data_batch = dict(inputs=[], data_samples=[])
@@ -68,68 +69,6 @@ def inference_valid_batch(valid_model, read_result_pool, curent_id, save_prefix)
 
     return valid_idx
 
-def format_bboxes(outputs, bidx, downsample_ratio, pcoords):
-    sx1,sy1,sx2,sy2 = pcoords   # patch 块在 Slide 中的坐标
-    token_probs,token_classes = outputs['token_probs'][bidx],outputs['token_classes'][bidx]
-    feat_size = int(math.sqrt(token_probs.shape[0]))
-    token_classes = token_classes.reshape((feat_size, feat_size)).detach().cpu().numpy()
-    token_classes_resized = cv2.resize(token_classes, (PATCH_EDGE, PATCH_EDGE), interpolation=cv2.INTER_NEAREST)
-    token_probs = token_probs.reshape((feat_size, feat_size)).detach().cpu().numpy()
-    token_probs_resized = cv2.resize(token_probs, (PATCH_EDGE, PATCH_EDGE), interpolation=cv2.INTER_LINEAR)
-    total_bboxes = []
-    for class_id in range(1, len(POSITIVE_CLASS) + 1):  # 只处理 > 0 的类别
-        mask = (token_classes_resized == class_id)
-        if np.sum(mask) > 0:
-            cls_name = POSITIVE_CLASS[class_id - 1]
-            # 获取连通区域的外接矩形框
-            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
-            bboxes = []
-            scores = []
-            for i in range(1, num_labels):  # 跳过背景
-                x, y, bwidth, bheight, _ = stats[i]
-                x1, y1, x2, y2 = x, y, x + bwidth, y + bheight
-                if bwidth < 50 and bheight < 50:
-                    center_x = (x1 + x2) / 2
-                    center_y = (y1 + y2) / 2
-                    x1, y1 = center_x-25,center_y-25
-                    x2, y2 = center_x+25,center_y+25
-                
-                # 提取第 i 个连通区域的 mask（按 label）
-                region_mask = (labels == i)
-                region_probs = token_probs_resized[region_mask]
-                max_score = float(np.max(region_probs)) if region_probs.size > 0 else 0.0
-                bboxes.append((np.array([x1, y1, x2, y2]))*downsample_ratio)   # bbox 坐标 (在 LEVEL=0 上的坐标)
-                scores.append(max_score)
-
-            boxes_tensor = torch.tensor(np.array(bboxes), dtype=torch.float32)
-            scores_tensor = torch.tensor(scores, dtype=torch.float32)
-            keep = nms(boxes_tensor, scores_tensor, iou_threshold=0.7)
-            kept_boxes = boxes_tensor[keep].numpy()
-            kept_boxes_score = scores_tensor[keep].numpy()
-            
-            for coord,score in zip(kept_boxes, kept_boxes_score):
-                bx1,by1,bx2,by2 = coord.tolist()
-                total_bboxes.append({
-                    'coord': [bx1+sx1,by1+sy1,bx2+sx1,by2+sy1],
-                    'score': float(score),
-                    'clsname': cls_name,
-                })
-    class_order = POSITIVE_CLASS[::-1]  # ['HSIL', 'ASC-H', 'LSIL', 'ASC-US', 'AGC']
-    # 排序：先按 clsname 在 class_order 中的索引，再按 score 降序
-    total_bboxes_sorted = sorted(
-        total_bboxes,
-        key=lambda x: (class_order.index(x['clsname']), -x['score'])
-    )
-    if len(total_bboxes) > 20:
-        top_bbox = total_bboxes_sorted[0]
-        
-        total_bboxes_sorted = [{
-            'coord': pcoords,
-            'score': top_bbox['score'],
-            'clsname': top_bbox['clsname'],
-        }]   
-    return total_bboxes_sorted
-
 def inference_batch_pn(pn_model, valid_input, save_prefix, downsample_ratio):
     transform = transforms.Compose([
         transforms.Resize(pn_model.img_size),
@@ -144,7 +83,8 @@ def inference_batch_pn(pn_model, valid_input, save_prefix, downsample_ratio):
     )
 
     with torch.no_grad():
-        outputs = pn_model(data_batch, 'val')
+        outputs = pn_model(data_batch['inputs'], data_batch['data_samples'], mode="predict")
+        print()
     
     pred_result = []
     for bidx in range(len(outputs['inputs'])):
@@ -207,11 +147,11 @@ def process_patches(proc_id, start_points, valid_model, pn_model, kfb_path, pati
 
 def get_pn_model(device):
     cfg = Config.fromfile(args.config_file)
-    cfg.backbone_cfg['backbone_ckpt'] = None
-    cfg.instance_ckpt = None
-    model = PatchClsNet(cfg).to(device)
+    del cfg.model.type
+    model = DINO(**cfg.model).to(device)
     model.img_size = cfg.input_size
-    model.load_ckpt(args.ckpt)
+    ckpt = torch.load(args.ckpt, weights_only=False, map_location=device)['state_dict']
+    model.load_state_dict(ckpt)
     model.eval()
     return model
 
