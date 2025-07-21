@@ -24,9 +24,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('config_file', type=str)
 parser.add_argument('ckpt', type=str)
 parser.add_argument('save_dir', type=str)
+parser.add_argument('val_annojson', type=str)
+parser.add_argument('img_dir', type=str)
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--visual_nums', type=int, default=-1, help='visual sample nums')
-parser.add_argument('--visual_save_dir', type=str)
 parser.add_argument('--calc_metric', action='store_true')
 
 args = parser.parse_args()
@@ -128,6 +129,8 @@ def test_net(cfg, pn_model):
     visual_cnt = 0
     for item in tqdm(coco.imgs.values(), ncols=80):
         purename = item["file_name"].split('/')[-1]
+        if purename != 'JFSW_2_6_2488482245663_6.png':
+            continue
         img_path = f'{cfg.img_dir}/{item["file_name"]}'
         img_tensor = transform(Image.open(img_path))
         img_tensor = img_tensor.unsqueeze(0).to(pn_model.device)
@@ -150,11 +153,14 @@ def test_net(cfg, pn_model):
         filtered_bboxes, filtered_scores, filtered_labels = postprocess_pred(pred_bboxes,pred_scores,pred_labels)
         if args.visual_nums > 0 and visual_cnt < args.visual_nums:
             gt_info = coco.loadAnns(coco.getAnnIds(imgIds=[item['id']]))
-            savedir = args.visual_save_dir
+            savedir = f'{args.save_dir}/pred_result'
             os.makedirs(savedir, exist_ok=True, mode=0o777)
             visua_pred(img_path, gt_info, filtered_bboxes, filtered_scores, filtered_labels, f'{savedir}/{purename}')
             visual_cnt += 1
         
+        if args.visual_nums > 0 and visual_cnt > args.visual_nums:
+            break
+
         if args.calc_metric:
             pred_instances = dict(bboxes=pred_bboxes,scores=pred_scores,labels=pred_labels,)
             coco_metric.process(
@@ -174,8 +180,8 @@ def main():
     cfg = Config.fromfile(args.config_file)
     del cfg.model.type
 
-    cfg.val_annojson = cfg.val_dataset.data_root + cfg.val_dataset.ann_file
-    cfg.img_dir = cfg.val_dataset.data_root + cfg.val_dataset.data_prefix['img'][:-1]
+    cfg.val_annojson = args.val_annojson
+    cfg.img_dir = args.img_dir
     model = DINO(**cfg.model).to(device)
     model.img_size = cfg.input_size
     model.device = device
@@ -194,6 +200,7 @@ python test_MMdetNet.py \
     log/WS1600/vis_data/config.py \
     log/WS1600/epoch_8.pth \
     log/WS1600 \
-    --visual_nums 50 \
-    --visual_save_dir log/WS1600/pred_result
+    data_resource/0630/WINDOW_SIZE_1600/annofiles/puretrain_noNeg_cocoformat.json \
+    data_resource/0630/WINDOW_SIZE_1600/images \
+    --visual_nums 50
 '''

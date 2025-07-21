@@ -6,5 +6,6 @@ log/
 statistic_results/
 data_resource/
 predict_results/
+model_structure/
 cer_wsi.egg-info/
 **/__pycache__

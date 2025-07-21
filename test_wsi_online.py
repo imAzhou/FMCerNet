@@ -3,13 +3,11 @@ torchvision.disable_beta_transforms_warning()
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message=r"^xFormers is available \(.*\)")
 import torch
-import json
 import time
 from mmpretrain.structures import DataSample
+from mmdet.structures import DetDataSample
 import argparse
 import cv2
-import math
-from torchvision.ops import nms
 from mmengine.config import Config
 from math import ceil
 import numpy as np
@@ -21,7 +19,7 @@ import os
 import copy
 from torchvision import transforms
 from mmengine.logging import MMLogger
-from cerwsi.utils import KFBSlide, set_seed
+from cerwsi.utils import KFBSlide, set_seed,is_bbox_inside
 from cerwsi.nets import ValidClsNet
 from mmdet.models.detectors import DINO
 
@@ -69,9 +67,49 @@ def inference_valid_batch(valid_model, read_result_pool, curent_id, save_prefix)
 
     return valid_idx
 
+def postprocess_pred(pred_bboxes,pred_scores,pred_labels):
+    filtered_bboxes,filtered_scores,filtered_labels = [],[],[]
+    for bbox,score,label in zip(pred_bboxes,pred_scores,pred_labels):
+        if score > 0.2:
+            filtered_bboxes.append(bbox.tolist()) # x1,y1,x2,y2
+            filtered_scores.append(score.item())
+            filtered_labels.append(label.item())
+    if len(filtered_bboxes) == 0:
+        return [],[],[]
+    
+    bboxes = np.array(filtered_bboxes)
+    labels = np.array(filtered_labels)
+    areas = (bboxes[:, 2] - bboxes[:, 0]) * (bboxes[:, 3] - bboxes[:, 1])
+    sorted_indices = np.argsort(-areas)  # 从大到小排序
+
+    n = len(bboxes)
+    used = np.zeros(n, dtype=bool)
+    final_bboxes,final_scores,final_labels = [],[],[]
+    for i in sorted_indices:
+        if used[i]:
+            continue
+        group_indices = [i]
+        for j in sorted_indices:
+            if i == j or used[j]:
+                continue
+            if is_bbox_inside(bboxes[j], bboxes[i], tolerance=5):
+                group_indices.append(j)
+                used[j] = True
+
+        # 当前 group 最外层是 i，label 取 group 内最大值
+        max_label = labels[group_indices].max()
+        final_bboxes.append(bboxes[i].tolist())
+        final_scores.append(filtered_scores[i])
+        final_labels.append(int(max_label))
+        used[i] = True
+
+    return final_bboxes,final_scores,final_labels
+
 def inference_batch_pn(pn_model, valid_input, save_prefix, downsample_ratio):
+    inputsize = pn_model.img_size
+    imgw,imgh = PATCH_EDGE,PATCH_EDGE
     transform = transforms.Compose([
-        transforms.Resize(pn_model.img_size),
+        transforms.Resize(inputsize),
         transforms.ToTensor(),
         transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
     ])
@@ -79,26 +117,32 @@ def inference_batch_pn(pn_model, valid_input, save_prefix, downsample_ratio):
     images_tensor = torch.stack(img_inputs, dim=0).to(pn_model.device)
     data_batch = dict(
         inputs=images_tensor,
-        data_samples = [DataSample(ori_shape=(PATCH_EDGE,PATCH_EDGE)) for i in range(len(valid_input))]
+        data_samples = [
+            DetDataSample(
+                metainfo={
+                    'img_shape':(inputsize,inputsize),
+                    'ori_shape':(imgw,imgh),
+                    'scale_factor': (inputsize/imgh, inputsize/imgh)
+                },
+                batch_input_shape=(inputsize,inputsize),
+            ) for i in range(len(valid_input))]
     )
 
     with torch.no_grad():
         outputs = pn_model(data_batch['inputs'], data_batch['data_samples'], mode="predict")
-        print()
     
     pred_result = []
-    for bidx in range(len(outputs['inputs'])):
+    for bidx in range(len(data_batch['inputs'])):
         pcoords = valid_input[bidx]['coords']
-        # pred_cls = torch.max(outputs['token_classes'][bidx], dim=-1)[0]
-        # pred_clsid = (pred_cls > 0).int().item()
-        pred_clsid = (outputs['img_probs'][bidx] > 0.5).int().item()
-
+        predresult = outputs[bidx].pred_instances
+        pred_bboxes,pred_scores,pred_labels = predresult.bboxes.cpu(), predresult.scores.cpu(), predresult.labels.cpu()
+        filtered_bboxes, filtered_scores, filtered_labels = postprocess_pred(pred_bboxes,pred_scores,pred_labels)
+        pred_clsid = int(len(filtered_bboxes) > 0)
         patch_predinfo = {
             'pred_label': pred_clsid,
             'pos_bboxes': []
         }
-        # if pred_clsid == 1:
-        #     patch_predinfo['pos_bboxes'] = format_bboxes(outputs, bidx, downsample_ratio, pcoords)
+
         pred_result.append(patch_predinfo)
         
         if args.visual_pred and str(pred_clsid) in args.visual_pred:
@@ -135,7 +179,7 @@ def process_patches(proc_id, start_points, valid_model, pn_model, kfb_path, pati
             print(f'\rCore: {proc_id}, 当前已处理: {sum(curent_id)}', end='')
         
         if len(valid_read_result) > 0 and not args.only_valid:
-            pred_result = inference_batch_pn(pn_model, valid_read_result, save_prefix, downsample_ratio)
+            pred_result = inference_batch_pn(pn_model, valid_read_result, save_prefix)
             for pidx, pitem in enumerate(valid_read_result):
                 pitem['pn_pred'] = pred_result[pidx]
                 del pitem['image']
