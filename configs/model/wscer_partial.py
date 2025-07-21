@@ -3,7 +3,7 @@ _base_ = [
 ]
 
 # backbone
-backbone_type = 'convnext'
+backbone_type = 'sam2'
 backbone_cfg = _base_.backbone_cfgdict[backbone_type]
 
 # neck

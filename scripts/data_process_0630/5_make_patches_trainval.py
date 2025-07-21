@@ -13,11 +13,11 @@ import random
 import glob
 from prettytable import PrettyTable
 
-WINDOW_SIZE = 1000
-POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
-CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
-data_root = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}'
-neg_patch_thr = 50
+WINDOW_SIZE = 1600
+POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL', 'SCC']
+CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139],[106,0,50]]
+data_root = f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}'
+neg_patch_thr = 0
 
 def coco_format(patchlist):
     format_result = {
@@ -70,7 +70,7 @@ def ensure_exist(RoI_patchlist):
     return new_RoI_patchlist
 
 def main(use_jfsw):
-    # with open(f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/ann_jsons/ppatches_in_NegSlide.json', 'r', encoding='utf-8') as f:
+    # with open(f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}/ann_jsons/ppatches_in_NegSlide.json', 'r', encoding='utf-8') as f:
     #     negslide_patchlist = json.load(f)
     with open(f'{data_root}/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
         RoI_patchlist = json.load(f)
@@ -83,17 +83,18 @@ def main(use_jfsw):
         patient2patchlist[patchInfo['patientId']].append(patchInfo)
     
     data_group = {
-        'puretrain': 'data_resource/0511/4_pure_train.csv',
-        'val': 'data_resource/0511/6_val.csv'
+        'puretrain': 'data_resource/0630/4_pure_train.csv',
+        'val': 'data_resource/0630/6_val.csv'
     }
     for tag,csvpath in data_group.items():
         df_data = pd.read_csv(csvpath)
         patchlist = []
         for row in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80):
             patchlist.extend(patient2patchlist[row.patientId])
+            
         patchInCOCO = coco_format(patchlist)
-        
-        with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'w', encoding='utf-8') as f:
+        savename = f'{tag}_noNeg_cocoformat' if neg_patch_thr==0 else f'{tag}_cocoformat'
+        with open(f'{data_root}/annofiles/{savename}.json', 'w', encoding='utf-8') as f:
             json.dump(patchInCOCO, f, ensure_ascii=False)
     
         if tag == 'puretrain' and use_jfsw:
@@ -101,16 +102,20 @@ def main(use_jfsw):
             #     jfswtrain_negslide_patchlist = json.load(f)
             with open(f'{data_root}/ann_jsons/patches_in_RoI_jfsw_valid.json', 'r', encoding='utf-8') as f:
                 jfsw_pos_patchdata = json.load(f)
-            df_jfswtrain = pd.read_csv('data_resource/0511/5_jfsw_train.csv')
+            df_jfswtrain = pd.read_csv('data_resource/0630/5_jfsw_train.csv')
             # jfsw_patchdata = [*jfswtrain_negslide_patchlist, *jfsw_pos_patchdata]
             jfsw_patchdata = jfsw_pos_patchdata
             jfsw_patchdata = [i for i in jfsw_patchdata if i['patientId'] in list(df_jfswtrain['patientId'])]
 
             fusionPatchInCOCO = coco_format([*patchlist, *jfsw_patchdata])
-            with open(f'{data_root}/annofiles/fusiontrain_cocoformat.json', 'w', encoding='utf-8') as f:
+            savename = f'fusiontrain_noNeg_cocoformat' if neg_patch_thr==0 else f'fusiontrain_cocoformat'
+            with open(f'{data_root}/annofiles/{savename}.json', 'w', encoding='utf-8') as f:
                 json.dump(fusionPatchInCOCO, f, ensure_ascii=False)
         
 def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
+    if neg_patch_thr == 0:
+        new_RoI_patchlist = [i for i in RoI_patchlist if i["prefix"] != 'neg']
+        return new_RoI_patchlist
 
     neg_count = Counter()
     for item in tqdm(RoI_patchlist, ncols=80):
@@ -135,11 +140,9 @@ def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
     
     return new_RoI_patchlist
     
-def statistic():
+def statistic(tags):
     txt_lines = []
-    for tag in ['fusiontrain', 'puretrain', 'val',
-                # 'puretrain_aug', 'puretrain_withneg', 'puretrain_aug_withneg'
-                ]:
+    for tag in tags:
     # for tag in ['puretrain']:
         txt_lines.append(f'{"-"*30}{tag}{"-"*30}\n')
         with open(f'{data_root}/annofiles/{tag}_cocoformat.json', 'r', encoding='utf-8') as f:
@@ -211,7 +214,12 @@ if __name__ == "__main__":
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
     main(use_jfsw=True)
-    statistic()
+    tags = [
+        # 'fusiontrain', 'puretrain', 'val',
+        'fusiontrain_noNeg', 'puretrain_noNeg', 'val_noNeg',
+        # 'puretrain_aug', 'puretrain_withneg', 'puretrain_aug_withneg'
+        ]
+    statistic(tags)
     # clear_imgs()
 
     

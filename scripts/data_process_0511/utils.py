@@ -23,7 +23,7 @@ def bbox_intersection_area(boxes1, boxes2):
 
 def imgName2patientId(df_data)->str:
     name2PID = defaultdict(str)
-    for row in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80):
+    for row in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80, desc='Process imgName2patientId'):
         filename = os.path.basename(row.kfb_path)
         name2PID[filename] = row.patientId
     return name2PID
@@ -44,17 +44,14 @@ def has_box_inside(bbox, all_bboxes):
             return True
     return False
 
-def process_noparent_ann(annitems, roi_type, sq_size = 500):
+def process_noparent_ann(annitems, roi_type, roi_min_size, max_xy, sq_size = 500):
     backup_rois = []
     for annitem in annitems:
         x1,y1,x2,y2 = annitem['region']
         w,h = x2-x1, y2-y1
-        rx1,ry1,rx2,ry2 = float('inf'),float('inf'),-float('inf'),-float('inf')
-        for i in range(5):
-            square_x1,square_y1 = random_cut_square((x1,y1,w,h), sq_size=sq_size)
-            square_x2,square_y2 = square_x1+sq_size, square_y1+sq_size
-            rx1,ry1 = min(rx1, square_x1),min(ry1, square_y1)
-            rx2,ry2 = max(rx2, square_x2),max(ry2, square_y2)
+        rx1,ry1 = random_cut_square((x1,y1,w,h), sq_size=sq_size)
+        rx2,ry2 = rx1+sq_size, ry1+sq_size
+        
         # 处理情况： annitem bbox 过于大，生成的 RoI 无法完全包裹它
         rw,rh = rx2-rx1, ry2-ry1
         if rw < w or rh < h:
@@ -66,7 +63,7 @@ def process_noparent_ann(annitems, roi_type, sq_size = 500):
             sub_class=roi_type, region=[rx1,ry1,rx2,ry2],
             parent_id = -1
         ))
-    merged_rois = merge_backup_rois(backup_rois)
+    merged_rois = merge_backup_rois(backup_rois,roi_min_size, max_xy)
 
     return merged_rois
 
@@ -85,7 +82,11 @@ def clip_roi_region(coords, max_xy, minlen = 1024):
     return [rx1,ry1,rx2,ry2]
 
 
-def merge_backup_rois(backup_rois, min_size=200):
+def merge_backup_rois(backup_rois, roi_min_size, max_xy, inter_min_size=200):
+    '''
+    inter_min_size: 两个 RoI 交集区域宽高均大于 inter_min_size 时执行合并
+    roi_min_size: 最终合并后的 RoI 宽高最小值
+    '''
     n = len(backup_rois)
     visited = [False] * n
     groups = []
@@ -118,7 +119,7 @@ def merge_backup_rois(backup_rois, min_size=200):
         visited[idx] = True
         group.append(idx)
         for j in range(n):
-            if not visited[j] and valid_merge(backup_rois[idx]['region'], backup_rois[j]['region'], min_size):
+            if not visited[j] and valid_merge(backup_rois[idx]['region'], backup_rois[j]['region'], inter_min_size):
                 dfs(j, group)
 
     for i in range(n):
@@ -130,11 +131,35 @@ def merge_backup_rois(backup_rois, min_size=200):
     merged_rois = []
     for group in groups:
         regions = [backup_rois[i]['region'] for i in group]
-        merged_region = merge_regions(regions)
+        mrx1, mry1, mrx2, mry2 = merge_regions(regions)
+        width,height = mrx2 - mrx1, mry2 - mry1
+        
+        # 约束1: 确保宽高不小于roi_min_size
+        if width < roi_min_size:
+            center_x = (mrx1 + mrx2) // 2
+            mrx1 = max(0, center_x - roi_min_size // 2)
+            mrx2 = mrx1 + roi_min_size
+        if height < roi_min_size:
+            center_y = (mry1 + mry2) // 2
+            mry1 = max(0, center_y - roi_min_size // 2)
+            mry2 = mry1 + roi_min_size
+        
+        # 约束2: 确保不超过图像边界
+        if max_xy is not None:
+            W, H = max_xy
+            # 检查x2是否超过宽度
+            if mrx2 > W:
+                mrx1 = max(0, W - roi_min_size)  # 保证最小尺寸
+                mrx2 = W
+            # 检查y2是否超过高度
+            if mry2 > H:
+                mry1 = max(0, H - roi_min_size)  # 保证最小尺寸
+                mry2 = H
+
         merged_rois.append(dict(
             annid=int(str(uuid.uuid4().int)[:13]),
             sub_class=backup_rois[group[0]]['sub_class'],
-            region=merged_region,
+            region=[mrx1,mry1,mrx2,mry2],
             parent_id=-1
         ))
 

@@ -46,24 +46,24 @@ class WSCerPartial(MetaClassifier):
     def __init__(self, args):
 
         save_result_dir = getattr(args, 'save_result_dir', None)
-        evaluator = build_evaluator([ImgODCOCOMetric(
-            args.logger_name,save_result_dir,
-            args.val_evaluator,args.classes
-        )])
-        # evaluator = build_evaluator([BinaryMetric(args.logger_name, 
-        #                                           thr = args.positive_thr,
-        #                                           save_result_dir = save_result_dir,)])
+        # evaluator = build_evaluator([ImgODCOCOMetric(
+        #     args.logger_name,save_result_dir,
+        #     args.val_evaluator,args.classes
+        # )])
+        evaluator = build_evaluator([BinaryMetric(args.logger_name, 
+                                                  thr = args.positive_thr,
+                                                  save_result_dir = save_result_dir,)])
         super(WSCerPartial, self).__init__(evaluator, **args)
 
         featcfg = get_featcfg(args)
         self.binary_cls_branch = BinaryClsBranch(featcfg['input_feat'][0][0])
-        self.instance_branch = Instance_branch(
-            img_input_size = args.input_size,
-            num_classes = args.num_classes,
-            num_instance_queries = args.num_instance_queries,
-            pretrain_ckpt = args.instance_ckpt,
-            featcfg = featcfg
-        )
+        # self.instance_branch = Instance_branch(
+        #     img_input_size = args.input_size,
+        #     num_classes = args.num_classes,
+        #     num_instance_queries = args.num_instance_queries,
+        #     pretrain_ckpt = args.instance_ckpt,
+        #     featcfg = featcfg
+        # )
 
     def filter4inst(self, dict_inputs: dict, databatch):
         posIndx = [idx for idx,item in enumerate(databatch['data_samples']) if item.diagnose==1]
@@ -101,14 +101,14 @@ class WSCerPartial(MetaClassifier):
         loss = img_loss
         loss_dict = {'img_loss': img_loss.item()}
 
-        inst_dict_inputs,inst_databatch = self.filter4inst(dict_inputs, databatch)
-        # inst_dict_inputs,inst_databatch = dict_inputs, databatch
-        instance_loss_dict = self.instance_branch.loss(inst_dict_inputs,inst_databatch, None)
-        loss = 0.
-        loss_dict = {}
-        for key,value in instance_loss_dict.items():
-            loss += value
-            loss_dict[key] = value.item()
+        # inst_dict_inputs,inst_databatch = self.filter4inst(dict_inputs, databatch)
+        # # inst_dict_inputs,inst_databatch = dict_inputs, databatch
+        # instance_loss_dict = self.instance_branch.loss(inst_dict_inputs,inst_databatch, None)
+        # loss = 0.
+        # loss_dict = {}
+        # for key,value in instance_loss_dict.items():
+        #     loss += value
+        #     loss_dict[key] = value.item()
 
         return loss, loss_dict
     
@@ -116,8 +116,7 @@ class WSCerPartial(MetaClassifier):
         img_logits,inter_var = self.binary_cls_branch(dict_inputs['vision_features'])
         databatch['img_probs'] = torch.sigmoid(img_logits)
         
-        # patch_probs = self.binary_cls_branch.patch_probs(inter_var, scale=4)
-        # databatch['patch_probs'] = patch_probs
-        databatch['pred_bbox'] = self.instance_branch.predict(dict_inputs, databatch, None)
-        databatch['img_probs'] = torch.Tensor([int(len(predbbox)>0) for predbbox in databatch['pred_bbox']])
+        patch_probs = self.binary_cls_branch.patch_probs(inter_var, scale=4)
+        databatch['patch_probs'] = patch_probs
+        # databatch['pred_bbox'] = self.instance_branch.predict(dict_inputs, databatch, None)
         return databatch

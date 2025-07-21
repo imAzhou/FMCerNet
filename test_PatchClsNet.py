@@ -72,7 +72,7 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12340 test_PatchClsNet.py \
-    log/WINDOW_SIZE_512/mAP_30.6/config.py \
-    log/WINDOW_SIZE_512/mAP_30.6/checkpoints/best.pth \
-    log/WINDOW_SIZE_512/mAP_30.6
+    log/WINDOW_SIZE_512/instance_onlychief/config.py \
+    log/WINDOW_SIZE_512/instance_onlychief/checkpoints/best.pth \
+    log/WINDOW_SIZE_512/instance_onlychief
 '''

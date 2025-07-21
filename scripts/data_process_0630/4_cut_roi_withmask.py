@@ -9,23 +9,24 @@ import numpy as np
 import warnings
 import cv2
 import torch
+from scipy.ndimage import find_objects
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from mmpretrain.structures import DataSample
 import multiprocessing
 from multiprocessing import Pool
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules.conv")
 
 CERTAIN_THR = 0.7
 LEVEL = 0
-WINDOW_SIZE = 1000
-STRIDE = 950
+WINDOW_SIZE = 1600
+STRIDE = WINDOW_SIZE - 50
 
 test_patientId = [
-    'ZY_ONLINE_1_45', 'ZY_ONLINE_1_196',    # 0409 Slide，0422 Slide
-    'JFSW_2_1486', 'JFSW_2_152',     # 空 RoI，有标注 RoI
-    'JFSW_1_2', 'JFSW_2_2111', 'WXL_1_26'     # partial_pos slide 'JFSW_2_133', 
+    'ZY_ONLINE_1_45', 'ZY_ONLINE_1_21', 'ZY_ONLINE_1_1481',   # 0409 Slide，0422 Slide, 0607 Slide
+    # 'JFSW_2_1486', 'JFSW_2_152',     # 空 RoI，有标注 RoI
+    # 'JFSW_1_2', 'JFSW_2_2111', 'WXL_1_26'     # partial_pos slide 'JFSW_2_133', 
 ]
 
 def show_mask(mask, ax, random_color=False):
@@ -56,14 +57,14 @@ def vis_patch_sample(image, roi_masks, bboxes, filename):
         
     plt.axis('off')
     plt.tight_layout()
-    os.makedirs('statistic_results/0511/patch_from_RoI', exist_ok=True, mode=0o777)
-    plt.savefig(f'statistic_results/0511/patch_from_RoI/{filename}')
+    os.makedirs('statistic_results/0630/patch_from_RoI', exist_ok=True, mode=0o777)
+    plt.savefig(f'statistic_results/0630/patch_from_RoI/{filename}')
     plt.close()
 
 def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_save_dir):
     patchitems = []
     for idx, item in enumerate(all_json_datas):
-        # if item['patientId'] != 'JFSW_2_302':
+        # if item['patientId'] not in test_patientId:
         #     continue
         for RoIItem in item['annotations']:
             rx1,ry1,rx2,ry2 = (np.array(RoIItem['region']).astype(np.int32)).tolist()
@@ -143,29 +144,43 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
     return patchitems
 
 def calc_patch_anns(patch_coords, RoIItem, roi_mask):
-    rpx1,rpy1,rpx2,rpy2 = patch_coords  # 相对 roi 的坐标
+    rpx1, rpy1, rpx2, rpy2 = patch_coords  # 相对 ROI 的坐标
     patch_mask = roi_mask[rpy1:rpy2, rpx1:rpx2]
-    new_patch_mask = np.zeros_like(patch_mask)
-    ann_bboxes, ann_clsnames = [],[]
+    new_patch_mask = np.zeros_like(patch_mask, dtype=np.uint8)
+    
+    ann_bboxes, ann_clsnames = [], []
     annidx = np.unique(patch_mask)
-    if np.sum(annidx) == 0:     # 是否只有背景（背景 annid 为 0）
-        return ann_bboxes, ann_clsnames, new_patch_mask
-    
-    for aidx in annidx[1:]:
-        annmask = patch_mask == aidx
-        instmask = np.argwhere(annmask)
-        by1,bx1 = instmask.min(axis=0)    # (y_min, x_min)
-        by2,bx2 = instmask.max(axis=0)  # (y_max, x_max)
-        bwidth,bheight = bx2-bx1, by2-by1
-        if bwidth > 20 and bheight > 20:
-            ann_bboxes.append(np.array([bx1,by1,bx2,by2]).tolist())
-            annitem = RoIItem['children'][aidx-1]
-            ann_clsnames.append(annitem['sub_class'])
-            new_patch_mask[annmask] = len(ann_bboxes)   # id: 1,2,...
-    
-    if np.sum(new_patch_mask>0) < 20*20:    # 总的阳性病变面积太小则忽略
-        return [], [], np.zeros_like(patch_mask)
-    
+    if len(annidx) <= 1:
+        return ann_bboxes, ann_clsnames, new_patch_mask  # only background (0)
+
+    # 使用 find_objects 获取所有非零实例的切片区域
+    objects = find_objects(patch_mask)  # 返回一个 列表 slices，长度等于 input 中的最大 label 值（不包括 0）
+    for aidx in annidx[1:]:  # 跳过背景 0
+        obj_slice = objects[aidx-1]
+        if obj_slice is None:
+            continue
+        yslice, xslice = obj_slice
+  
+        by1, by2 = yslice.start, yslice.stop
+        bx1, bx2 = xslice.start, xslice.stop
+        bwidth, bheight = bx2 - bx1, by2 - by1
+        
+        # 判断是否为贴边小目标
+        is_small = min(bwidth, bheight) < 50
+        is_near_edge = (
+            bx1 <= 1 or by1 <= 1 or
+            bx2 >= patch_mask.shape[1] - 1 or
+            by2 >= patch_mask.shape[0] - 1
+        )
+        if is_small and is_near_edge:
+            continue  # 丢弃该 annitem
+        
+        ann_bboxes.append([bx1, by1, bx2, by2])
+        annitem = RoIItem['children'][aidx - 1]
+        ann_clsnames.append(annitem['sub_class'])
+        region = (patch_mask[yslice, xslice] == aidx)
+        new_patch_mask[yslice, xslice][region] = len(ann_bboxes)  # 实例 ID 从 1 开始
+
     return ann_bboxes, ann_clsnames, new_patch_mask
 
 def process_cut(proc_id, img_save_dir, patchlist:dict):
@@ -269,54 +284,59 @@ def statistic_imgs():
     print(pn_cnt)
 
 if __name__ == "__main__":
-    npz_mask_save_dir = 'data_resource/0511/roi_inst_mask'
-    img_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/images'
-    patch_npz_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/patch_inst_mask'
+    timetag = '0630'
+    npz_mask_save_dir = f'data_resource/{timetag}/roi_inst_mask'
+    img_save_dir = f'data_resource/{timetag}/WINDOW_SIZE_{WINDOW_SIZE}/images'
+    patch_npz_save_dir = f'data_resource/{timetag}/WINDOW_SIZE_{WINDOW_SIZE}/patch_inst_mask'
     os.makedirs(patch_npz_save_dir, exist_ok=True, mode=0o777)
-    json_save_dir = f'data_resource/0511/WINDOW_SIZE_{WINDOW_SIZE}/ann_jsons'
+    json_save_dir = f'data_resource/{timetag}/WINDOW_SIZE_{WINDOW_SIZE}/ann_jsons'
     os.makedirs(json_save_dir, exist_ok=True, mode=0o777)
-    with open('data_resource/0511/zheyi_roi.json', 'r', encoding='utf-8') as f:
+    with open(f'data_resource/{timetag}/zheyi_roi.json', 'r', encoding='utf-8') as f:
         zheyi_roi_data = json.load(f)
-    with open('data_resource/0511/zheyi_slide.json', 'r', encoding='utf-8') as f:
+    with open(f'data_resource/{timetag}/zheyi_slide.json', 'r', encoding='utf-8') as f:
         zheyi_slide = json.load(f)
-    with open('data_resource/0511/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
+    with open(f'data_resource/{timetag}/wxl_pos_slide.json', 'r', encoding='utf-8') as f:
         wxl_pos_slide = json.load(f)
-    with open('data_resource/0511/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
+    with open(f'data_resource/{timetag}/jfsw_pos_slide.json', 'r', encoding='utf-8') as f:
         jfsw_pos_slide = json.load(f)
 
-    # all_json_datas = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
-    all_json_datas = jfsw_pos_slide
-    patches_jsonname = 'patches_in_RoI_jfsw'    # patches_in_RoI_pure, patches_in_RoI_jfsw
+    zheyi_pos_slide = [*zheyi_roi_data, *zheyi_slide, *wxl_pos_slide]
+    for all_json_datas,patches_jsonname in zip([zheyi_pos_slide, jfsw_pos_slide], ['patches_in_RoI_pure', 'patches_in_RoI_jfsw']):
 
-    cpu_num = 8
-    set_split = np.array_split(range(len(all_json_datas)), cpu_num)
-    print(f"Number of cores: {cpu_num}, set number of per core: {len(set_split[0])}")
-    multiprocessing.set_start_method('spawn', force=True)
-    workers = Pool(processes=cpu_num)
-    processes = []
-    for proc_id, set_group in enumerate(set_split):
-        process_group = [all_json_datas[i] for i in set_group]
-        p = workers.apply_async(gene_patch_jsonlist, (proc_id, process_group, npz_mask_save_dir, patch_npz_save_dir))
-        processes.append(p)
-    patchItems = []
-    for p in processes:
-        results = p.get()
-        patchItems.extend(results)
-    workers.close()
-    workers.join()
-    with open(f'{json_save_dir}/{patches_jsonname}.json', 'w', encoding='utf-8') as f:
-        json.dump(patchItems, f, ensure_ascii=False)
+        # gene_patch_jsonlist(0, all_json_datas, npz_mask_save_dir, patch_npz_save_dir)
 
-    for tag in ['neg', 'partial_pos', 'total_pos']:
-        os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
-    multiprocessing.set_start_method('spawn', force=True)
-    cut_patch_imgs(img_save_dir)
+        cpu_num = 8
+        set_split = np.array_split(range(len(all_json_datas)), cpu_num)
+        print(f"Number of cores: {cpu_num}, set number of per core: {len(set_split[0])}")
+        multiprocessing.set_start_method('spawn', force=True)
+        workers = Pool(processes=cpu_num)
+        processes = []
+        for proc_id, set_group in enumerate(set_split):
+            process_group = [all_json_datas[i] for i in set_group]
+            p = workers.apply_async(gene_patch_jsonlist, (proc_id, process_group, npz_mask_save_dir, patch_npz_save_dir))
+            processes.append(p)
+        patchItems = []
+        for p in processes:
+            results = p.get()
+            patchItems.extend(results)
+        workers.close()
+        workers.join()
+        with open(f'{json_save_dir}/{patches_jsonname}.json', 'w', encoding='utf-8') as f:
+            json.dump(patchItems, f, ensure_ascii=False)
 
-    statistic_imgs()
+        for tag in ['neg', 'partial_pos', 'total_pos']:
+            os.makedirs(f'{img_save_dir}/{tag}', exist_ok=True, mode=0o777)
+        multiprocessing.set_start_method('spawn', force=True)
+        cut_patch_imgs(img_save_dir)
 
+        statistic_imgs()
+ 
 '''
+WINDOW_SIZE = 1600, STRIDE = 1550:
+['neg', 'total_pos', 'partial_pos']: [19203, 11616, 2568], [0, 0, 10666] ([19203, 11616, 13234])
+
 WINDOW_SIZE = 1000, STRIDE = 950:
-['neg', 'total_pos', 'partial_pos']: [31635, 11379, 2462], [0, 0, 10886] ([31635, 11379, 13348])
+['neg', 'total_pos', 'partial_pos']: [56186, 17051, 2507], [0, 0, 10732] ([56186, 17051, 13239])
 
 WINDOW_SIZE = 700, STRIDE = 650:
 ['neg', 'total_pos', 'partial_pos']: [70183, 15448, 8382], [0, 0, 29666] ([70183, 15448, 38048])

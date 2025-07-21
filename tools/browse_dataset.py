@@ -47,6 +47,7 @@ def draw_dataset_gt(img, data_sample: DetDataSample, save_path, metainfo):
                 bbox=dict(facecolor=np.array(cls_color)/255., alpha=0.5, edgecolor='none'))
 
     ax.set_title('GT info')
+    ax.set_axis_off()
     patches = [mpatches.Patch(facecolor=np.array(palette[i])/255., label=classes[i], edgecolor='black') for i in range(len(classes))]
     plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize='large')
 
@@ -70,11 +71,11 @@ def main():
         
         for idx,data_sample in enumerate(sampled_batch['data_samples']):
             filename = data_sample.img_path.split('/')[-1]
-            patientId = '_'.join(filename.split('_')[:3])
+            patientId = '_'.join(filename.split('_')[:-2])
             prefix = data_sample.extra_info['prefix']
-            if prefix != 'paste_pos':
-                continue
-            # if patientId != 'JFSW_2_302':
+            # if prefix != 'paste_pos':
+            #     continue
+            # if patientId != 'ZY_ONLINE_1_1481':
             #     continue
             # if filename != 'JFSW_1_40_paste_1.png':
             #     continue
@@ -104,6 +105,6 @@ if __name__ == '__main__':
 '''
 python tools/browse_dataset.py \
     configs/dataset/mmdet/l_cerscanv1_dataset.py \
-    statistic_results/visual_results/gt_puretrain_aug \
-    --vis_batch_nums 20
+    statistic_results/visual_results/gt_1600 \
+    --vis_batch_nums 50
 '''
