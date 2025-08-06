@@ -1,39 +1,36 @@
-def constrain_merged_region(mrx1, mry1, mrx2, mry2, roi_min_size=2048, max_xy=None):
-    """
-    对合并后的区域坐标进行约束处理
+import pandas as pd
+from prettytable import PrettyTable
+
+
+dataconfig = {
+    'puretrain': 'data_resource/0630/4_pure_train.csv',
+    'jfswtrain': 'data_resource/0630/5_jfsw_train.csv',
+    'val': 'data_resource/0630/6_val.csv',
+    'test': 'data_resource/0630/7_test.csv',
+}
+
+for mode, filepath in dataconfig.items():
+    df_data = pd.read_csv(filepath)
+    df_unique = df_data.drop_duplicates(subset=["patientId"])
     
-    参数:
-        mrx1, mry1, mrx2, mry2: 合并后的区域坐标
-        roi_min_size: 区域最小尺寸 (默认2048)
-        max_xy: 图像最大尺寸 (W, H) 元组
+    # 统计每个类别的数量
+    cls_counts = df_unique["kfb_clsname"].value_counts().to_dict()
     
-    返回:
-        约束后的坐标 (mrx1, mry1, mrx2, mry2)
-    """
-    # 计算当前区域宽度和高度
-    width,height = mrx2 - mrx1, mry2 - mry1
+    # 打印结果
+    table = PrettyTable()
+    table.title = f"{mode} Class Distribution"
+    table.field_names = ["Class Name", "Patient Count"]
     
-    # 约束1: 确保宽高不小于roi_min_size
-    if width < roi_min_size:
-        center_x = (mrx1 + mrx2) // 2
-        mrx1 = max(0, center_x - roi_min_size // 2)
-        mrx2 = mrx1 + roi_min_size
-    if height < roi_min_size:
-        center_y = (mry1 + mry2) // 2
-        mry1 = max(0, center_y - roi_min_size // 2)
-        mry2 = mry1 + roi_min_size
+    total_pos, total_neg = 0, 0
+    for cls, count in cls_counts.items():
+        table.add_row([cls, count])
+        if cls != "NILM":
+            total_pos += count
+        else:
+            total_neg += count
     
-    # 约束2: 确保不超过图像边界
-    if max_xy is not None:
-        W, H = max_xy
-        # 检查x2是否超过宽度
-        if mrx2 > W:
-            mrx1 = max(0, W - roi_min_size)  # 保证最小尺寸
-            mrx2 = W
-        # 检查y2是否超过高度
-        if mry2 > H:
-            mry1 = max(0, H - roi_min_size)  # 保证最小尺寸
-            mry2 = H
-        
-    
-    return mrx1, mry1, mrx2, mry2
+    # 加总计行
+    table.add_row(["---", "---"])
+    table.add_row(["Total", f"Pos:{total_pos} / Neg:{total_neg}"])
+
+    print(table)

@@ -85,7 +85,7 @@ def main():
             #     continue
             # if patientId != 'ZY_ONLINE_1_1481':
             #     continue
-            # if filename != 'JFSW_1_40_paste_1.png':
+            # if filename != 'JFSW_2_1630_1941810727723_3.png':
             #     continue
             if data_sample.diagnose == 0:
                 continue
@@ -113,6 +113,6 @@ if __name__ == '__main__':
 '''
 python tools/browse_dataset.py \
     configs/dataset/mmdet/l_cerscanv1_dataset.py \
-    statistic_results/visual_results/gt_1600 \
+    statistic_results/visual_results/gt_1600_jfswtrain \
     --vis_batch_nums 50
 '''

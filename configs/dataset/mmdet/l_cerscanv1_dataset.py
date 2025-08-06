@@ -2,7 +2,7 @@
 
 data_root = 'data_resource/0630/WINDOW_SIZE_1600'
 img_dir = f'{data_root}/images'
-classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL', 'SCC']
+classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'instance'    # cls, instance
 load_proposal = False
@@ -10,7 +10,7 @@ train_bs = 16
 val_bs = 32
 input_size = 1024  # 224, 392, 448, 512, 1024
 
-train_annojson = f'{data_root}/annofiles/puretrain_noNeg_cocoformat.json'
+train_annojson = f'{data_root}/annofiles/fusiontrain_noNeg_cocoformat.json'
 albu_train_transforms = [
     dict(type='ShiftScaleRotate',
         shift_limit=0.0625,

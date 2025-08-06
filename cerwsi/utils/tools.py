@@ -206,47 +206,53 @@ def read_json_anno(json_path, encoding='GB2312'):
     annotations = data.get('annotation', [])
     return annotations
 
-def generate_cut_regions(region_start, region_width, region_height, k, stride=400):
+def generate_cut_regions(region_start, region_width, region_height, k, stride=400, minlen=0):
     """
-    生成裁切区域的坐标，从左至右，从上至下裁切，步长为 stride，边角区域不超出原始区域。
-    
+    生成裁切区域的坐标框 [x1, y1, x2, y2]，按 stride 均匀划分。
+    边缘不足 minlen 时舍弃
+
     :param region_start: 区域的起点坐标 (x, y)
     :param region_width: 区域的宽度
     :param region_height: 区域的高度
-    :param k: 正方形的边长
+    :param k: 裁切区域边长（正方形）
     :param stride: 步长
-    :return: 裁切区域的左上角坐标列表 [(x1, y1), ...]
+    :param minlen: 边角区域的最小保留尺寸
+    :return: 裁切区域坐标列表 [[x1, y1, x2, y2], ...]
     """
     x_start, y_start = region_start
     cut_regions = []
 
-    # 主循环，生成所有完整的裁切区域
-    y = y_start
-    while y + k <= y_start + region_height:
-        x = x_start
-        while x + k <= x_start + region_width:
-            cut_regions.append((x, y))
-            x += stride
-        y += stride
+    # 1. 调整宽度
+    w_rem = region_width % stride
+    if w_rem <= minlen:
+        region_width -= w_rem  # 舍弃不足 minlen 的部分
+        new_width = region_width
+    else:
+        new_width = region_width + (stride-w_rem)
+    # 2. 调整高度
+    h_rem = region_height % stride
+    if h_rem <= minlen:
+        region_height -= h_rem
+        new_height = region_height
+    else:
+        new_height = region_height + (stride-h_rem)
 
-    # 处理右边和下边的边角区域
-    if x + k > x_start + region_width:  # 右边的边角区域
-        x = x_start + region_width - k
-        y = y_start
-        while y + k <= y_start + region_height:
-            cut_regions.append((x, y))
-            y += stride
+    # 3. 均匀取点
+    for y in range(0, new_width, stride):
+        for x in range(0, new_height, stride):
+            x1, y1 = x, y
+            x2, y2 = x1 + k, y1 + k
 
-    if y + k > y_start + region_height:  # 下边的边角区域
-        y = y_start + region_height - k
-        x = x_start
-        while x + k <= x_start + region_width:
-            cut_regions.append((x, y))
-            x += stride
+            # 4. 边界修正
+            if x2 > region_width:
+                x2 = region_width
+                x1 = x2 - k
+            if y2 > region_height:
+                y2 = region_height
+                y1 = y2 - k
 
-    # 右下角的角落区域
-    if (x_start + region_width - k, y_start + region_height - k) not in cut_regions:
-        cut_regions.append((x_start + region_width - k, y_start + region_height - k))
+            cut_regions.append([x1+x_start, y1+y_start, x2+x_start, y2+y_start])
+
     return cut_regions
 
 def draw_OD(read_image, save_path, square_coords, inside_items, class_labels):
