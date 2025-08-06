@@ -81,11 +81,11 @@ def main():
             filename = data_sample.img_path.split('/')[-1]
             patientId = '_'.join(filename.split('_')[:-2])
             prefix = data_sample.extra_info['prefix']
-            # if prefix != 'paste_pos':
-            #     continue
+            if prefix != 'partial_pos':
+                continue
             # if patientId != 'ZY_ONLINE_1_1481':
             #     continue
-            # if filename != 'JFSW_1_40_paste_1.png':
+            # if filename != 'WXL_1_25_1717869845996_0.png':
             #     continue
             if data_sample.diagnose == 0:
                 continue
@@ -113,6 +113,6 @@ if __name__ == '__main__':
 '''
 python tools/browse_dataset.py \
     configs/dataset/mmdet/l_cerscanv1_dataset.py \
-    statistic_results/visual_results/gt_1600 \
+    statistic_results/visual_results/gt_1600_partial_pos \
     --vis_batch_nums 50
 '''

@@ -47,18 +47,23 @@ backbone_cfgdict = {
     ),
     'sam2': dict(
         backbone_output_dim = [144, 288, 576, 1152],
+        backbone_output_downratio = [4, 8, 16, 32],
         config_file = 'cerwsi/nets/backbone/SAM2/configs/sam2.1/sam2.1_hiera_l.yaml',
         backbone_ckpt = 'checkpoints/sam2.1_hiera_large.pt',
         frozen_backbone = True,
         use_peft = 'lora', 
         use_dtcwt_indexes = range(2),  # stage num_blocks: [2,6,36,4]
+        vit_patch_size = 16,
         default_input_size = 1024
     ),
     'smartccs': dict(
         backbone_output_dim = [1024],
+        backbone_output_downratio = [14],
         backbone_ckpt = 'checkpoints/CCS_vitl_100M.pth',
         frozen_backbone = True,
-        use_peft = 'lora', 
+        use_peft ='lora', 
+        use_dtcwt_indexes = range(2),
+        vit_patch_size = 14,
         default_input_size = 224
     ),
 }

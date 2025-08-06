@@ -18,6 +18,7 @@ from torch.nn.init import trunc_normal_
 
 from .layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention
 from .block import NestedTensorBlock as Block
+from cerwsi.nets.backbone.PEFT.peft_ours import DTCWTModule
 
 
 def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, include_root=False) -> nn.Module:
@@ -62,6 +63,8 @@ class DinoVisionTransformer(nn.Module):
         num_register_tokens=0,
         interpolate_antialias=False,
         interpolate_offset=0.1,
+        use_dtcwt_indexes: Tuple[int, ...] = (),  # [0,1]
+        dtcwt_featlen: int=0
     ):
         """
         Args:
@@ -160,6 +163,15 @@ class DinoVisionTransformer(nn.Module):
 
         self.mask_token = nn.Parameter(torch.zeros(1, embed_dim))
 
+        self.use_dtcwt_indexes = use_dtcwt_indexes
+        if len(self.use_dtcwt_indexes) > 0:
+            self.dtxwts = nn.ModuleList()
+            for i in use_dtcwt_indexes:
+                self.dtxwts.append(DTCWTModule(
+                    dim=embed_dim,
+                    feat_size=dtcwt_featlen
+                ))
+
         self.init_weights()
 
     def init_weights(self):
@@ -250,8 +262,25 @@ class DinoVisionTransformer(nn.Module):
 
         x = self.prepare_tokens_with_masks(x, masks)
 
-        for blk in self.blocks:
+        if len(self.use_dtcwt_indexes) > 0:
+            B,num_tokens,C = x.shape
+            featlen = int(math.sqrt(num_tokens-1))
+            # B, H, W, C = input_x.shape
+            input_x = x[:,1:,:].reshape(B,featlen,featlen,C)
+            output_x = self.dtxwts[0](input_x)
+            output_x = output_x.reshape(B,-1,C)
+            x = torch.cat(( x[:,0,:].unsqueeze(1), output_x), dim=1)
+
+        for idx,blk in enumerate(self.blocks):
             x = blk(x)
+            if idx+1 in self.use_dtcwt_indexes:
+                B,num_tokens,C = x.shape
+                featlen = int(math.sqrt(num_tokens-1))
+                # B, H, W, C = input_x.shape
+                input_x = x[:,1:,:].reshape(B,featlen,featlen,C)
+                output_x = self.dtxwts[idx+1](input_x)
+                output_x = output_x.reshape(B,-1,C)
+                x = torch.cat(( x[:,0,:].unsqueeze(1), output_x), dim=1)
 
         x_norm = self.norm(x)
         return {

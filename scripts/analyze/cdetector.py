@@ -5,13 +5,14 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from cerwsi.utils import draw_OD,generate_cut_regions,is_bbox_inside
+from pycocotools.coco import COCO
+# from cerwsi.utils import draw_OD,generate_cut_regions,is_bbox_inside
 
 POSITIVE_CLASS = ['ASC-US', 'LSIL', 'ASC-H', 'HSIL', 'AGC']
 colors = plt.cm.tab10(np.linspace(0, 1, len(POSITIVE_CLASS)))[:, :3] * 255
 category_colors = {cat: tuple(map(int, color)) for cat, color in zip(POSITIVE_CLASS, colors)}
-WINDOW_SIZE = 406
-STRIDE = 350
+WINDOW_SIZE = 750
+STRIDE = WINDOW_SIZE - 50
 
 def get_cutregion_inside(square_coord, inside_items, min_overlap=50):
     '''
@@ -91,61 +92,23 @@ def convert_anno(annoinfo):
     
     return anno_img
     
-def vis_sample_img():
-    mode = 'train'
-    image_dir = f'{root_dir}/{mode}'
-    json_path = f'{root_dir}/{mode}.json'
-    with open(json_path, 'r') as f:
-        annoinfo = json.load(f)
-    anno_img = convert_anno(annoinfo)
-    
-    for fidx, filename in enumerate(os.listdir(image_dir)):
-        if fidx > 10:
-            break
-        img = cv2.imread(f'{image_dir}/{filename}')
-        h,w,_ = img.shape
-        img_np = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img_plt = Image.fromarray(img_np)
-        
-        square_coords = [0,0,w,h]
-        inside_items = anno_img[filename]
-        purename = filename.split('.')[0]
-        save_dir = f'statistic_results/cdetector/{purename}'
-        os.makedirs(save_dir, exist_ok=True)
-
-        save_path = f'{save_dir}/origin.png'
-        draw_OD(img_plt, save_path, square_coords, inside_items, category_colors)
-
-        cut_points = generate_cut_regions((0,0), w, h, WINDOW_SIZE, STRIDE)
-        for iidx,rect_coords in enumerate(cut_points):
-            x1,y1 = rect_coords
-            x2,y2 = x1+WINDOW_SIZE,y1+WINDOW_SIZE
-            item_inside_patch = get_cutregion_inside([x1,y1,x2,y2], inside_items)
-            save_path = f'{save_dir}/patch_{iidx}.png'
-            img_patch = Image.fromarray(img_np[y1:y2+1, x1:x2+1, :])
-            draw_OD(img_patch, save_path, [0,0,WINDOW_SIZE,WINDOW_SIZE], item_inside_patch, category_colors)
-
 def analyze_img_wh():
-    for mode in ['test']:
-        image_dir = f'{root_dir}/{mode}'
-       
-        min_w,min_h = 10000,10000
-        all_w, all_h = [],[]
-        for fidx, filename in enumerate(os.listdir(image_dir)):
-            img = cv2.imread(f'{image_dir}/{filename}')
-            h,w,_ = img.shape
-            all_w.append(w)
-            all_h.append(h)
-            if h<min_h:
-                min_h = h
-            if w<min_w:
-                min_w = w
-        print(f'{mode}: min w: {min_w}, min h: {min_h}')
-        mean_w,mean_h = np.mean(all_w),np.mean(all_h)
-        print(f'min w: {mean_w}, min h: {mean_h}')
+    for mode in ['train','test']:
+        with open(f'{root_dir}/{mode}.json', 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+        all_w = [i['width'] for i in json_data['images']]
+        all_h = [i['height'] for i in json_data['images']]
+        
+        print(f'{mode}: ')
+        print(f'min w: {min(all_w)}, min h: {min(all_h)}')
+        print(f'max w: {max(all_w)}, max h: {max(all_h)}')
         '''
-        train: min w: 975, min h: 580
-        test: min w: 975, min h: 580
+        train: 
+        min w: 975, min h: 580
+        max w: 2100, max h: 1253
+        test: 
+        min w: 975, min h: 580
+        max w: 2100, max h: 1253
         '''
 
 def analayze_img_nums():
@@ -202,10 +165,9 @@ def analyze_cls_dist():
 
 
 if __name__ == '__main__':
-    # root_dir = '/x22201018/datasets/CervicalDatasets/ComparisonDetectorDataset'
-    # root_dir = '/c22073/zly/datasets/CervicalDatasets/ComparisonDetectorDataset'
-    root_dir = '/c22073/zly/datasets/CervicalDatasets/data_resource'
-    # analyze_img_wh()
+
+    root_dir = 'data_resource/ComparisonDetectorDataset'
+    analyze_img_wh()
     # vis_sample_img()
     # analayze_img_nums()
-    analyze_cls_dist()
+    # analyze_cls_dist()

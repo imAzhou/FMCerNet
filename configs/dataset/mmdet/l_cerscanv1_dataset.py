@@ -1,16 +1,17 @@
 # dataset settings 
 
-data_root = 'data_resource/0630/WINDOW_SIZE_1600'
+data_root = 'data_resource/WINDOW_SIZE_1600'
 img_dir = f'{data_root}/images'
-classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL', 'SCC']
+classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'instance'    # cls, instance
 load_proposal = False
 train_bs = 16
 val_bs = 32
 input_size = 1024  # 224, 392, 448, 512, 1024
+with_mask = False
 
-train_annojson = f'{data_root}/annofiles/puretrain_noNeg_cocoformat.json'
+train_annojson = f'{data_root}/annofiles/fusiontrain_noNeg_cocoformat.json'
 albu_train_transforms = [
     dict(type='ShiftScaleRotate',
         shift_limit=0.0625,
@@ -51,21 +52,21 @@ train_transform = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=with_mask),
     dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),
-    dict(
-        type='Albu',
-        transforms=albu_train_transforms,
-        bbox_params=dict(
-            type='BboxParams',
-            format='pascal_voc',    # bbox: [x1,y1,x2,y2]
-            label_fields=['gt_bboxes_labels', 'gt_ignore_flags'],
-            min_visibility=0.0),
-        keymap={
-            'img': 'image',
-            'gt_masks': 'masks',
-            'gt_bboxes': 'bboxes'
-        },
-        skip_img_without_anno=False),
-    dict(type='RandomFlip', prob=0.5),
+    # dict(
+    #     type='Albu',
+    #     transforms=albu_train_transforms,
+    #     bbox_params=dict(
+    #         type='BboxParams',
+    #         format='pascal_voc',    # bbox: [x1,y1,x2,y2]
+    #         label_fields=['gt_bboxes_labels', 'gt_ignore_flags'],
+    #         min_visibility=0.0),
+    #     keymap={
+    #         'img': 'image',
+    #         'gt_masks': 'masks',
+    #         'gt_bboxes': 'bboxes'
+    #     },
+    #     skip_img_without_anno=False),
+    # dict(type='RandomFlip', prob=0.5),
     # dict(type='Rotate', prob=0.2, max_mag=15.),
     dict(type='PackDetInputs')
 ]

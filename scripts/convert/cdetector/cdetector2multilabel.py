@@ -271,7 +271,6 @@ def gene_img_json():
         
         with open(f'{annojson_save_dir}/{mode}_patches.json', 'w') as f:
             json.dump(patch_list, f)
-        
 
 if __name__ == '__main__':
     # root_dir = '/x22201018/datasets/CervicalDatasets/ComparisonDetectorDataset'

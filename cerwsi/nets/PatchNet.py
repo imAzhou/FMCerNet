@@ -37,7 +37,7 @@ class PatchNet(nn.Module):
         params_weight = torch.load(ckpt, map_location=self.device)
         print(self.load_state_dict(params_weight, strict=False))
     
-    def forward(self, data_batch, mode, optim_wrapper=None):        
+    def forward(self, data_batch, mode, optim_wrapper=None):
         if mode == 'train':
             return self.train_step(data_batch, optim_wrapper)
         if mode == 'val':

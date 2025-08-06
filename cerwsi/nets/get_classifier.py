@@ -14,7 +14,7 @@ allowed_classifier_type = ['online_version','binary_linear', 'multicls_linear', 
                            'wscer_mlc', 'wscer_binary', 'wscer_partial', 'wscer_alltoken']
 
 def get_classifier(args):
-    classifier_type = args.classifier_type
+    classifier_type = args.taskhead_model
     assert classifier_type in allowed_classifier_type, f'classifier_type allowed in {allowed_classifier_type}'
     
     classifier = None

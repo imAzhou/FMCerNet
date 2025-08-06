@@ -1,4 +1,4 @@
-import torch
-from torchvision.ops import nms
-from cerwsi.utils import is_bbox_inside
+import pandas as pd
 
+
+df_data = pd.read_csv('')

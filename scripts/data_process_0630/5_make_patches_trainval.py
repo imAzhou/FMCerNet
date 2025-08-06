@@ -14,9 +14,9 @@ import glob
 from prettytable import PrettyTable
 
 WINDOW_SIZE = 1600
-POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL', 'SCC']
-CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139],[106,0,50]]
-data_root = f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}'
+POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
+CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
+data_root = f'data_resource/WINDOW_SIZE_{WINDOW_SIZE}'
 neg_patch_thr = 0
 
 def coco_format(patchlist):
@@ -207,18 +207,34 @@ def clear_imgs():
     #     if filename not in keep_filename:
     #         os.remove(imgpath)
 
-
+def reset_scc2hsil(tags):
+    for tag in tags:
+        jsonfile = f'{data_root}/annofiles/{tag}_cocoformat.json'
+        with open(jsonfile, 'r', encoding='utf-8') as f:
+            patch_COCOinfo = json.load(f)
+        
+        annotations = []
+        for annoinfo in patch_COCOinfo['annotations']:
+            if annoinfo['category_id'] == 6:
+                annoinfo['category_id'] = 5
+            annotations.append(annoinfo)
+        
+        patch_COCOinfo['annotations'] = annotations
+        patch_COCOinfo['categories'] = [i for i in patch_COCOinfo['categories'] if i['id']!=6]
+        with open(jsonfile, 'w', encoding='utf-8') as f:
+            json.dump(patch_COCOinfo, f, ensure_ascii=False)
 
 if __name__ == "__main__":
     ann_dir = f'{data_root}/annofiles'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     
-    main(use_jfsw=True)
+    # main(use_jfsw=True)
     tags = [
         # 'fusiontrain', 'puretrain', 'val',
         'fusiontrain_noNeg', 'puretrain_noNeg', 'val_noNeg',
         # 'puretrain_aug', 'puretrain_withneg', 'puretrain_aug_withneg'
         ]
+    # reset_scc2hsil(tags)
     statistic(tags)
     # clear_imgs()
 

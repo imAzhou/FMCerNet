@@ -1,13 +1,11 @@
 # dataset settings 
-
-data_root = 'data_resource/WINDOW_SIZE_1600'
-img_dir = f'{data_root}/images'
-classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
+data_root = 'data_resource/ComparisonDetectorDataset/WINDOW_SIZE_400'
+classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL', 'SCC']
 num_classes = len(classes)
 dataset_type = 'multicls'    # cls, instance
 train_bs = 32
 val_bs = 32
-input_size = 448  # 224, 392, 448, 512, 1024
+input_size = 224  # 224, 392, 448, 512, 1024
 
 rand_increasing_policies = [
     dict(type='AutoContrast'),
@@ -31,7 +29,7 @@ rand_increasing_policies = [
 train_datasets = dict(
     data_root = data_root,
     data_prefix = 'images',
-    ann_file = 'annofiles/multilabel_puretrain.json',
+    ann_file = 'annofiles/multilabel_train.json',
     pipeline = [
         dict(type='LoadImageFromFile'),
         dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),

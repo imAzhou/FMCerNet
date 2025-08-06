@@ -3,7 +3,8 @@ import os
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message=r"^xFormers is available \(.*\)")
 from tqdm import tqdm
-import torch.distributed as dist
+import mmengine.dist as dist
+from mmengine.fileio import dump
 import argparse
 from mmengine.config import Config
 from cerwsi.datasets import load_data
@@ -16,6 +17,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('config_file', type=str)
 parser.add_argument('ckpt', type=str)
 parser.add_argument('save_dir', type=str)
+parser.add_argument('--val_json', type=str, help='assign val jsondatas')
+parser.add_argument('--save_result', action='store_true')
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--print_interval', type=int, default=10, help='random seed')
 parser.add_argument('--world_size', default=3, type=int, help='number of distributed processes')
@@ -31,17 +34,27 @@ def test_net(cfg, model, model_without_ddp):
     if is_main_process():
         pbar = tqdm(valloader, ncols=80)
     
+    batch_outputs = []
     for idx, data_batch in enumerate(pbar):
         # if idx > 2:
         #     break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
         model_without_ddp.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
+        
+        if args.save_result:
+            batch_outputs.extend([item.cpu() for item in outputs])
+    if args.save_result:
+        results = dist.collect_results(batch_outputs, len(valloader.dataset), device='cpu')
     
     metrics = model_without_ddp.taskhead.evaluator.evaluate(len(valloader.dataset))
     if is_main_process():
         pbar.close()
         print(metrics)
+        if args.save_result:
+            out_file_path = f'{args.save_dir}/pred_result.pkl'
+            dump(results, out_file_path)
+            print(f'Results saved in {out_file_path}')
 
 def main():
     init_distributed_mode(args)
@@ -52,6 +65,8 @@ def main():
     cfg.save_result_dir = args.save_dir
     cfg.backbone_cfg['backbone_ckpt'] = None
     cfg.instance_ckpt = None
+    if args.val_json:
+        cfg.val_datasets['ann_file'] = args.val_json
     model = PatchNet(cfg).to(device)
     model_without_ddp = model
 
@@ -68,11 +83,13 @@ def main():
 
 if __name__ == '__main__':
     main()
-    # analyze(f'{args.save_dir}/pred_results_0.5.json')
+
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12340 test_PatchNet.py \
-    log/hmchh/detr/2025_07_06_22_41_45/config.py \
-    log/hmchh/detr/2025_07_06_22_41_45/checkpoints/best.pth \
-    log/hmchh/detr/2025_07_06_22_41_45
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 tools/test_PatchNet.py \
+    log/WS850/mlc/hardsample_round0/config.py \
+    log/WS850/mlc/hardsample_round0/checkpoints/best.pth \
+    log/WS850/mlc/hardsample_round0 \
+    --val_json annofiles/multilabel_puretrain.json \
+    --save_result
 '''
