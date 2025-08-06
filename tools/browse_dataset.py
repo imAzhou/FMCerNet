@@ -81,8 +81,8 @@ def main():
             filename = data_sample.img_path.split('/')[-1]
             patientId = '_'.join(filename.split('_')[:-2])
             prefix = data_sample.extra_info['prefix']
-            # if prefix != 'paste_pos':
-            #     continue
+            if prefix != 'partial_pos':
+                continue
             # if patientId != 'ZY_ONLINE_1_1481':
             #     continue
             # if filename != 'JFSW_2_1630_1941810727723_3.png':

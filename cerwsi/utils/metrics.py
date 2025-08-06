@@ -210,8 +210,11 @@ class MyMultiTokenMetric(MultiLabelMetric):
     '''
     同时预测图片阴阳概率和含每个阳性类别的概率
     '''
-    def __init__(self,**args) -> None:
-        super(MyMultiTokenMetric, self).__init__(**args)
+    def __init__(self, thr, num_classes, logger_name) -> None:
+        super(MyMultiTokenMetric, self).__init__(thr=thr)
+        self.num_classes = num_classes
+        self.logger_name = logger_name
+        self.thr = thr
 
     def process(self, data_batch, data_samples):
         """Process one batch of data samples.
@@ -225,41 +228,14 @@ class MyMultiTokenMetric(MultiLabelMetric):
         """
 
         thr = self.thr if self.thr else 0.3
-        data_samples = data_samples[0]
-        bs_img_gt = data_samples['image_labels']
-        bs_img_pred = (data_samples['img_probs'] > thr).int()
-        bs = bs_img_gt.shape[0]
-        self.num_classes = data_samples['pos_probs'].shape[-1] + 1
-        for bidx in range(bs):
-            gt_multi_label = torch.nonzero(data_samples['multi_pos_label'][bidx], as_tuple=True)[0]
-            gt_multi_label = [i+1 for i in gt_multi_label]
-            if len(gt_multi_label) == 0:
-                gt_multi_label = [0]
-            confidence_pred = (data_samples['pos_probs'][bidx] > thr).int()
-            # if sum(confidence_pred) > 0 or bs_img_pred[bidx] == 1:
-            if bs_img_pred[bidx] == 1:
-                bs_img_pred[bidx] = 1
-                pred_multi_label = [clsidx+1 for clsidx,pred in enumerate((data_samples['pos_probs'][bidx] > 0.3).int()) if pred == 1]
-            else:
-                bs_img_pred[bidx] = 0
-                pred_multi_label = [0]
-            
-            # if bs_img_pred[bidx] == 0:
-            #     pred_multi_label = [0]
-            # else:
-            #     pred_multi_label = [clsidx+1 for clsidx,pred in enumerate(bs_pos_pred[bidx]) if pred == 1]
-            
-            # feat_gt = cls_feat_gt[bidx,:]
-            # feat_pred = csl_feat_pred[bidx,:]
-            # gt_multi_label = torch.unique(feat_gt, dim=-1)
-            # pred_multi_label = torch.unique(feat_pred, dim=-1)
-
+ 
+        for item in data_samples:
+            pred_multi_label = [clsidx for clsidx,cls_score in enumerate(item['pos_prob']) if cls_score > thr]
             result = dict(
-                img_gt = bs_img_gt[bidx],
-                img_pred = bs_img_pred[bidx],
-                # cls_feat_gt = cls_feat_gt[bidx],
-                # csl_feat_pred = csl_feat_pred[bidx],
-                gt_multi_label = gt_multi_label,
+                img_gt = int(len(item['gt_label'])>0),
+                img_pred = int(item['img_prob'] > thr),
+                img_probs = item['img_prob'].item(),
+                gt_multi_label = item['gt_label'],
                 pred_multi_label = pred_multi_label,
             )
 
@@ -279,29 +255,27 @@ class MyMultiTokenMetric(MultiLabelMetric):
         # NOTICE: don't access `self.results` from the method. `self.results`
         # are a list of results from multiple batch, while the input `results`
         # are the collected results.
+        logger = MMLogger.get_instance(self.logger_name)
         result_metrics = dict()
 
         img_gt = [rs['img_gt'] for rs in results]
         img_pred = [rs['img_pred'] for rs in results]
-        # feat_gt = torch.stack([rs['cls_feat_gt'] for rs in results]).flatten()
-        # feat_pred = torch.stack([rs['csl_feat_pred'] for rs in results]).flatten()
-
-        img_result = calculate_metrics(img_gt,img_pred)
-        for k,v in img_result.items():
-            if k != 'cm':
-                result_metrics['img_'+k] = v
+        img_probs = [rs['img_probs'] for rs in results]
         
-        # token_result = {'precision':[],'recall':[]}
-        # token_result['acc'] = accuracy_score(feat_gt, feat_pred)
-        # report = classification_report(feat_gt, feat_pred, output_dict=True)
-        # for cls, metrics in report.items():
-        #     if isinstance(metrics, dict) and 'avg' not in cls:  # 跳过 'accuracy' 总值
-        #         token_result['precision'].append(metrics['precision'])
-        #         token_result['recall'].append(metrics['recall'])
-        # token_result['macro_avg'] = report['macro avg']
-        # for k,v in token_result.items():
-        #     if k != 'cm':
-        #         result_metrics['token_'+k] = v
+        fpr, tpr, thresholds = roc_curve(img_gt, img_probs)
+        result_metrics['img_AUC'] = round((auc(fpr, tpr)).item(), 4)
+        img_result = calculate_metrics(img_gt,img_pred)
+        cm = img_result['cm']
+        del img_result['cm']
+        for k,v in img_result.items():
+            result_metrics['img_'+k] = v
+        
+        result_table_1 = PrettyTable()
+        result_table_1.field_names = result_metrics.keys()
+        result_table_1.add_row(result_metrics.values())
+        cmstr = print_confusion_matrix(cm, print_flag=False)
+        str_metric = '\n' + str(result_table_1) + '\n'+ '\n' + cmstr
+        logger.info(str_metric)
 
         gt_multi_label = [rs['gt_multi_label'] for rs in results]
         pred_multi_label = [rs['pred_multi_label'] for rs in results]
@@ -327,8 +301,11 @@ class MyMultiTokenMetric(MultiLabelMetric):
         
         suffix = '_classwise' if self.thr == 0.5 else f'_thr-{self.thr:.2f}_classwise'
         for k, v in pack_results(*metric_res).items():
-            result_metrics[k + suffix] = v.detach().cpu().tolist()
+            value = [round(i, 4) for i in v.detach().cpu().tolist()]
+            result_metrics[k + suffix] = value
         
+        logger.info(result_metrics)
+
         return result_metrics
 
 class MultiPosMetric(MultiLabelMetric):

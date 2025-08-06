@@ -167,14 +167,20 @@ class Attention(nn.Module):
 
 class WSCerMLC(MetaClassifier):
     def __init__(self, args):
-        input_embed_dim = args.backbone_cfg['backbone_output_dim'][0]
-        patch_size = args.backbone_cfg['vit_patch_size']
+        self.backbone_type = args.backbone_type
+        input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
+        input_downratio = args.backbone_cfg['backbone_output_downratio'][-1]
+
         img_size = args.input_size
-        feat_size = img_size // patch_size
+        feat_size = img_size // input_downratio
         num_patches = feat_size*feat_size
 
         num_classes = args.num_classes
-        evaluator = build_evaluator([MyMultiTokenMetric(thr = args.positive_thr)])
+        evaluator = build_evaluator([MyMultiTokenMetric(
+            thr = args.positive_thr,
+            num_classes = args.num_classes,
+            logger_name = args.logger_name
+        )])
         super(WSCerMLC, self).__init__(evaluator, **args)
 
         depth = 2
@@ -207,11 +213,24 @@ class WSCerMLC(MetaClassifier):
             )
         self.cls_neg_head = nn.Linear(proj_dim_1 + num_classes, 1)
         self.cls_pos_heads = nn.ModuleList()
-        for i in range(num_classes-1):
+        for i in range(num_classes):
             self.cls_pos_heads.append(nn.Linear(num_patches, 1))
 
-    def calc_logits(self, img_tokens: torch.Tensor):
-        img_tokens = img_tokens.transpose(1,2)
+    def calc_logits(self, inputs):
+        if self.backbone_type == 'resnet':
+            feat = inputs[-1]   # (bs,c,h,w)
+            feat = feat.flatten(2).transpose(1, 2)
+        elif self.backbone_type == 'sam':
+            feat = inputs   # (bs,h*w,c)
+        elif self.backbone_type == 'sam2':
+            feat = inputs['trunk_outputs'][-1]   # (bs,c,h,w)
+            feat = feat.flatten(2).transpose(1, 2)
+        elif self.backbone_type in ['dinov2', 'uni']:
+            feat = inputs[:,1:,:]
+        elif self.backbone_type == 'smartccs':
+            feat = inputs['x_norm_patchtokens']
+        
+        img_tokens = feat  # (bs, num_tokens, C)
         keys_1 = self.proj_1(img_tokens)  # (bs, num_tokens, C1=512)
 
         bs, num_tokens, embed_dim = keys_1.shape
@@ -252,16 +271,23 @@ class WSCerMLC(MetaClassifier):
         pred_pn_logits = self.cls_neg_head(overall_neg_token)  # (bs, 1)
 
         pred_pos_logits = []
-        for i in range(self.num_classes-1):
-            pred_pos_logits.append(self.cls_pos_heads[i](attn_map[:,i+1,:]))  # [(bs, 1),]
-        pred_pos_logits = torch.cat(pred_pos_logits, dim=-1)  # (bs, n_cls-1)
-        out = torch.cat([pred_pn_logits, pred_pos_logits], dim=-1)   # (bs, n_cls)
+        for i in range(self.num_classes):
+            pred_pos_logits.append(self.cls_pos_heads[i](attn_map[:,i,:]))  # [(bs, 1),]
+        pred_pos_logits = torch.cat(pred_pos_logits, dim=-1)  # (bs, n_cls)
+        out = torch.cat([pred_pn_logits, pred_pos_logits], dim=-1)   # (bs, n_cls+1)
         
-        return out, attn_array
+        return out, attn_array.detach().cpu()
     
     def calc_pos_loss(self, pos_logits, databatch):
         loss_fn = nn.BCEWithLogitsLoss()
-        binary_matrix = databatch['multi_pos_label'].to(self.device)     # (bs, pos_cls)
+        bs = databatch['inputs'].shape[0]
+        # binary_matrix: (bs, pos_cls)
+        binary_matrix = torch.zeros((bs, self.num_classes), dtype=torch.float32).to(self.device)
+        for idx, sample in enumerate(databatch['data_samples']):
+            labels = sample.gt_label
+            if len(labels) > 0:  # 非空才更新
+                binary_matrix[idx, torch.as_tensor(labels, dtype=torch.long)] = 1.0
+   
         loss = loss_fn(pos_logits, binary_matrix)
         return loss
     
@@ -269,7 +295,8 @@ class WSCerMLC(MetaClassifier):
         pred_logits,_ = self.calc_logits(feature_emb)
         img_pn_logit = pred_logits[:, 0].unsqueeze(1)
         positive_logits = pred_logits[:, 1:]
-        img_gt = databatch['image_labels'].to(self.device).unsqueeze(-1).float()
+        image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
+        img_gt = image_labels.to(self.device).unsqueeze(-1).float()
         pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
         pos_loss = self.calc_pos_loss(positive_logits, databatch)
         loss = pn_loss + pos_loss
@@ -280,11 +307,18 @@ class WSCerMLC(MetaClassifier):
         return loss,loss_dict
 
     def set_pred(self,feature_emb, databatch):
+        # attn_array: (bs, num_classes, num_tokens)
         pred_logits,attn_array = self.calc_logits(feature_emb) # (bs, num_classes)
         img_pn_logit = pred_logits[:, 0]
         positive_logits = pred_logits[:, 1:]
+        img_probs = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
+        pos_probs = torch.sigmoid(positive_logits) # (bs, num_classes)
 
-        databatch['img_probs'] = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
-        databatch['pos_probs'] = torch.sigmoid(positive_logits) # (bs, num_classes-1)
-        databatch['attn_array'] = attn_array # (bs, num_classes, num_tokens)
-        return databatch
+        data_sampels = []
+        for item, pn_p, pos_p, attn in zip(databatch['data_samples'], img_probs, pos_probs, attn_array):
+            item.img_prob = pn_p
+            item.pos_prob = pos_p
+            # item.attn = attn
+            data_sampels.append(item)
+
+        return data_sampels

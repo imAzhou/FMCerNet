@@ -1,4 +1,6 @@
 import torch
+from torch.nn import functional as F
+import math
 from peft import LoraConfig, FourierFTConfig, get_peft_model
 from .SmartCCS.vision_transformer import vit_large
 from .meta_backbone import MetaBackbone
@@ -26,6 +28,7 @@ class SmartCCS(MetaBackbone):
         use_peft = args.backbone_cfg['use_peft']
         frozen_backbone = args.backbone_cfg['frozen_backbone']
         backbone_ckpt = args.backbone_cfg['backbone_ckpt']
+        use_dtcwt_indexes = args.backbone_cfg['use_dtcwt_indexes']
 
         vit_kwargs = dict(
             img_size=224,
@@ -36,6 +39,8 @@ class SmartCCS(MetaBackbone):
             qkv_bias=True,
             proj_bias=True,
             ffn_bias=True,
+            use_dtcwt_indexes = use_dtcwt_indexes,
+            dtcwt_featlen = args.input_size // 14
         )
         self.backbone = vit_large(**vit_kwargs)
 

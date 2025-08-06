@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from torchvision.ops import nms
+from cerwsi.utils import is_bbox_inside
 from torchvision import transforms as T
 from scipy import ndimage
 from cellpose import models,utils,transforms,dynamics
@@ -488,28 +489,145 @@ def infer_multilevel_testdemo():
         plt.savefig(f'{visual_saveroot}/{purename}_cprob0.1.png')
         plt.close()
 
+def generate_grid_boxes(H, W, grid_size):
+    xs = torch.arange(0, W, grid_size)
+    ys = torch.arange(0, H, grid_size)
+
+    # 网格起点坐标（左上角）
+    yy, xx = torch.meshgrid(ys, xs, indexing='ij')
+    x1 = xx.flatten()
+    y1 = yy.flatten()
+
+    # 右下角坐标裁剪至图像边界
+    x2 = (x1 + grid_size).clamp(max=W)
+    y2 = (y1 + grid_size).clamp(max=H)
+
+    # 过滤掉无效框（宽或高为0）
+    valid = (x2 > x1) & (y2 > y1)
+
+    grid_boxes = torch.stack([x1[valid], y1[valid], x2[valid], y2[valid]], dim=1)
+    return grid_boxes
+
+def postprocess_bboxes(bboxes, grid_boxes, maxdet):
+    """
+    后处理bbox列表，使其数量为 maxdet，按规则调整score和筛选。
+
+    Args:
+        bboxes (list): shape (N, 4)，格式为 (x1, y1, x2, y2)，初始 score 均为 1.0。
+        grid_boxes (Tensor): 网格化生成的候选框
+        maxdet (int): 保留的 bbox 数量
+
+    Returns:
+        boxes: Tensor: shape (maxdet, 4)，格式为 (x1, y1, x2, y2)
+        scores: Tensor: shape (maxdet, )
+    """
+    iou_threshold = 0.3
+    bboxes = torch.tensor(bboxes, dtype=torch.float32)
+    
+    # 先按 nfs 去重
+    scores = torch.ones((bboxes.shape[0],))
+    keep = nms(bboxes, scores, iou_threshold=iou_threshold)
+    bboxes = bboxes[keep]
+    
+    N = bboxes.shape[0]
+    if N == maxdet:
+        scores = torch.ones((N,))
+        return bboxes, scores
+
+    elif N < maxdet:
+        grid_scores = torch.full((grid_boxes.shape[0],), 0.5, dtype=torch.float32)
+
+        if N > 0:
+            orig_scores = torch.ones((N,))
+            all_boxes = torch.cat([bboxes, grid_boxes], dim=0)
+            all_scores = torch.cat([orig_scores, grid_scores], dim=0)
+        else:
+            all_boxes = grid_boxes
+            all_scores = grid_scores
+
+        keep = nms(all_boxes, all_scores, iou_threshold=iou_threshold)
+        if len(keep) >= maxdet:
+            selected = keep[:maxdet]
+        else:
+            # 从未被保留的索引中随机补充
+            all_indices = torch.arange(all_boxes.shape[0], device=all_boxes.device)
+            unkept = all_indices[~torch.isin(all_indices, keep)]
+            num_needed = maxdet - len(keep)
+            extra = unkept[torch.randperm(len(unkept))[:num_needed]]
+            selected = torch.cat([keep, extra], dim=0)
+
+        return all_boxes[selected], all_scores[selected]
+
+    else:  # N > maxdet
+        areas = (bboxes[:, 2] - bboxes[:, 0]) * (bboxes[:, 3] - bboxes[:, 1])
+        sorted_idx = torch.argsort(areas, descending=True)
+        bboxes = bboxes[sorted_idx]
+        x1 = bboxes[:, 0].view(N, 1)
+        y1 = bboxes[:, 1].view(N, 1)
+        x2 = bboxes[:, 2].view(N, 1)
+        y2 = bboxes[:, 3].view(N, 1)
+
+        prev_x1 = bboxes[:, 0].view(1, N)
+        prev_y1 = bboxes[:, 1].view(1, N)
+        prev_x2 = bboxes[:, 2].view(1, N)
+        prev_y2 = bboxes[:, 3].view(1, N)
+
+        tolerance = 5
+        inside = (
+            (x1 >= prev_x1 - tolerance) &
+            (y1 >= prev_y1 - tolerance) &
+            (x2 <= prev_x2 + tolerance) &
+            (y2 <= prev_y2 + tolerance)
+        )  # shape: (N, N)
+
+        # 只看前面的框（面积更大）
+        mask = torch.triu(torch.ones(N, N, dtype=torch.bool, device=bboxes.device), diagonal=1)
+        inside = inside & mask
+
+        # 对每个框，如果有任何前面的框包含它 → 被包含
+        is_contained = inside.any(dim=1)
+        scores = torch.where(is_contained, torch.tensor(0.5), torch.tensor(1.0))
+        keep = nms(bboxes, scores, iou_threshold=iou_threshold)
+        selected = keep[:maxdet]
+        return bboxes[selected], scores[selected]
+
+def visual_proposals(img, proposal_bboxes, save_path, maxDet):
+    img = img.copy()  # 避免原图被改
+    for bbox in proposal_bboxes:
+        x1, y1, x2, y2 = bbox.tolist()
+        pt1 = (int(x1), int(y1))
+        pt2 = (int(x2), int(y2))
+        cv2.rectangle(img, pt1, pt2, (0, 255, 0), thickness=2)
+
+    fig, axs = plt.subplots(1, 1, figsize=(6, 6))
+    axs.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    axs.set_title(f"BBoxes maxDet={maxDet}")
+    axs.axis("off")
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+
 def merge_multilevel_testdemo():
-    purenames = ['1657bj008_0001','1657bj008_0096']
+    maxDet,gene_gridsize = 300,64
+    purenames = ['1758bj095_0209','1752bj089_0211','1716bj057_0060','1763bj100_0221', '1657bj008_0001']
+    grid_boxes = generate_grid_boxes(2048, 2048, gene_gridsize)
     for purename in purenames:
         img_url = f'data_resource/HMCHH/JPEGImages/{purename}.png'
         img = cv2.imread(img_url)
-
-        mask_savedir = f'statistic_results/cellpose_infer/hmchh_demo/{purename}'
-        multi_masks = []
-        for ctype in ['nucleus', 'cytoplasm', 'cluster']:
-            instmask = np.load(f'{mask_savedir}/{ctype}.npy')
-            mask_instlist = format_mask(instmask, ctype, minsize=0)
-            multi_masks.extend(mask_instlist)
-
-        # 查看面积 > minsize 且得分在前100的 mask
-        # for ms in [30, 50]:
-        #     # for primary_metric in ['compactness', 'solidity', 'centroid_dispersion', 'final']:
-        #     for primary_metric in ['final']:
-        #         visual_scored_masks(img, multi_masks, primary_metric, save_path=f'{mask_savedir}/ms{ms}_{primary_metric}_top100.png', topk=100, minsize=ms*ms, mode='top')
-        #         visual_scored_masks(img, multi_masks, primary_metric, save_path=f'{mask_savedir}/ms{ms}_{primary_metric}_bottom100.png', topk=100, minsize=ms*ms, mode='bottom')
+        mask_savedir = f'{root_dir}/cellpose_infer/{purename}'
+        with open(f'{mask_savedir}/merged_result_byarea.json', 'r', encoding='utf-8') as f:
+            merged_mask = json.load(f)
+        bboxes = [
+            [item['bbox'][0], item['bbox'][1], 
+             item['bbox'][0]+item['bbox'][2], item['bbox'][1]+item['bbox'][3]
+            ] for item in merged_mask]
+        # proposal_bboxes = torch.as_tensor(bboxes)
+        proposal_bboxes, proposal_scores = postprocess_bboxes(bboxes, grid_boxes, maxDet)
         
-        merged_mask = merge_multimask(multi_masks, iou_thresh=0.6, size_thresh=5)
-        visual_merged_masks(img, merged_mask, save_path=f'{mask_savedir}/merged_result_optim.png', size_thresh=50)
+        save_dir = f'statistic_results/cellpose_infer/hmchh_demo/by_area'
+        os.makedirs(save_dir, exist_ok=True, mode=0o777)
+        save_path = f'{save_dir}/{purename}_maxDet{maxDet}.png'
+        visual_proposals(img, proposal_bboxes, save_path, maxDet)
 
 def infer_multilevel(begin, end, device):
 
@@ -592,7 +710,8 @@ def merge_multilevel():
         print(eval_results)
             
 def merge_multilevel_fast():
-    
+    maxDet,gene_gridsize = 1000,64
+    grid_boxes = generate_grid_boxes(2048, 2048, gene_gridsize)
     for tag in ['fold1_train', 'fold1_val']:
         jsonfile = f'{root_dir}/annofiles_roi/{tag}.json'
         coco_metric = CocoMetric(
@@ -612,44 +731,29 @@ def merge_multilevel_fast():
             with open(f'{mask_savedir}/merged_result_byarea.json', 'r', encoding='utf-8') as f:
                 merged_mask = json.load(f)
 
-            pred_bboxes,pred_scores = [],[]
-            for maskitem in merged_mask:
-                x, y, w, h = maskitem['bbox']
-                if w<10 and h<10:
-                    continue
-                if w<50 and h<50:
-                    shift = 10
-                elif w<100 and h<100:
-                    shift = 15
-                else:
-                    shift = 20
-                pred_bboxes.append([x-shift, y-shift, x + w+shift, y + h+shift])
-                pred_scores.append(maskitem["scores"]["final"])
+            bboxes = [
+                [item['bbox'][0], item['bbox'][1], 
+                item['bbox'][0]+item['bbox'][2], item['bbox'][1]+item['bbox'][3]
+                ] for item in merged_mask]
+            proposal_bboxes, proposal_scores = postprocess_bboxes(bboxes, grid_boxes, maxDet)
+            proposal_labels = torch.as_tensor([0] * len(proposal_bboxes))
 
-            pred_bboxes = torch.as_tensor(pred_bboxes)
-            pred_scores = torch.as_tensor(pred_scores)
-            pred_labels = torch.as_tensor([0] * len(pred_bboxes))
-
-            # 计算每个框的面积，按面积从大到小排序
-            areas = (pred_bboxes[:, 2] - pred_bboxes[:, 0]) * (pred_bboxes[:, 3] - pred_bboxes[:, 1])
-            sorted_indices = torch.argsort(areas, descending=True)
             pred_instances = dict(
-                bboxes=pred_bboxes[sorted_indices],
-                scores=pred_scores[sorted_indices],
-                labels=pred_labels[sorted_indices],
+                bboxes=proposal_bboxes,
+                scores=proposal_scores,
+                labels=proposal_labels,
             )
-
             coco_metric.process(
-            {},
-            [dict(pred_instances=pred_instances, 
+            {}, [dict(pred_instances=pred_instances, 
                 img_id=imgitem['id'], ori_shape=(imgitem['width'], imgitem['height']))])
 
-        print(f'Eval {tag}:')
+        print(f'Eval {tag}: ')
         eval_results = coco_metric.evaluate(size=len(json_data['images']))
         print(eval_results)
  
 def mergeresult2proposal():
-    maxdet = 300
+    maxDet,gene_gridsize = 1000,64
+    grid_boxes = generate_grid_boxes(2048, 2048, gene_gridsize)
     for tag in ['fold1_train', 'fold1_val']:
         jsonfile = f'{root_dir}/annofiles_roi/{tag}.json'
         with open(jsonfile, 'r', encoding='utf-8') as f:
@@ -657,8 +761,8 @@ def mergeresult2proposal():
 
         dump_handle = DumpProposals(
             output_dir = f'{proposal_savedir}/',
-            proposals_file = f'{tag}_maxdet{maxdet}.pkl',
-            num_max_proposals = maxdet
+            proposals_file = f'{tag}_maxdet{maxDet}.pkl',
+            num_max_proposals = maxDet
         )
         for imgitem in tqdm(json_data['images'], ncols=80):
             purename = imgitem["file_name"].split('.')[0]
@@ -666,31 +770,16 @@ def mergeresult2proposal():
             with open(f'{mask_savedir}/merged_result_byarea.json', 'r', encoding='utf-8') as f:
                 merged_mask = json.load(f)
 
-            pred_bboxes = []
-            for maskitem in merged_mask:
-                x, y, w, h = maskitem['bbox']
-                if w<10 and h<10:
-                    continue
-                if w<50 and h<50:
-                    shift = 10
-                elif w<100 and h<100:
-                    shift = 15
-                else:
-                    shift = 20
-                pred_bboxes.append([x-shift, y-shift, x + w+shift, y + h+shift])
+            bboxes = [
+                [item['bbox'][0], item['bbox'][1], 
+                item['bbox'][0]+item['bbox'][2], item['bbox'][1]+item['bbox'][3]
+                ] for item in merged_mask]
 
-            pred_bboxes = torch.as_tensor(pred_bboxes)
-            pred_scores = torch.as_tensor([1.] * len(pred_bboxes))
+            proposal_bboxes, proposal_scores = postprocess_bboxes(bboxes, grid_boxes, maxDet)
 
-            # 计算每个框的面积，按面积从大到小排序
-            areas = (pred_bboxes[:, 2] - pred_bboxes[:, 0]) * (pred_bboxes[:, 3] - pred_bboxes[:, 1])
-            sorted_indices = torch.argsort(areas, descending=True)
-            sorted_indices = sorted_indices[:maxdet]
-            if len(sorted_indices) != maxdet:
-                print(f'{purename} max proposal num: {len(sorted_indices)}')
             pred_instances = dict(
-                bboxes=pred_bboxes[sorted_indices],
-                scores=pred_scores[sorted_indices],
+                bboxes=proposal_bboxes,
+                scores=proposal_scores,
             )
 
             dump_handle.process(None, [{
@@ -699,14 +788,13 @@ def mergeresult2proposal():
             }])
         
         dump_handle.evaluate(size=len(json_data['images']))
-            
-            
+
 
 if __name__ == "__main__":
-    # infer_multilevel_testdemo()
-    # merge_multilevel_testdemo()
-
     root_dir = 'data_resource/HMCHH'
+    # infer_multilevel_testdemo()
+    merge_multilevel_testdemo()
+
     # total_all_imgitems = []
     # for mode in ['train', 'val']:
     #     with open(f'{root_dir}/annofiles_roi/fold1_{mode}.json', 'r', encoding='utf-8') as f:
@@ -718,7 +806,7 @@ if __name__ == "__main__":
     os.makedirs(proposal_savedir, exist_ok=True, mode=0o777)
     # merge_multilevel()
     # merge_multilevel_fast()
-    mergeresult2proposal()
+    # mergeresult2proposal()
 
 '''
 fold1_train:

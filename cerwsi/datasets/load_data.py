@@ -4,6 +4,7 @@ from mmengine.registry import init_default_scope
 from mmengine.dataset.sampler import DefaultSampler
 from .cls_dataset import ClsDataset
 from .instance_dataset import InstanceDataset
+from mmpretrain.datasets import MultiLabelDataset
 
 def load_data(cfg, load_modes = []):
     valid_modes = {'train', 'val', 'test'}
@@ -13,14 +14,25 @@ def load_data(cfg, load_modes = []):
 
     dataloaders = []
     for mode in load_modes:
-        annojson,transform,batch_size = get_mode_cfg(mode, cfg)
-        
         if cfg.dataset_type == 'cls':
             init_default_scope('mmpretrain')
+            annojson,transform,batch_size = get_mode_cfg(mode, cfg)
             dataset = ClsDataset(cfg, annojson, transform)
+        elif cfg.dataset_type == 'multicls':
+            init_default_scope('mmpretrain')
+            dataset_cfg = {}
+            if mode == 'train':
+                dataset_cfg = cfg.train_datasets
+                batch_size = cfg.train_bs
+            elif mode == 'val':
+                dataset_cfg = cfg.val_datasets
+                batch_size = cfg.val_bs
+            dataset = MultiLabelDataset(**dataset_cfg)
+
         elif cfg.dataset_type == 'instance':
             # register all modules in mmdet into the registries
             init_default_scope('mmdet')
+            annojson,transform,batch_size = get_mode_cfg(mode, cfg)
             dataset = InstanceDataset(cfg, annojson, transform)
 
         sampler = DefaultSampler(dataset)
@@ -55,12 +67,9 @@ def get_mode_cfg(mode, cfg):
 def custom_collate(batch):
     images = [item['inputs'] for item in batch]
     data_samples = [item['data_samples'] for item in batch]
-    image_labels = [item.diagnose for item in data_samples]
     images_tensor = torch.stack(images, dim=0)
-    imglabels_tensor = torch.as_tensor(image_labels)
     
     return {
         'inputs': images_tensor,
-        'image_labels': imglabels_tensor,
         'data_samples': data_samples,
     }

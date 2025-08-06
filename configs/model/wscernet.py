@@ -3,13 +3,15 @@ _base_ = [
 ]
 
 # backbone
-backbone_type = 'uni'
+backbone_type = 'smartccs'
 backbone_cfg = _base_.backbone_cfgdict[backbone_type]
 
 # neck
 neck_type = 'identity'
 
 # classifier
-classifier_type = 'wscer_mlc'
+taskhead_type = 'cls'
+taskhead_model = 'wscer_mlc'
+positive_thr = 0.5
 # eval_prime_score = 'single-label/binary_accuracy'
 eval_prime_score = 'multi-label/img_accuracy'

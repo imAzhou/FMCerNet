@@ -51,7 +51,7 @@ def train_net(cfg, args, model, model_without_ddp):
             pbar = tqdm(trainloader, ncols=80)
         
         for idx, data_batch in enumerate(pbar):
-            # if idx > 4:
+            # if idx > 2:
             #     break
             loss,loss_dict = model(data_batch, 'train', optim_wrapper=optimizer)
             lr_scheduler_step(param_schedulers, 'iter')
@@ -92,7 +92,7 @@ def train_net(cfg, args, model, model_without_ddp):
             metrics = model_without_ddp.taskhead.evaluator.evaluate(len(valloader.dataset))
             if is_main_process():
                 pbar.close()
-                print(metrics)
+                # print(metrics)
                 if cfg.save_each_epoch:
                     torch.save(model_without_ddp.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
                 prime_score_type = cfg.eval_prime_score
@@ -137,11 +137,11 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2 torchrun  --nproc_per_node=3 --master_port=12341 main4PatchNet.py \
-    configs/dataset/mmdet/hmchh_dataset.py \
-    configs/model/detr.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12342 main4PatchNet.py \
+    configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
+    configs/model/wscernet.py \
     configs/strategy.py \
-    --record_save_dir log/hmchh/detr
+    --record_save_dir log/WS1600/mlc
     --model_tag inferseg \
     --record_save_dir log/WINDOW_SIZE_1000/sam2proposal
     

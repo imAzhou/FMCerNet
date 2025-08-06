@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import ndimage
-# from pycocotools.coco import COCO
+from pycocotools.coco import COCO
 
 def draw_boxes(img, bboxes, color=(0, 255, 0)):
     for box in bboxes:
@@ -157,13 +157,15 @@ def visual_demo():
         
         return prob_map,boundary_mask
 
-    model = models.CellposeModel(gpu=True, 
+    cellpose_model = models.CellposeModel(gpu=True, 
                                 #  pretrained_model='/x22201018/.cellpose/models/cpsam',
                                  device=torch.device("cuda:1"))
-    diameters,dynamic_compute_flags,flow_thresholds = [30, 120, 240],[True,True,False],[0.4,0.8,-1]
+    
+    
+    diameters,flow_thresholds,cellprobThr = [15, 30, 120],[0.6,0.6,0.8],[0.2,0.2,0.1]
     with open('data_resource/HMCHH/annofiles_roi/fold1_train.json', 'r', encoding='utf-8') as f:
         json_data = json.load(f)
-    purenames = ['1657bj008_0001','1657bj008_0096']
+    purenames = ['1662bj013_0096','1657bj008_0242']
     for purename in purenames:
         img_url = f'data_resource/HMCHH/JPEGImages/{purename}.png'
         imgitem = find_imgitem(purename, json_data)
@@ -175,33 +177,21 @@ def visual_demo():
         axs = axs.flatten()
 
         idx_current = 0
-        for dia,dynamic_compute,ft in zip(diameters,dynamic_compute_flags,flow_thresholds):
-            masks_pred, results, styles = model.eval([img], 
-                                            niter=10000,     # 根据 cellprob & 预测距离计算 cell 需要的迭代次数
-                                            batch_size=64,
-                                            # max_size_fraction = 1,
-                                            # compute_masks = True,
-                                            flow_threshold=0.4,
-                                            diameter=float(dia)) # using more iterations for bacteria
+        for dia,ft,ct in zip(diameters,flow_thresholds,cellprobThr):
+            masks_pred, results, styles = cellpose_model.eval(
+                [img], batch_size=64, flow_threshold=ft, diameter=dia, 
+                compute_masks=False, augment=True, resample=True)
+
             flowi, dP, cellprob = results[0]
-            if dynamic_compute:
-                # maski = masks_pred[0]
-                cellprob,boundary_mask = flow_to_cell_prob(dP)
-                cellprob[boundary_mask] = 0.
-                maski = dynamics.resize_and_compute_masks(
-                        dP, cellprob,
-                        niter=200, cellprob_threshold=0.2,
-                        flow_threshold=0.6, resize=None,
-                        min_size=15, max_size_fraction=1,
-                        device=model.device)
-            else:
-                cellprob,_ = flow_to_cell_prob(dP)
-                binary = (cellprob > 0.2).astype(np.uint8)
-                num_labels, labels = cv2.connectedComponents(binary, connectivity=8)
-                maski = labels.astype(np.int32)
-                maski = utils.fill_holes_and_remove_small_masks(maski, min_size=50*50)
+            cellprob,boundary_mask = flow_to_cell_prob(dP)
+            cellprob[boundary_mask] = 0.
+            maski = dynamics.resize_and_compute_masks(
+                    dP, cellprob,
+                    cellprob_threshold=ct,
+                    flow_threshold=ft, resize=None,
+                    min_size=15, max_size_fraction=0.7,
+                    device=cellpose_model.device)
             
-            maski = smooth_instance_mask(maski)
             outlines = utils.masks_to_outlines(maski).astype(np.uint8)
             contours, _ = cv2.findContours(outlines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
             im = img.copy()
@@ -216,16 +206,15 @@ def visual_demo():
             axs[idx_current].axis("off")
             idx_current += 1
 
-            # masked_prob = np.where(cellprob > 0, cellprob, 0)  # 小于0的地方设为0（即黑）
             axs[idx_current].imshow(cellprob, cmap='gray', vmin=0, vmax=1)
             axs[idx_current].set_title(f'd{dia}-cell prob')
             axs[idx_current].axis('off')
             idx_current += 1
 
         plt.tight_layout()
-        visual_saveroot = 'statistic_results/cellpose_infer/hmchh_demo'
+        visual_saveroot = 'statistic_results/cellpose_infer/hmchh_demo/0722'
         os.makedirs(visual_saveroot, exist_ok=True, mode=0o777)
-        plt.savefig(f'{visual_saveroot}/{purename}_updateflow.png')
+        plt.savefig(f'{visual_saveroot}/{purename}.png')
         plt.close()
 
 def smooth_instance_mask(instance_mask: np.ndarray, keep_ratio: float = 0.01) -> np.ndarray:
