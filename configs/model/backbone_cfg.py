@@ -29,9 +29,11 @@ backbone_cfgdict = {
     ),
     'uni': dict(
         backbone_output_dim = [1024],
+        backbone_output_downratio = [16],
         backbone_ckpt = 'checkpoints/uni.bin',
         frozen_backbone = True,
         use_peft = 'lora',   # None, lora, FourierFT, dtcwt
+        use_dtcwt_indexes = range(2),
         vit_patch_size = 16,
         default_input_size = 224
     ),
@@ -62,7 +64,8 @@ backbone_cfgdict = {
         backbone_ckpt = 'checkpoints/CCS_vitl_100M.pth',
         frozen_backbone = True,
         use_peft ='lora', 
-        use_dtcwt_indexes = range(2),
+        use_dtcwt_indexes = range(3),
+        # use_dtcwt_indexes = [],
         vit_patch_size = 14,
         default_input_size = 224
     ),
