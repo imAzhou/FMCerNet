@@ -40,20 +40,19 @@ roi_min_size = 1650
 def filter_zheyi_annitems(patientId, annitems, max_xy=None, polygon_shift=0):
     rect_items, roi_items = [],[]
     for annitem in annitems:
-        if 'type' in annitem and annitem['type'] == 'circle':
-            continue
-        if 'shape' in annitem and annitem['shape'] == 'point':
+        shape = annitem['shape']
+        if shape == 'point':
             continue
         
         shift = 0
-        # if annitem['type'] == 'polygon':
-        #     shift = polygon_shift
+        if shape == 'polygonPath':
+            shift = polygon_shift
+        if 'label' not in annitem:
+            continue
         sub_class = annitem['label']
-        all_x,all_y = [p[0] for p in annitem['points']], [p[1] for p in annitem['points']]
+        all_x,all_y = [p[0]-shift for p in annitem['points']], [p[1]-shift for p in annitem['points']]
         x1,x2 = min(all_x),max(all_x)
         y1,y2 = min(all_y),max(all_y)
-        x1 -= shift
-        y1 -= shift
         if max_xy is not None:
             x2,y2 = min(max_xy[0], x2), min(max_xy[1], y2)
         bbox_coords = [x1, y1, x2, y2]
@@ -117,18 +116,15 @@ def gene_zheyislide_filter():
     df_data = pd.concat([df_data_0409, df_data_0422, df_data_0607])
 
     name2PID = imgName2patientId(df_data)
-    timetag_config = {
-        '0409': {'polygon_shift': 50, 'sort_ann': False},
-        '0422': {'polygon_shift': 50, 'sort_ann': False},
-        '0607': {'polygon_shift': 0, 'sort_ann': True},
-    }
 
     slide_filter_items = []
-    for timetag, configs in timetag_config.items():
+    for timetag in ['0409', '0422', '0607']:
         with open(f'data_resource/zheyi_annofiles/宫颈液基细胞—Slide-{timetag}.json', 'r', encoding='utf-8') as f:
             json_data = json.load(f)
         if timetag == '0607':
             del json_data['NILM'] # 暂时不处理阴性 slide 的标注信息
+        with open(f'data_resource/zheyi_annofiles/{timetag}_shift.json', 'r', encoding='utf-8') as f:
+            shift_config = json.load(f)
         
         slideinfos = []
         for i in json_data.values():
@@ -141,14 +137,14 @@ def gene_zheyislide_filter():
                 swidth, sheight = slide.level_dimensions[0]
                 max_xy = (swidth-SAFE_MARGIN, sheight-SAFE_MARGIN)
 
-                if configs['sort_ann']:
-                    item['annotations'] = sorted(
-                        item['annotations'],
-                        key=lambda d: datetime.strptime(d['updatedTime'], "%Y-%m-%dT%H:%M:%SZ"),
-                        reverse=True
-                    )
+                item['annotations'] = sorted(
+                    item['annotations'],
+                    key=lambda d: datetime.strptime(d['updatedTime'], "%Y-%m-%dT%H:%M:%SZ"),
+                    reverse=True
+                )
                 annlist = item['annotations'][0]['annotationResult']
-                filter_anns = filter_zheyi_annitems(patientId, annlist, max_xy, configs['polygon_shift'])
+                polygon_shift = shift_config[patientId]
+                filter_anns = filter_zheyi_annitems(patientId, annlist, max_xy, polygon_shift)
                 slide_filter_items.append({
                     'patientId': patientId,
                     'media_type': 'slide',

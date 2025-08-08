@@ -217,7 +217,7 @@ class WSCerMLC(MetaClassifier):
             self.cls_pos_heads.append(nn.Linear(num_patches, 1))
 
     def calc_logits(self, inputs):
-        if self.backbone_type == 'resnet':
+        if self.backbone_type in ['resnet', 'convnext']:
             feat = inputs[-1]   # (bs,c,h,w)
             feat = feat.flatten(2).transpose(1, 2)
         elif self.backbone_type == 'sam':

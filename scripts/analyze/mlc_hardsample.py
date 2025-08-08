@@ -8,7 +8,7 @@ from collections import defaultdict
 
 def gene_multilabel(pred_result, old_train_data, purename2pId, save_path):
     thr = 0.5
-    sample_step = 5
+    sample_step = 10
     exist_purename = [os.path.basename(
         item['img_path']).split('.')[0] for item in old_train_data['data_list']]
     patientErrorlist = defaultdict(list)
@@ -32,11 +32,11 @@ def gene_multilabel(pred_result, old_train_data, purename2pId, save_path):
         json.dump(old_train_data, f, ensure_ascii=False)
 
 if __name__ == '__main__':
-    log_dir = 'log/WS850/mlc/hardsample_round0'
-    hardsample_jsondir = 'data_resource/WINDOW_SIZE_850/hardsample_annofiles'
+    log_dir = 'log/WS1600/mlc/hardsample_round0'
+    hardsample_jsondir = 'data_resource/WINDOW_SIZE_1600/hardsample_annofiles'
     old_train_jsonpath = f'{hardsample_jsondir}/multilable_hs_round0.json'
     new_train_savepath = f'{hardsample_jsondir}/multilable_hs_round1.json'
-    purename2pId_jsonpath = 'data_resource/WINDOW_SIZE_850/annofiles/purename2pId.json'
+    purename2pId_jsonpath = 'data_resource/WINDOW_SIZE_1600/annofiles/purename2pId.json'
     
     with open(f"{log_dir}/pred_result.pkl", "rb") as f:
         pred_result = pickle.load(f)
@@ -55,8 +55,3 @@ if __name__ == '__main__':
         pn_cnt[diagnose] += 1
     print(pn_cnt)
         
-
-'''
-
-round1:[9291, 12607]
-'''

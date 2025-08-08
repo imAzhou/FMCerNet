@@ -12,11 +12,14 @@ import shutil
 import random
 import glob
 from prettytable import PrettyTable
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from pycocotools.coco import COCO
 
 WINDOW_SIZE = 1600
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
-data_root = f'data_resource/WINDOW_SIZE_{WINDOW_SIZE}'
+data_root = f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}'
 neg_patch_thr = 0
 
 def coco_format(patchlist):
@@ -170,6 +173,8 @@ def statistic(tags):
                 consist_error[0] += 1
             if imginfo['diagnose'] == 1:
                 pos_bbox_cnt[imginfo['id']] = len(annoInimg[imginfo['id']])
+                if len(annoInimg[imginfo['id']]) == 81:
+                    print()
         if sum(consist_error) != 0:
             print(f'ERROR: consist_error {consist_error}')
         
@@ -207,6 +212,44 @@ def clear_imgs():
     #     if filename not in keep_filename:
     #         os.remove(imgpath)
 
+def draw_dataset_gt():
+    jsonfile = f'{data_root}/annofiles/fusiontrain_noNeg_cocoformat.json'
+    with open(jsonfile, 'r', encoding='utf-8') as f:
+        patch_COCOinfo = json.load(f)
+    coco = COCO(jsonfile)
+
+    for imgitem in tqdm(patch_COCOinfo['images'], ncols=80):
+        annids = coco.getAnnIds([imgitem['id']])
+        annos = coco.loadAnns(annids)
+        filename = imgitem['file_name'].split('/')[-1]
+        if filename != 'WXL_1_25_1717869845996_0.png':
+            continue
+        
+        img = Image.open(f'{data_root}/images/{imgitem["file_name"]}')
+        fig = plt.figure(figsize=(13,13))
+        ax = fig.add_subplot(111)
+        ax.imshow(img)
+
+        for anninfo in annos:
+            cls_color = CLASS_COLORS[anninfo['category_id']-1]
+            edgecolor = np.array([cls_color[0]/255, cls_color[1]/255, cls_color[2]/255, 1])
+            cls_name = POSITIVE_CLASS[anninfo['category_id']-1]
+            x, y, w, h = anninfo['bbox']
+            ax.add_patch(plt.Rectangle((x, y), w, h, edgecolor=edgecolor, facecolor=(0,0,0,0), lw=2))
+            ax.text(x, y, cls_name, fontsize=10, color='white',
+                bbox=dict(facecolor=np.array(cls_color)/255., alpha=0.5, edgecolor='none'))
+
+        ax.set_title('GT info')
+        ax.set_axis_off()
+        patches = [mpatches.Patch(facecolor=np.array(CLASS_COLORS[i])/255., label=POSITIVE_CLASS[i], edgecolor='black') for i in range(len(POSITIVE_CLASS))]
+        plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize='large')
+
+        plt.tight_layout()
+        savedir = f'statistic_results/visual_results/gt_{WINDOW_SIZE}'
+        os.makedirs(savedir, exist_ok=True, mode=0o777)
+        plt.savefig(f'{savedir}/{filename}')
+        plt.close()
+
 def reset_scc2hsil(tags):
     for tag in tags:
         jsonfile = f'{data_root}/annofiles/{tag}_cocoformat.json'
@@ -235,7 +278,8 @@ if __name__ == "__main__":
         # 'puretrain_aug', 'puretrain_withneg', 'puretrain_aug_withneg'
         ]
     # reset_scc2hsil(tags)
-    statistic(tags)
+    # statistic(tags)
     # clear_imgs()
+    draw_dataset_gt()
 
     

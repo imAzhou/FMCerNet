@@ -17,13 +17,13 @@ import copy
 from multiprocessing import Pool
 
 test_patientId = [
-    # 'ZY_ONLINE_1_45', 'ZY_ONLINE_1_21', 'ZY_ONLINE_1_1481',   # 0409 Slide，0422 Slide, 0607 Slide
-    # 'JFSW_2_1486', 'JFSW_2_152', 'JFSW_2_239',     # 空 RoI，有标注 RoI
-    # 'WXL_1_26',    # partial_pos slide in pure_train
+    'ZY_ONLINE_1_45', 'ZY_ONLINE_1_184', 'WXL_1_89',   # 0409 Slide，0422 Slide, 0607 Slide
+    'JFSW_2_1486', 'JFSW_2_152', 'JFSW_2_239',     # 空 RoI，有标注 RoI
+    'WXL_1_26',    # partial_pos slide in pure_train
     'JFSW_2_2111', 'JFSW_2_2',     # partial_pos slide in jfsw_train
     'JFSW_2_302',
 ]
-device = torch.device("cuda:0")
+device = torch.device("cuda:2")
 
 def show_mask(mask, ax, random_color=False):
     if random_color:
@@ -139,100 +139,105 @@ def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
             if os.path.exists(f'{npz_mask_save_dir}/{purename}.npz'):
                 continue
-
-            rx1,ry1,rx2,ry2 = RoIItem['region']
-            rw,rh = int(rx2-rx1+0.5), int(ry2-ry1+0.5)
-            roi_mask = np.zeros((rh,rw), dtype=np.int16)
-            # 按照bbox area 从大到小排序
-            RoIItem['children'] = sorted(
-                RoIItem['children'],
-                key=lambda annitem: (annitem['region'][2] - annitem['region'][0]) * (annitem['region'][3] - annitem['region'][1]),
-                reverse=True  # 从大到小排序
-            )
-            annid_list = [child['annid'] for child in RoIItem['children']]
-            [child.update({'inst_infer': False}) for child in RoIItem['children']]
-            for annitem in RoIItem['children']:
-                if annitem['inst_infer']:
-                    continue
-
-                annx1,anny1,annx2,anny2 = annitem['region']
-                annw, annh = int(annx2-annx1+0.5), int(anny2-anny1+0.5)
-                sq_size = max(1024, max(annw, annh))
-                square_x1,square_y1 = random_cut_square((annx1,anny1,annw,annh), sq_size)
-                square_x2,square_y2 = square_x1+sq_size,square_y1+sq_size
-                square_x1,square_y1 = max(0,square_x1),max(0,square_y1)
-                if square_x2 > rx2:
-                    square_x1 = square_x1 - (square_x2-rx2)
-                    square_x2 = square_x1+sq_size
-                if square_y2 > ry2:
-                    square_y1 = square_y1 - (square_y2-ry2)
-                    square_y2 = square_y1+sq_size
-                
-                if item['media_type'] == 'roi':
-                    cropped = roi_img.crop((square_x1,square_y1,square_x2,square_y2))
-                elif item['media_type'] == 'slide':
-                    square_w,square_h = square_x2-square_x1, square_y2-square_y1
-                    location, level, size = (square_x1,square_y1), 0, (square_w,square_h)
-                    cropped = Image.fromarray(slide.read_region(location, level, size))
-                
-                parent_patch_coords = [square_x1,square_y1,square_x2,square_y2]
-                input_boxes,input_boxes_annid = [],[]
-                for annitem in RoIItem['children']:
-                    if (not annitem['inst_infer']) and is_bbox_inside(annitem['region'],parent_patch_coords,tolerance=10):
-                        intx1,inty1,intx2,inty2 = (np.array(annitem['region']).astype(int)).tolist()
-                        bbox_coord = calc_relative_coord(parent_patch_coords, [intx1,inty1,intx2,inty2])
-                        if bbox_coord is not None:
-                            input_boxes.append(bbox_coord)
-                            input_boxes_annid.append(annitem['annid'])
-                            annitem['inst_infer'] = True
-                
-                if len(input_boxes) == 0:
-                    print(f'purename {purename}: len(input_boxes) == 0')
-
-                image = np.array(cropped.convert("RGB"))
-                predictor.set_image(image)
-                
-                input_boxes = np.array(input_boxes)
-                masks, scores, _ = predictor.predict(
-                    point_coords=None,
-                    point_labels=None,
-                    box=input_boxes,
-                    multimask_output=False,
+            try:
+                rx1,ry1,rx2,ry2 = RoIItem['region']
+                rx1,ry1,rx2,ry2 = int(rx1+0.5),int(ry1+0.5),int(rx2+0.5),int(ry2+0.5)
+                rw,rh = rx2-rx1, ry2-ry1
+                roi_mask = np.zeros((rh,rw), dtype=np.int16)
+                # 按照bbox area 从大到小排序
+                RoIItem['children'] = sorted(
+                    RoIItem['children'],
+                    key=lambda annitem: (annitem['region'][2] - annitem['region'][0]) * (annitem['region'][3] - annitem['region'][1]),
+                    reverse=True  # 从大到小排序
                 )
-                if len(masks.shape) == 3:
-                    masks = masks[None,:]
-                masks = masks.squeeze(1)  # (n, h, w)
-                masks, input_boxes_annid = postprocess_mask(masks, input_boxes, input_boxes_annid, sort_by_area=False)
+                annid_list = [child['annid'] for child in RoIItem['children']]
+                [child.update({'inst_infer': False}) for child in RoIItem['children']]
+                for annitem in RoIItem['children']:
+                    if annitem['inst_infer']:
+                        continue
 
-                for i, (mask, annid) in enumerate(zip(masks, input_boxes_annid)):
-                    if np.sum(mask) == 0:
-                        empty_mask[purename] += 1
-                    ys, xs = np.where(mask)     # 获取当前 mask 为 True 的位置坐标
-                    annid_idx = annid_list.index(annid) + 1     # 索引从 1 开始，0 是默认的背景
-                    shift_y, shift_x = int(square_y1 - ry1), int(square_x1 - rx1)
-                    roi_mask[ys + shift_y, xs + shift_x] = annid_idx
+                    annx1,anny1,annx2,anny2 = annitem['region']
+                    annx1,anny1,annx2,anny2 = int(annx1+0.5),int(anny1+0.5),int(annx2+0.5),int(anny2+0.5)
+
+                    annw, annh = annx2-annx1, anny2-anny1
+                    sq_size = max(1600, max(annw, annh))
+                    square_x1,square_y1 = random_cut_square((annx1,anny1,annw,annh), sq_size)
+                    square_x1,square_y1 = max(0,square_x1),max(0,square_y1)
+                    square_x2,square_y2 = square_x1+sq_size,square_y1+sq_size
+                    if square_x2 > rx2:
+                        square_x2 = rx2
+                        square_x1 = square_x2 - sq_size
+                    if square_y2 > ry2:
+                        square_y2 = ry2
+                        square_y1 = square_y2 - sq_size
+                    
+                    if item['media_type'] == 'roi':
+                        cropped = roi_img.crop((square_x1,square_y1,square_x2,square_y2))
+                    elif item['media_type'] == 'slide':
+                        square_w,square_h = square_x2-square_x1, square_y2-square_y1
+                        location, level, size = (square_x1,square_y1), 0, (square_w,square_h)
+                        cropped = Image.fromarray(slide.read_region(location, level, size))
+                    
+                    parent_patch_coords = [square_x1,square_y1,square_x2,square_y2]
+                    input_boxes,input_boxes_annid = [],[]
+                    for annitem in RoIItem['children']:
+                        if (not annitem['inst_infer']) and is_bbox_inside(annitem['region'],parent_patch_coords,tolerance=10):
+                            intx1,inty1,intx2,inty2 = (np.array(annitem['region']).astype(int)).tolist()
+                            bbox_coord = calc_relative_coord(parent_patch_coords, [intx1,inty1,intx2,inty2])
+                            if bbox_coord is not None:
+                                input_boxes.append(bbox_coord)
+                                input_boxes_annid.append(annitem['annid'])
+                                annitem['inst_infer'] = True
+                    
+                    if len(input_boxes) == 0:
+                        print(f'purename {purename}: len(input_boxes) == 0')
+
+                    image = np.array(cropped.convert("RGB"))
+                    predictor.set_image(image)
+                    
+                    input_boxes = np.array(input_boxes)
+                    masks, scores, _ = predictor.predict(
+                        point_coords=None,
+                        point_labels=None,
+                        box=input_boxes,
+                        multimask_output=False,
+                    )
+                    if len(masks.shape) == 3:
+                        masks = masks[None,:]
+                    masks = masks.squeeze(1)  # (n, h, w)
+                    masks, input_boxes_annid = postprocess_mask(masks, input_boxes, input_boxes_annid, sort_by_area=False)
+
+                    for i, (mask, annid) in enumerate(zip(masks, input_boxes_annid)):
+                        if np.sum(mask) == 0:
+                            empty_mask[purename] += 1
+                        ys, xs = np.where(mask)     # 获取当前 mask 为 True 的位置坐标
+                        annid_idx = annid_list.index(annid) + 1     # 索引从 1 开始，0 是默认的背景
+                        shift_y, shift_x = int(square_y1 - ry1), int(square_x1 - rx1)
+                        roi_mask[ys + shift_y, xs + shift_x] = annid_idx
+                    
+                    # start_x1,start_y1,start_x2,start_y2 = square_x1 - rx1,square_y1 - ry1,square_x2 - rx1,square_y2 - ry1
+                    # roi_mask = roi_mask[start_y1:start_y2, start_x1:start_x2]
+                    # RoIItem['children'] = [i for i in RoIItem['children'] if i['annid'] in input_boxes_annid]
+                    # RoIItem['region'] = parent_patch_coords
+                    # vis_sample(image, roi_mask, RoIItem, f'{purename}.png')
                 
-                # start_x1,start_y1,start_x2,start_y2 = square_x1 - rx1,square_y1 - ry1,square_x2 - rx1,square_y2 - ry1
-                # roi_mask = roi_mask[start_y1:start_y2, start_x1:start_x2]
-                # RoIItem['children'] = [i for i in RoIItem['children'] if i['annid'] in input_boxes_annid]
-                # RoIItem['region'] = parent_patch_coords
-                # vis_sample(image, roi_mask, RoIItem, f'{purename}.png')
-            
-            for annitem in RoIItem['children']:
-                if not annitem['inst_infer']:
-                    print(f'ERROR! Retain ann not infer: {purename}')
-            if empty_mask[purename] > 0:
-                print(f'{purename} empty mask: {empty_mask[purename]}')
-                
-            if len(RoIItem['children']) > 0:
-                sparse_mask = sparse.coo_matrix(roi_mask)  # 只保存非零元素的位置和值
-                np.savez_compressed(f"{npz_mask_save_dir}/{purename}.npz",
-                    data=sparse_mask.data,
-                    row=sparse_mask.row,
-                    col=sparse_mask.col,
-                    shape=roi_mask.shape)
-        
-        print(f'Core {proc_id} processed : {idx+1}/{len(all_json_datas)}.')
+                for annitem in RoIItem['children']:
+                    if not annitem['inst_infer']:
+                        print(f'ERROR! Retain ann not infer: {purename}')
+                if empty_mask[purename] > 0:
+                    print(f'{purename} empty mask: {empty_mask[purename]}')
+                    
+                if len(RoIItem['children']) > 0:
+                    sparse_mask = sparse.coo_matrix(roi_mask)  # 只保存非零元素的位置和值
+                    np.savez_compressed(f"{npz_mask_save_dir}/{purename}.npz",
+                        data=sparse_mask.data,
+                        row=sparse_mask.row,
+                        col=sparse_mask.col,
+                        shape=roi_mask.shape)
+            except Exception as e:
+                print(e)
+        if (idx+1) % 10 == 0:
+            print(f'Core {proc_id} processed : {idx+1}/{len(all_json_datas)}.')
 
 def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
@@ -295,7 +300,7 @@ def test_roi_lesion_mask(all_json_datas,npz_mask_save_dir):
 def visual_huge_roi(all_json_datas,npz_mask_save_dir):
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
 
-        if item['patientId'] != 'WXL_1_226':
+        if item['patientId'] != 'WXL_1_25':
             continue
 
         if item['media_type'] == 'roi':
@@ -314,11 +319,15 @@ def visual_huge_roi(all_json_datas,npz_mask_save_dir):
             sparse_mask = sparse.coo_matrix((loader['data'], (loader['row'], loader['col'])), shape=loader['shape'])
             roi_mask = sparse_mask.toarray().astype(np.int16)
 
-            ws,stride = 3000,2950
-            cut_points = generate_cut_regions((0,0), rw-1, rh-1, ws,stride)
+            ws,stride = 1600,1550
+            if abs(rw-ws) < 100 or abs(rh-ws) < 100:
+                random_x1,random_y1 = random_cut_square([0,0,rw,rh],ws)  # 在 RoI 中的相对坐标
+                cut_points = [(random_x1,random_y1,random_x1+ws,random_y1+ws)]
+            else:
+                cut_points = generate_cut_regions((0,0), rw, rh, ws, stride, minlen=50)
+
             for iidx,rect_coords in enumerate(cut_points):
-                start_x1,start_y1 = rect_coords
-                start_x2,start_y2 = start_x1+ws,start_y1+ws
+                start_x1,start_y1,start_x2,start_y2 = rect_coords
                 media_x1,media_y1,media_x2,media_y2 = int(start_x1+rx1), int(start_y1+ry1), int(start_x2+rx1), int(start_y2+ry1)
                 new_RoIItem = copy.deepcopy(RoIItem)
                 new_RoIItem['region'] = [media_x1,media_y1,media_x2,media_y2]
@@ -367,11 +376,13 @@ def test_file_exist(all_json_datas,npz_mask_save_dir):
     keep_names = []
     minw,minh = float('inf'), float('inf')
     for idx, item in enumerate(tqdm(all_json_datas, ncols=80)):
-        if item['patientId'] != 'WXL_3_624':
-            continue
+        # if item['patientId'] != 'WXL_3_624':
+        #     continue
         for RoIItem in item['annotations']:
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
+
             rx1,ry1,rx2,ry2 = RoIItem['region']
+            rx1,ry1,rx2,ry2 = int(rx1+0.5),int(ry1+0.5),int(rx2+0.5),int(ry2+0.5)
             rw,rh = rx2-rx1, ry2-ry1
             if rw < minw:
                 minw = rw
@@ -380,8 +391,8 @@ def test_file_exist(all_json_datas,npz_mask_save_dir):
             # if (rw < 1600 or rh < 1600) and RoIItem['sub_class'] == 'RoI':
             #     print(f"{item['patientId']}: rw:{rw}, rh:{rh}")
             
-            # if len(RoIItem['children']) > 0 and not os.path.exists(f"{npz_mask_save_dir}/{purename}.npz"):
-            #     print(f"Not exist: {purename}.npz")
+            if len(RoIItem['children']) > 0 and not os.path.exists(f"{npz_mask_save_dir}/{purename}.npz"):
+                print(f"Not exist: {purename}.npz")
 
     print(f'minw:{minw}, minh:{minh}')
     # for existname in os.listdir(npz_mask_save_dir):

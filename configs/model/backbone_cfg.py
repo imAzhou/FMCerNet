@@ -8,6 +8,7 @@ backbone_cfgdict = {
     ),
     'convnext': dict(
         backbone_output_dim = [384, 768, 1536],
+        backbone_output_downratio = [8, 16, 32],
         backbone_ckpt = 'checkpoints/convnext-large_in21k-pre-3rdparty_64xb64_in1k_20220124-2412403d.pth',
         frozen_backbone = False,
         use_peft = None,
@@ -63,9 +64,9 @@ backbone_cfgdict = {
         backbone_output_downratio = [14],
         backbone_ckpt = 'checkpoints/CCS_vitl_100M.pth',
         frozen_backbone = True,
-        use_peft ='lora', 
-        use_dtcwt_indexes = range(3),
-        # use_dtcwt_indexes = [],
+        use_peft = 'lora', 
+        # use_dtcwt_indexes = range(2),
+        use_dtcwt_indexes = [],
         vit_patch_size = 14,
         default_input_size = 224
     ),

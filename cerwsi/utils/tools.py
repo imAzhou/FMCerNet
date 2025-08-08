@@ -209,7 +209,7 @@ def read_json_anno(json_path, encoding='GB2312'):
 def generate_cut_regions(region_start, region_width, region_height, k, stride=400, minlen=0):
     """
     生成裁切区域的坐标框 [x1, y1, x2, y2]，按 stride 均匀划分。
-    边缘不足 minlen 时舍弃，大于等于 minlen 时补齐为 stride 的倍数。
+    边缘不足 minlen 时舍弃
 
     :param region_start: 区域的起点坐标 (x, y)
     :param region_width: 区域的宽度
@@ -224,33 +224,34 @@ def generate_cut_regions(region_start, region_width, region_height, k, stride=40
 
     # 1. 调整宽度
     w_rem = region_width % stride
-    if 0 < w_rem < minlen:
+    if w_rem <= minlen:
         region_width -= w_rem  # 舍弃不足 minlen 的部分
-    elif w_rem >= minlen:
-        region_width += (stride - w_rem)  # 向右补齐
-
+        new_width = region_width
+    else:
+        new_width = region_width + (stride-w_rem)
     # 2. 调整高度
     h_rem = region_height % stride
-    if 0 < h_rem < minlen:
+    if h_rem <= minlen:
         region_height -= h_rem
-    elif h_rem >= minlen:
-        region_height += (stride - h_rem)
+        new_height = region_height
+    else:
+        new_height = region_height + (stride-h_rem)
 
     # 3. 均匀取点
-    for y in range(y_start, y_start + region_height, stride):
-        for x in range(x_start, x_start + region_width, stride):
+    for y in range(0, new_width, stride):
+        for x in range(0, new_height, stride):
             x1, y1 = x, y
             x2, y2 = x1 + k, y1 + k
 
             # 4. 边界修正
-            if x2 > x_start + region_width:
-                x2 = x_start + region_width
+            if x2 > region_width:
+                x2 = region_width
                 x1 = x2 - k
-            if y2 > y_start + region_height:
-                y2 = y_start + region_height
+            if y2 > region_height:
+                y2 = region_height
                 y1 = y2 - k
 
-            cut_regions.append([x1, y1, x2, y2])
+            cut_regions.append([x1+x_start, y1+y_start, x2+x_start, y2+y_start])
 
     return cut_regions
 

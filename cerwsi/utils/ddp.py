@@ -26,14 +26,13 @@ def init_distributed_mode(args):
     elif "SLURM_PROCID" in os.environ:
         args.rank = int(os.environ["SLURM_PROCID"])
         args.gpu = args.rank % torch.cuda.device_count()
-    elif hasattr(args, "rank"):
-        pass
     else:
         print("Not using distributed mode")
         args.distributed = False
         return
 
     args.distributed = True
+    args.dist_url = 'env://'
 
     torch.cuda.set_device(args.gpu)
     args.dist_backend = "nccl"
@@ -42,8 +41,7 @@ def init_distributed_mode(args):
         backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, 
         rank=args.rank
     )
-    torch.distributed.barrier()
-    setup_for_distributed(args.rank == 0)
+    torch.distributed.barrier(device_ids=[args.gpu])
 
 
 def is_dist_avail_and_initialized():
