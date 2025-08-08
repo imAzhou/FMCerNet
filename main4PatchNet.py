@@ -1,7 +1,8 @@
 import torch
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, message=r"^xFormers is available \(.*\)")
 import os
+import warnings
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'
+warnings.filterwarnings("ignore", category=UserWarning)
 import time
 from tqdm import tqdm
 import argparse
@@ -9,7 +10,7 @@ from mmengine.config import Config
 import torchvision
 from mmengine.optim import build_optim_wrapper
 torchvision.disable_beta_transforms_warning()
-from cerwsi.nets import PatchNet,InferSegNet
+from cerwsi.nets import PatchNet
 from cerwsi.datasets import load_data
 from cerwsi.utils import set_seed, init_distributed_mode, get_logger, is_main_process,build_param_scheduler, lr_scheduler_step, scale_lr
 
@@ -19,7 +20,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument('dataset_config_file', type=str)
 parser.add_argument('model_config_file', type=str)
 parser.add_argument('strategy_config_file', type=str)
-parser.add_argument('--model_tag', default='patchnet', type=str)
 parser.add_argument('--record_save_dir', type=str)
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
 parser.add_argument('--print_interval', type=int, default=10, help='random seed')
@@ -29,20 +29,19 @@ parser.add_argument('--dist_url', default='env://', help='url used to set up dis
 args = parser.parse_args()
 
 
-def train_net(cfg, args, model, model_without_ddp):
+def train_net(cfg, args, model):
     trainloader,valloader = load_data(cfg, ['train','val'])
-    optimizer = build_optim_wrapper(model_without_ddp, cfg.optim_wrapper)
+    optimizer = build_optim_wrapper(model, cfg.optim_wrapper)
     real_bs = args.world_size * cfg.train_bs
     scale_lr(real_bs, optimizer, cfg.auto_scale_lr)
     param_schedulers = build_param_scheduler(optimizer, cfg.param_scheduler, 
                                          cfg.max_epochs, len(trainloader))
-    
     if is_main_process():
-        logger, files_save_dir = get_logger(args.record_save_dir, model_without_ddp, cfg)
+        logger, files_save_dir = get_logger(args.record_save_dir, model, cfg)
+    
     max_acc = -1
     for epoch in range(cfg.max_epochs):
-        if args.distributed:
-            trainloader.sampler.set_epoch(epoch)
+        trainloader.sampler.set_epoch(epoch)
         model.train()
         current_lr = optimizer.param_groups[0]["lr"]
         pbar = trainloader
@@ -87,20 +86,20 @@ def train_net(cfg, args, model, model_without_ddp):
                 #     break
                 with torch.no_grad():
                     outputs = model(data_batch, 'val')
-                model_without_ddp.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
+                model.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
 
-            metrics = model_without_ddp.taskhead.evaluator.evaluate(len(valloader.dataset))
+            metrics = model.taskhead.evaluator.evaluate(len(valloader.dataset))
             if is_main_process():
                 pbar.close()
                 # print(metrics)
                 if cfg.save_each_epoch:
-                    torch.save(model_without_ddp.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
+                    torch.save(model.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
                 prime_score_type = cfg.eval_prime_score
                 prime_score = metrics[prime_score_type]
                 if prime_score > max_acc:
                     max_acc = prime_score
                     print(f'Best score update: {prime_score}.')
-                    torch.save(model_without_ddp.state_dict(), f'{files_save_dir}/checkpoints/best.pth')
+                    torch.save(model.state_dict(), f'{files_save_dir}/checkpoints/best.pth')
 
 def main():
     init_distributed_mode(args)
@@ -116,34 +115,26 @@ def main():
     for sub_cfg in [d_cfg, m_cfg, s_cfg]:
         cfg.merge_from_dict(sub_cfg.to_dict())
     cfg.save_result_dir = None
-    if args.model_tag == 'patchnet':
-        model = PatchNet(cfg).to(device)
-    elif args.model_tag == 'inferseg':
-        model = InferSegNet(cfg).to(device)
-    model_without_ddp = model
-    
-    if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(
+    model = PatchNet(cfg).to(device)
+    model = torch.nn.parallel.DistributedDataParallel(
             model, device_ids=[args.gpu], find_unused_parameters=True)
-        model_without_ddp = model.module
-    if cfg.load_from is not None:
-        model_without_ddp.load_ckpt(cfg.load_from)
-    train_net(cfg, args, model, model_without_ddp)
+    model = model.module
 
-    # if args.distributed:
-    #     dist.destroy_process_group()
+    if cfg.load_from is not None:
+        model.load_ckpt(cfg.load_from)
+    train_net(cfg, args, model)
+
+    torch.distributed.destroy_process_group()
 
 if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12342 main4PatchNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchNet.py \
     configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
     configs/model/wscernet.py \
     configs/strategy.py \
     --record_save_dir log/WS1600/mlc
-    --model_tag inferseg \
-    --record_save_dir log/WINDOW_SIZE_1000/sam2proposal
     
 
 CUDA_VISIBLE_DEVICES=6,7 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \

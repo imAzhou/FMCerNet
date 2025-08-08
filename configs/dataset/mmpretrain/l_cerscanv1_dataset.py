@@ -31,7 +31,7 @@ rand_increasing_policies = [
 train_datasets = dict(
     data_root = data_root,
     data_prefix = 'images',
-    ann_file = 'annofiles/multilabel_puretrain.json',
+    ann_file = 'hardsample_annofiles/multilable_hs_round0.json',
     pipeline = [
         dict(type='LoadImageFromFile'),
         dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),

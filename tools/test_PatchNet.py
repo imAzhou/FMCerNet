@@ -26,7 +26,7 @@ parser.add_argument('--dist_url', default='env://', help='url used to set up dis
 
 args = parser.parse_args()
 
-def test_net(cfg, model, model_without_ddp):
+def test_net(cfg, model):
     valloader = load_data(cfg, ['val'])
 
     model.eval()
@@ -40,14 +40,14 @@ def test_net(cfg, model, model_without_ddp):
         #     break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
-        model_without_ddp.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
+        model.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
         
         if args.save_result:
             batch_outputs.extend([item.cpu() for item in outputs])
     if args.save_result:
         results = dist.collect_results(batch_outputs, len(valloader.dataset), device='cpu')
     
-    metrics = model_without_ddp.taskhead.evaluator.evaluate(len(valloader.dataset))
+    metrics = model.taskhead.evaluator.evaluate(len(valloader.dataset))
     if is_main_process():
         pbar.close()
         print(metrics)
@@ -68,18 +68,12 @@ def main():
     if args.val_json:
         cfg.val_datasets['ann_file'] = args.val_json
     model = PatchNet(cfg).to(device)
-    model_without_ddp = model
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+    model = model.module
+    model.load_ckpt(args.ckpt)
+    test_net(cfg, model)
+    torch.distributed.destroy_process_group()
 
-    if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
-        model_without_ddp = model.module
-    
-    model_without_ddp.load_ckpt(args.ckpt)
-    test_net(cfg, model, model_without_ddp)
-
-    # if args.distributed:
-    #     dist.barrier()
-    #     dist.destroy_process_group()
 
 if __name__ == '__main__':
     main()
@@ -87,9 +81,9 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 tools/test_PatchNet.py \
-    log/WS850/mlc/hardsample_round0/config.py \
-    log/WS850/mlc/hardsample_round0/checkpoints/best.pth \
-    log/WS850/mlc/hardsample_round0 \
+    log/cdetector/mlc/acc_88.72/config.py \
+    log/cdetector/mlc/acc_88.72/checkpoints/best.pth \
+    log/cdetector/mlc/acc_88.72 \
     --val_json annofiles/multilabel_puretrain.json \
     --save_result
 '''
