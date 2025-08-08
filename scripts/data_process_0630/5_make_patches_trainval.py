@@ -19,11 +19,7 @@ from pycocotools.coco import COCO
 WINDOW_SIZE = 1600
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
-<<<<<<< HEAD
 data_root = f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}'
-=======
-data_root = f'data_resource/WINDOW_SIZE_{WINDOW_SIZE}'
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
 neg_patch_thr = 0
 
 def coco_format(patchlist):
@@ -216,7 +212,6 @@ def clear_imgs():
     #     if filename not in keep_filename:
     #         os.remove(imgpath)
 
-<<<<<<< HEAD
 def draw_dataset_gt():
     jsonfile = f'{data_root}/annofiles/fusiontrain_noNeg_cocoformat.json'
     with open(jsonfile, 'r', encoding='utf-8') as f:
@@ -255,8 +250,6 @@ def draw_dataset_gt():
         plt.savefig(f'{savedir}/{filename}')
         plt.close()
 
-=======
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
 def reset_scc2hsil(tags):
     for tag in tags:
         jsonfile = f'{data_root}/annofiles/{tag}_cocoformat.json'
@@ -285,11 +278,7 @@ if __name__ == "__main__":
         # 'puretrain_aug', 'puretrain_withneg', 'puretrain_aug_withneg'
         ]
     # reset_scc2hsil(tags)
-<<<<<<< HEAD
     # statistic(tags)
-=======
-    statistic(tags)
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
     # clear_imgs()
     draw_dataset_gt()
 

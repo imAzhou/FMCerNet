@@ -1,110 +1,142 @@
 import os
-from PIL import Image
 import json
 import pandas as pd
-from collections import defaultdict,Counter
-import pickle
-import numpy as np
-from pycocotools import mask as mask_utils
+from collections import defaultdict
 from tqdm import tqdm
-import cv2
-import shutil
+import torch.distributed as dist
 import random
-import glob
-from prettytable import PrettyTable
+import torch
+from PIL import Image
+import cv2
+import numpy as np
+import argparse
+from mmpretrain.structures import DataSample
+from cerwsi.nets import ValidClsNet
+from cerwsi.utils import KFBSlide,set_seed, init_distributed_mode, is_main_process
 
-<<<<<<< HEAD
-WINDOW_SIZE = 1600
-POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
-CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
-data_root = f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}'
-neg_patch_thr = 3
-=======
 WINDOW_SIZE = 850
-data_root = f'data_resource/WINDOW_SIZE_{WINDOW_SIZE}'
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
-neg_patch_thr = 10
+neg_patch_thr,max_try = 5,100   # 约束：neg_patch_thr <= max_try
+data_root = f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}'
+neg_slide_csvfile = 'data_resource/0630/4_pure_train.csv'   # 4_pure_train,5_jfsw_train
+neg_slide_img_savedir = f'{data_root}/images/neg_slide'
+neg_slide_json_savepath = f'{data_root}/ann_jsons/patches_in_negslide_hs0.json'
+os.makedirs(neg_slide_img_savedir, exist_ok=True, mode=0o777)
 
+def cut_negslide():
+    LEVEL = 0
+    CERTAIN_THR = 0.7
+    SAFE_MARGIN = 100
+    parser = argparse.ArgumentParser()
+    args = parser.parse_args()
+    init_distributed_mode(args)
+    set_seed(1234)
+    device = torch.device(f'cuda:{os.getenv("LOCAL_RANK")}')
+    valid_model = ValidClsNet()
+    valid_model.to(device)
+    valid_model.device = device
+    valid_model.eval()
+    valid_model.load_state_dict(torch.load('checkpoints/valid_cls_best.pth'))
+    valid_model = torch.nn.parallel.DistributedDataParallel(
+        valid_model, device_ids=[args.gpu], find_unused_parameters=False)
+    valid_model = valid_model.module
 
-def filter_slide_neg(RoI_patchlist, neg_patch_thr = 300):
-    if neg_patch_thr == 0:
-        new_RoI_patchlist = [i for i in RoI_patchlist if i["prefix"] != 'neg']
-        return new_RoI_patchlist
+    df = pd.read_csv(neg_slide_csvfile)
+    df = df.drop_duplicates(subset=["patientId"])   # 按 patientId 去重
+    df = df[df['kfb_clsid']==0] # 留下阴性切片
+    data_list = df.to_dict(orient="records")  # 每一行 -> dict
 
-    neg_count = Counter()
-    for item in tqdm(RoI_patchlist, ncols=80):
-        if item["prefix"] == 'neg':
-            neg_count[item['patientId']] += 1
-    filter_pids = [k for k, v in neg_count.items() if v > neg_patch_thr]
-    random.shuffle(RoI_patchlist)
-    
-    new_RoI_patchlist = []
-    filter_neg_count = Counter()
-    for item in tqdm(RoI_patchlist, ncols=80):
-        if item["prefix"] != 'neg':
-            new_RoI_patchlist.append(item)
-            continue
+    # ---- 数据切分（保证每张卡处理的数据不重复） ----
+    rank = args.rank
+    world_size = args.world_size
+    data_per_rank = data_list[rank::world_size]
 
-        pid = item['patientId']
-        if pid in filter_pids and filter_neg_count[pid] >= neg_patch_thr:
-            continue
+    neg_patch_list = []
+    for idx,row in enumerate(data_per_rank):
+        kfb_path, patientId = row["kfb_path"], row["patientId"]
+        slide = KFBSlide(kfb_path)
+        max_x, max_y = slide.level_dimensions[LEVEL]
+        max_x, max_y = max_x-SAFE_MARGIN, max_y-SAFE_MARGIN
+        slide_patch_cnt, try_cnt = 0, 0
+        while slide_patch_cnt < neg_patch_thr and try_cnt < max_try:
+            x1,y1 = random.randint(SAFE_MARGIN, max_x-WINDOW_SIZE),random.randint(SAFE_MARGIN, max_y-WINDOW_SIZE)
+            read_result = Image.fromarray(slide.read_region((x1,y1), LEVEL, (WINDOW_SIZE,WINDOW_SIZE)))
+            data_batch = dict(inputs=[], data_samples=[])
+            img_input = cv2.cvtColor(np.array(read_result), cv2.COLOR_RGB2BGR)
+            img_input = torch.as_tensor(cv2.resize(img_input, (224,224)))
+            data_batch['inputs'].append(img_input.permute(2,0,1))    # (bs, 3, h, w)
+            data_batch['data_samples'].append(DataSample())
+            data_batch['inputs'] = torch.stack(data_batch['inputs'], dim=0)
+            with torch.no_grad():
+                outputs = valid_model.val_step(data_batch)
         
-        new_RoI_patchlist.append(item)
-        filter_neg_count[pid] += 1
-    
-    return new_RoI_patchlist
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
+            if max(outputs[0].pred_score) > CERTAIN_THR and outputs[0].pred_label == 1:
+                filename = f'{patientId}_round0_{slide_patch_cnt}.png'
+                neg_patch_list.append({
+                    'patientId': patientId,
+                    'filename': filename,
+                    'square_coords': (x1,y1,x1+WINDOW_SIZE,y1+WINDOW_SIZE),    # 在媒体资源中的相对坐标
+                    'bboxes': [],
+                    'clsnames': [],
+                    'prefix': 'neg_slide',
+                    'diagnose': 0,
+                    'maskfile': ''
+                })
+                read_result.save(f'{neg_slide_img_savedir}/{filename}')
+                slide_patch_cnt += 1
+            try_cnt += 1
+        
+        print(f"\r[Rank {rank}] Processing {idx}/{len(data_per_rank)} samples.\t", end='')
+        if(slide_patch_cnt != neg_patch_thr):
+            print(f"[Rank {rank}] slide_patch_cnt={slide_patch_cnt}, try_cnt={try_cnt}, patientId = {patientId}")
+            
+    print(f'Process {rank} Done, neg_patch_list nums = {len(neg_patch_list)}!', flush=True)
+    all_results = [None for _ in range(dist.get_world_size())]
+    dist.all_gather_object(all_results, neg_patch_list)
 
-def main():
+    if is_main_process():
+        merged = []
+        for r in all_results:
+            merged.extend(r)
+        with open(neg_slide_json_savepath, 'w', encoding='utf-8') as f:
+            json.dump(merged, f, ensure_ascii=False)
+        print(f'============== Total patches num : {len(merged)}; JSON file saved in : {neg_slide_json_savepath} ==============')
+    torch.distributed.destroy_process_group()
+
+def concat_patchlist():
     with open(f'{data_root}/ann_jsons/patches_in_RoI_pure_valid.json', 'r', encoding='utf-8') as f:
         RoI_patchlist = json.load(f)
     with open(f'{data_root}/ann_jsons/patches_in_RoI_jfsw_valid.json', 'r', encoding='utf-8') as f:
         jfsw_pos_patchdata = json.load(f)
-<<<<<<< HEAD
+    with open(f'{data_root}/ann_jsons/patches_in_negslide_hs0.json', 'r', encoding='utf-8') as f:
+        negslide_patchlist = json.load(f)
     
     patient2patchlist = defaultdict(list)
     for item in RoI_patchlist:
         patient2patchlist[item['patientId']].append(item)
-=======
-
-    # RoI_patchlist = filter_slide_neg(RoI_patchlist, neg_patch_thr=neg_patch_thr) # 控制每张病人切片的阴性 patch 数量
-
-    patient2patchlist = defaultdict(list)
-    for patchInfo in RoI_patchlist:
-        patient2patchlist[patchInfo['patientId']].append(patchInfo)
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
     
     data_group = {
         'puretrain': 'data_resource/0630/4_pure_train.csv',
         'val': 'data_resource/0630/6_val.csv'
     }
-<<<<<<< HEAD
-    
+
     for tag,csvpath in data_group.items():
         multilabel_pn_cnt, binary_pn_cnt = [0,0],[0,0]
-=======
-    multilabel_pn_cnt, binary_pn_cnt = []
-    for tag,csvpath in data_group.items():
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
         df_data = pd.read_csv(csvpath)
         print(f'Load {tag} patchlist...')
         patchlist = []
         for row in tqdm(df_data.itertuples(index=False), total=len(df_data), ncols=80):
-<<<<<<< HEAD
             samplelist = patient2patchlist[row.patientId]
             if tag == 'puretrain' and neg_patch_thr > 0:
                 poslist = [i for i in samplelist if i['diagnose']==1]
                 neglist = [i for i in samplelist if i['diagnose']==0]
                 random.shuffle(neglist)
                 samplelist = [*poslist, *neglist[:neg_patch_thr]]
-                
             patchlist.extend(samplelist)
-=======
-            patchlist.extend(patient2patchlist[row.patientId])
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
         
         if tag == 'puretrain':
+            patchlist.extend(negslide_patchlist)
             patchlist.extend(jfsw_pos_patchdata)
 
         multilabel_jsondata = {
@@ -117,21 +149,16 @@ def main():
         for patchinfo in tqdm(patchlist, ncols=80):
             imgname = f"{patchinfo['prefix']}/{patchinfo['filename']}"
             if patchinfo['prefix'] != 'partial_pos':
-<<<<<<< HEAD
                 clsids = []
                 for i in patchinfo['clsnames']:
                     if i == 'SCC':
                         i = 'HSIL'
                     clsids.append(POSITIVE_CLASS.index(i))
 
-=======
-                clsids = [POSITIVE_CLASS.index(i) for i in patchinfo['clsnames']]
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
                 multilabel_jsondata['data_list'].append({
                     "img_path": imgname,
                     "gt_label": list(set(clsids))
                 })
-<<<<<<< HEAD
                 multilabel_pn_cnt[patchinfo['diagnose']] += 1
 
             binarylabel_txtdata.append(f'{imgname} {patchinfo["diagnose"]}\n')
@@ -142,29 +169,19 @@ def main():
 
         if tag == 'puretrain' and neg_patch_thr > 0:
             tag += f'_npt{neg_patch_thr}'
-=======
-                
-
-            binarylabel_txtdata.append(f'{imgname} {patchinfo["diagnose"]}\n')
-        
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
         with open(f'{ann_dir}/multilabel_{tag}.json', 'w', encoding='utf-8') as f:
             json.dump(multilabel_jsondata, f, ensure_ascii=False)
         with open(f'{ann_dir}/binarylabel_{tag}.txt', 'w', encoding='utf-8') as f:
             f.writelines(binarylabel_txtdata)
-<<<<<<< HEAD
         
-=======
-
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
 
 if __name__ == "__main__":
     ann_dir = f'{data_root}/annofiles'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
-<<<<<<< HEAD
+    cut_negslide()
     # partial_pos 样本只会用于阴阳二分类,不会用于多标签分类
     # neg_patch_thr 只会作用于训练集，验证集保持不变（真实情况就是阳性 patch 远少于阴性 patch）
-    main()
+    # concat_patchlist()
 
 '''
 WS = 850
@@ -188,14 +205,10 @@ val multilabel_pn_cnt: [6214, 3916]
 puretrain binary_pn_cnt: [12814, 21030]
 val binary_pn_cnt: [6214, 3927]
 
-neg_patch_thr = 3
-puretrain multilabel_pn_cnt: [2455, 7801]
-puretrain binary_pn_cnt: [2455, 21030]
+neg_patch_thr = 5
+puretrain multilabel_pn_cnt: [3665, 7801] + [5996, 0] = [9661, 7801]
+puretrain binary_pn_cnt: [3665, 21030] + [5996, 0] = [9661, 21030]
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12342 scripts/data_process_0630/6_make_mmcls_trainval.py
 '''
-=======
-    # partial_pos 样本只会用于阴阳二分类
-    main()
-
-
->>>>>>> e14f4888d1e4228c257149865d6deb152971c162
     

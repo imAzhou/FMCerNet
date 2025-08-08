@@ -9,8 +9,8 @@ import copy
 from mmdet.models.detectors import DINO
 from mmengine.config import Config
 from mmengine.registry import init_default_scope
-from medmodels.CerWSI.cerwsi.nets import ValidClsNet
-from medmodels.CerWSI.cerwsi.utils import KFBSlide,is_bbox_inside
+from cerwsi.nets import ValidClsNet
+from cerwsi.utils import KFBSlide,is_bbox_inside
 import numpy as np
 from collections import Counter
 import warnings
