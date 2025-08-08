@@ -14,13 +14,14 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 from mmpretrain.structures import DataSample
 import multiprocessing
+import random
 from multiprocessing import Pool
 os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules.conv")
 
 CERTAIN_THR = 0.7
 LEVEL = 0
-WINDOW_SIZE = 1600
+WINDOW_SIZE = 850
 STRIDE = WINDOW_SIZE - 50
 
 test_patientId = [
@@ -79,18 +80,12 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
                 roi_mask = np.zeros((rh,rw), dtype=np.int16)
 
             RoI_patch_idx = 0
+            # cut_points 坐标是左闭右开，即范围从 [0, w/h)
             if abs(rw-WINDOW_SIZE) < 100 or abs(rh-WINDOW_SIZE) < 100:
                 random_x1,random_y1 = random_cut_square([0,0,rw,rh],WINDOW_SIZE)  # 在 RoI 中的相对坐标
-                cut_points = [(random_x1,random_y1)]
+                cut_points = [(random_x1,random_y1,random_x1+WINDOW_SIZE,random_y1+WINDOW_SIZE)]
             else:
-                cut_points = generate_cut_regions((0,0), rw-1, rh-1, WINDOW_SIZE, STRIDE)
-
-            # random_cut_num = 20 if rw > 5000 and rh > 5000 else 5
-            # for i in range(random_cut_num):
-            #     random_x1,random_y1 = random_cut_square([0,0,rw,rh],WINDOW_SIZE)  # 在 RoI 中的相对坐标
-            #     random_x2,random_y2 = random_x1+WINDOW_SIZE,random_y1+WINDOW_SIZE
-            #     if random_x2 < rw and random_y2 < rh:
-            #         cut_points.append((random_x1,random_y1))
+                cut_points = generate_cut_regions((0,0), rw, rh, WINDOW_SIZE, STRIDE, minlen=50)
 
             # 按照bbox area 从大到小排序
             RoIItem['children'] = sorted(
@@ -99,12 +94,8 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
                 reverse=True  # 从大到小排序
             )
             for iidx,rect_coords in enumerate(cut_points):
-                x1,y1 = rect_coords
-                x2,y2 = x1+WINDOW_SIZE,y1+WINDOW_SIZE
-                patch_coords = [x1,y1,x2,y2]    # 在 RoI 中的相对坐标
-                bboxes,clsnames,patch_mask = calc_patch_anns(patch_coords, RoIItem, roi_mask)
-                if patch_mask.shape[0] != WINDOW_SIZE or patch_mask.shape[1] != WINDOW_SIZE:
-                    print(f'Shape not right: {patch_mask.shape}')
+                x1,y1,x2,y2 = rect_coords    # 在 RoI 中的相对坐标
+                bboxes,clsnames,patch_mask = calc_patch_anns(rect_coords, RoIItem, roi_mask)
                 if len(bboxes) == 0 and RoIItem['sub_class'] == 'forge_RoI':
                     continue
 
@@ -117,9 +108,6 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
                     'bboxes': bboxes,    # 在patch中的相对坐标
                     'clsnames': clsnames,
                 }
-                px1,py1,px2,py2 = pItem['square_coords']
-                if (px2-px1) != WINDOW_SIZE or (py2-py1) != WINDOW_SIZE:
-                    print(f'Shape not right: {pItem["square_coords"]}')
                 
                 if len(bboxes) == 0:
                     pItem['prefix'] = 'neg'
@@ -139,8 +127,8 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
 
                 patchitems.append(pItem)
                 RoI_patch_idx += 1
-
-        print(f'Core {proc_id} processed : {idx+1}/{len(all_json_datas)}.')
+        if (idx+1) % 10 == 0:
+            print(f'Core {proc_id} processed : {idx+1}/{len(all_json_datas)}.')
     return patchitems
 
 def calc_patch_anns(patch_coords, RoIItem, roi_mask):
@@ -231,8 +219,8 @@ def process_cut(proc_id, img_save_dir, patchlist:dict):
                 valid_patches.append(patchinfo)
                 # patch_mask = np.load(f'{patch_npz_save_dir}/{patchinfo["maskfile"]}')['patch_mask']
                 # vis_patch_sample(patch_img, patch_mask, patchinfo['bboxes'], patchinfo['filename'])
-        
-        print(f'Core {proc_id} processed : {idx+1}/{total_nums}.')
+        if (idx+1) % 10 == 0:
+            print(f'Core {proc_id} processed : {idx+1}/{total_nums}.')
     return valid_patches
 
 def cut_patch_imgs(img_save_dir):
@@ -251,6 +239,7 @@ def cut_patch_imgs(img_save_dir):
     workers = Pool(processes=cpu_num)
     processes = []
     keys = list(reload_patchlist.keys())
+    random.shuffle(keys)
     for proc_id, set_group in enumerate(set_split):
         process_group = {}
         for k in [keys[i] for i in set_group]:
@@ -311,6 +300,7 @@ if __name__ == "__main__":
         multiprocessing.set_start_method('spawn', force=True)
         workers = Pool(processes=cpu_num)
         processes = []
+        random.shuffle(all_json_datas)
         for proc_id, set_group in enumerate(set_split):
             process_group = [all_json_datas[i] for i in set_group]
             p = workers.apply_async(gene_patch_jsonlist, (proc_id, process_group, npz_mask_save_dir, patch_npz_save_dir))
@@ -333,14 +323,8 @@ if __name__ == "__main__":
  
 '''
 WINDOW_SIZE = 1600, STRIDE = 1550:
-['neg', 'total_pos', 'partial_pos']: [19203, 11616, 2568], [0, 0, 10666] ([19203, 11616, 13234])
+['neg', 'total_pos', 'partial_pos']: [19028, 11717, 2571], [0, 0, 10669] ([19028, 11717, 13240])
 
-WINDOW_SIZE = 1000, STRIDE = 950:
-['neg', 'total_pos', 'partial_pos']: [56186, 17051, 2507], [0, 0, 10732] ([56186, 17051, 13239])
-
-WINDOW_SIZE = 700, STRIDE = 650:
-['neg', 'total_pos', 'partial_pos']: [70183, 15448, 8382], [0, 0, 29666] ([70183, 15448, 38048])
-
-WINDOW_SIZE = 512, STRIDE = 450:
-['neg', 'total_pos', 'partial_pos']: [138951, 20250, 10071], [0, 0, 37348] ([138951, 20250, 47419])
+WINDOW_SIZE = 850, STRIDE = 800:
+['neg', 'total_pos', 'partial_pos']: [77887, 19191, 7478], [0, 0, 27830] ([77887, 19191, 35308])
 '''
