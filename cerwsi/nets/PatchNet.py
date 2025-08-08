@@ -52,7 +52,6 @@ class PatchNet(nn.Module):
     def train_step(self, databatch, optim_wrapper: OptimWrapper):
         input_x = databatch['inputs']   # (bs, c, h, w)
         feature_emb = self.extract_feature(input_x)
-        # feature_emb = self.backbone(input_x)   # (bs, c, h, w) or (bs, c, numtokens) or dict
         if self.neck_type is not None:
             feature_emb = self.neck(feature_emb)
         loss,loss_dict = self.taskhead.calc_loss(feature_emb, databatch)
@@ -62,7 +61,6 @@ class PatchNet(nn.Module):
     def val_step(self, databatch):
         input_x = databatch['inputs']
         feature_emb = self.extract_feature(input_x)
-        # feature_emb = self.backbone(input_x)
         if self.neck_type is not None:
             feature_emb = self.neck(feature_emb)
         databatch = self.taskhead.set_pred(feature_emb, databatch)

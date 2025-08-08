@@ -120,7 +120,6 @@ def concat_patchlist():
         'puretrain': 'data_resource/0630/4_pure_train.csv',
         'val': 'data_resource/0630/6_val.csv'
     }
-
     for tag,csvpath in data_group.items():
         multilabel_pn_cnt, binary_pn_cnt = [0,0],[0,0]
         df_data = pd.read_csv(csvpath)

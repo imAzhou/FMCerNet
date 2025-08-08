@@ -42,13 +42,6 @@ class ConvNeXt(MetaBackbone):
             }
             
         '''
-        # feature_emb.shape: (bs, h, w, C)
+        # feature_emb.shape: (bs, C, h, w)
         feature_emb = self.backbone(x)  # 384*64*64，768*32*32，1536*16*16
-        dict_output = {
-            'vision_features': feature_emb[-1],
-            'backbone_fpn': [
-                feature_emb[0],     # featsize larger
-                feature_emb[1],     # featsize smaller
-            ]
-        }
-        return dict_output
+        return feature_emb
