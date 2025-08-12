@@ -86,20 +86,20 @@ def train_net(cfg, args, model):
                 #     break
                 with torch.no_grad():
                     outputs = model(data_batch, 'val')
-                model.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
+                model.module.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
 
-            metrics = model.taskhead.evaluator.evaluate(len(valloader.dataset))
+            metrics = model.module.taskhead.evaluator.evaluate(len(valloader.dataset))
             if is_main_process():
                 pbar.close()
                 # print(metrics)
                 if cfg.save_each_epoch:
-                    torch.save(model.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
+                    torch.save(model.module.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
                 prime_score_type = cfg.eval_prime_score
                 prime_score = metrics[prime_score_type]
                 if prime_score > max_acc:
                     max_acc = prime_score
                     print(f'Best score update: {prime_score}.')
-                    torch.save(model.state_dict(), f'{files_save_dir}/checkpoints/best.pth')
+                    torch.save(model.module.state_dict(), f'{files_save_dir}/checkpoints/best.pth')
 
 def main():
     init_distributed_mode(args)
@@ -116,12 +116,12 @@ def main():
         cfg.merge_from_dict(sub_cfg.to_dict())
     cfg.save_result_dir = None
     model = PatchNet(cfg).to(device)
-    model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[args.gpu], find_unused_parameters=True)
-    model = model.module
-
     if cfg.load_from is not None:
         model.load_ckpt(cfg.load_from)
+
+    model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[args.gpu], find_unused_parameters=True)
+
     train_net(cfg, args, model)
 
     torch.distributed.destroy_process_group()
@@ -134,7 +134,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=
     configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
     configs/model/wscernet.py \
     configs/strategy.py \
-    --record_save_dir log/WS1600/mlc
+    --record_save_dir log/WS850/mlc
     
 
 CUDA_VISIBLE_DEVICES=6,7 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \

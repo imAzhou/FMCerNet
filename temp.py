@@ -1,18 +1,18 @@
-from PIL import Image
-import pandas as pd
-from cerwsi.utils import KFBSlide
+import json
+import cv2
+from tqdm import tqdm
+import os
 
+with open('data_resource/WINDOW_SIZE_850/hardsample_annofiles/multilable_hs_round1.json', 'r', encoding='utf-8') as f:
+    json_data = json.load(f)
 
-df_pure = pd.read_csv('data_resource/0630/4_pure_train.csv')
-df_jfsw = pd.read_csv('data_resource/0630/5_jfsw_train.csv')
-df_test = pd.read_csv('data_resource/0630/7_test.csv')
-df = pd.concat([df_pure, df_jfsw, df_test])
+for pinfo in tqdm(json_data['data_list'][11570:], ncols=80):
+    
+    prefix = pinfo['img_path'].split('/')[0]
+    if prefix != 'neg_slide_r1':
+        continue
 
-for pid in ['ZY_ONLINE_1_1763','ZY_ONLINE_1_1764','ZY_ONLINE_1_1765','ZY_ONLINE_1_1766']:
-    rowinfo = df[df['patientId'] == pid].iloc[0]
-    slide = KFBSlide(rowinfo.kfb_path)
-    LEVEL = len(slide.level_dimensions) - 1 
-    max_x, max_y = slide.level_dimensions[LEVEL]
-    read_result = Image.fromarray(slide.read_region((0,0), LEVEL, (max_x,max_y)))
-    read_result.save(f'{pid}.png')
-
+    imgpath = f'data_resource/WINDOW_SIZE_850/images/{pinfo["img_path"]}'
+    result = cv2.imread(imgpath)
+    if result is None:
+        print(imgpath)

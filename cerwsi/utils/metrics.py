@@ -279,7 +279,7 @@ class MyMultiTokenMetric(MultiLabelMetric):
 
         gt_multi_label = [rs['gt_multi_label'] for rs in results]
         pred_multi_label = [rs['pred_multi_label'] for rs in results]
-        metric_res = self.calculate(
+        clswise_metric_res = self.calculate(
             pred_multi_label,
             gt_multi_label,
             pred_indices=True,
@@ -300,9 +300,19 @@ class MyMultiTokenMetric(MultiLabelMetric):
             return single_metrics
         
         suffix = '_classwise' if self.thr == 0.5 else f'_thr-{self.thr:.2f}_classwise'
-        for k, v in pack_results(*metric_res).items():
+        for k, v in pack_results(*clswise_metric_res).items():
             value = [round(i, 4) for i in v.detach().cpu().tolist()]
             result_metrics[k + suffix] = value
+        
+        macro_metric_res = self.calculate(
+            pred_multi_label,
+            gt_multi_label,
+            pred_indices=True,
+            target_indices=True,
+            average='macro',
+            num_classes=self.num_classes)
+        for k, v in pack_results(*macro_metric_res).items():
+            result_metrics[k] = round(v.item(), 4)
         
         logger.info(result_metrics)
 
