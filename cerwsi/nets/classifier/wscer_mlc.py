@@ -276,7 +276,7 @@ class WSCerMLC(MetaClassifier):
         pred_pos_logits = torch.cat(pred_pos_logits, dim=-1)  # (bs, n_cls)
         out = torch.cat([pred_pn_logits, pred_pos_logits], dim=-1)   # (bs, n_cls+1)
         
-        return out, attn_array.detach().cpu()
+        return out, attn_array.detach().cpu(), overall_neg_token.detach().cpu()
     
     def calc_pos_loss(self, pos_logits, databatch):
         loss_fn = nn.BCEWithLogitsLoss()
@@ -292,7 +292,7 @@ class WSCerMLC(MetaClassifier):
         return loss
     
     def calc_loss(self,feature_emb, databatch):
-        pred_logits,_ = self.calc_logits(feature_emb)
+        pred_logits,_ ,_= self.calc_logits(feature_emb)
         img_pn_logit = pred_logits[:, 0].unsqueeze(1)
         positive_logits = pred_logits[:, 1:]
         image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
@@ -308,16 +308,20 @@ class WSCerMLC(MetaClassifier):
 
     def set_pred(self,feature_emb, databatch):
         # attn_array: (bs, num_classes, num_tokens)
-        pred_logits,attn_array = self.calc_logits(feature_emb) # (bs, num_classes)
+        pred_logits,attn_array,img_tokens = self.calc_logits(feature_emb) # (bs, num_classes)
         img_pn_logit = pred_logits[:, 0]
         positive_logits = pred_logits[:, 1:]
         img_probs = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
+        bs = len(databatch['data_samples'])
+        if bs == 1:
+            img_probs = img_probs.unsqueeze(0)
         pos_probs = torch.sigmoid(positive_logits) # (bs, num_classes)
 
         data_sampels = []
-        for item, pn_p, pos_p, attn in zip(databatch['data_samples'], img_probs, pos_probs, attn_array):
+        for item, pn_p, pos_p, attn, imgtoken in zip(databatch['data_samples'], img_probs, pos_probs, attn_array, img_tokens):
             item.img_prob = pn_p
             item.pos_prob = pos_p
+            item.img_token = imgtoken
             # item.attn = attn
             data_sampels.append(item)
 
