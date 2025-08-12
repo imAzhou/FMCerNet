@@ -114,11 +114,11 @@ class HMIL(nn.Module):
 		
 		# Attention networks
 		self.coarse_attention = nn.Sequential(
-			GatedAttention(L=size[0], D=size[1], dropout=dropout, n_classes=n_classes[0])
+			GatedAttention(size[0], size[1], dropout=dropout, n_classes=n_classes[0])
 		)
 		
 		self.fine_attention = nn.Sequential(
-			GatedAttention(L=size[1], D=size[3], dropout=dropout, n_classes=n_classes[1])
+			GatedAttention(size[1], size[3], dropout=dropout, n_classes=n_classes[1])
 		)
 		
 		# Classifiers

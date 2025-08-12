@@ -19,14 +19,14 @@ from mmpretrain.structures import DataSample
 import cv2
 
 LEVEL = 0
-PATCH_EDGE = 1600
+PATCH_EDGE = 850
 CERTAIN_THR = 0.7
 SEED = 1234
 SAFE_MARGIN = 100
 infer_csv_file = 'data_resource/0630/4_pure_train.csv'
 valid_ckpt = 'checkpoints/valid_cls_best.pth'
-mmcls_config_file = ''
-mmcls_ckpt = ''
+mmcls_config_file = 'log/WS850/hs_round0/config.py'
+mmcls_ckpt = 'log/WS850/hs_round0/checkpoints/best.pth'
 test_bs = 64
 
 def inference_valid_batch(valid_model, read_result_pool):
@@ -46,6 +46,37 @@ def inference_valid_batch(valid_model, read_result_pool):
             valid_flag = 2 if pred_output.pred_label == 1 else 0
         valid_results.append(valid_flag)
     return valid_results
+
+def inference_batch_pn(mlcls_model, valid_input):
+    inputsize = mlcls_model.img_size
+    data_batch = dict(inputs=[], data_samples=[])
+    for item in valid_input:
+        img_input = torch.as_tensor(cv2.resize(item['image'], (inputsize,inputsize)))
+        data_batch['inputs'].append(img_input.permute(2,0,1))    # (bs, 3, h, w)
+        data_batch['data_samples'].append(DataSample())
+
+    data_batch['inputs'] = torch.stack(data_batch['inputs'], dim=0)
+    with torch.no_grad():
+        outputs = mlcls_model(data_batch, 'val')
+    pred_result = []
+    for bidx in range(len(img_inputs)):
+        pcoords = valid_input[bidx]['coords']
+        predresult = outputs[bidx].pred_instances
+
+        pred_clsid = int(len(format_pred) > 0)
+        patch_predinfo = {
+            'pred_label': pred_clsid,
+            'patch_coords': pcoords,
+            'pos_bboxes': format_pred
+        }
+        pred_result.append(patch_predinfo)
+        if visual_pred and str(pred_clsid) in visual_pred:
+            o_img = valid_input[bidx]['image']
+            timestamp = time.time()
+            os.makedirs(f'{save_prefix}/{pred_clsid}', exist_ok=True)
+            o_img.save(f'{save_prefix}/{pred_clsid}/{timestamp}.png')
+
+    return pred_result
 
 def run_inference(valid_model, mlcls_model, device):
     df = pd.read_csv(infer_csv_file)
@@ -71,23 +102,27 @@ def run_inference(valid_model, mlcls_model, device):
         cix, ciy = iw // 2, ih // 2
         
         valid_datapool, mlcls_datapool = [],[]
+        start_points = []
         for j, y in enumerate(range(0, height, PATCH_EDGE)):
             for i, x in enumerate(range(0, width, PATCH_EDGE)):
                 if (i-cix)**2 + (j-ciy)**2 > r2:
                     continue
-                
-                location, level, size = (x, y), LEVEL, (PATCH_EDGE, PATCH_EDGE)
-                read_result = copy.deepcopy(Image.fromarray(slide.read_region(location, level, size)))
-                coords = np.array([x, y, x+PATCH_EDGE, y+PATCH_EDGE])
-                img_input = cv2.cvtColor(np.array(read_result), cv2.COLOR_RGB2BGR)
-                valid_datapool.append({'image': img_input,'coords': coords.tolist()})
+                start_points.append((x, y))
+        
+        for p_idx,(x,y) in enumerate(start_points):
+            location, level, size = (x, y), LEVEL, (PATCH_EDGE, PATCH_EDGE)
+            read_result = copy.deepcopy(Image.fromarray(slide.read_region(location, level, size)))
+            coords = np.array([x, y, x+PATCH_EDGE, y+PATCH_EDGE])
+            img_input = cv2.cvtColor(np.array(read_result), cv2.COLOR_RGB2BGR)
+            valid_datapool.append({'image': img_input,'coords': coords.tolist()})
 
-                if len(valid_datapool) % test_bs == 0:
-                    valid_results = inference_valid_batch(valid_model, valid_datapool)
-                    mlcls_datapool.extend([valid_datapool[idx] for idx,flag in enumerate(valid_results) if flag==2])
-                    valid_datapool = []
-                if len(mlcls_datapool) > 0:
-                    pass
+            if len(valid_datapool) % test_bs == 0 or p_idx == len(start_points)-1:
+                valid_results = inference_valid_batch(valid_model, valid_datapool)
+                mlcls_datapool.extend(
+                    [valid_datapool[idx] for idx,flag in enumerate(valid_results) if flag==2])
+                valid_datapool = []
+            if len(mlcls_datapool) > 0:
+                inference_batch_pn(mlcls_model, mlcls_datapool)
 
 
     if is_main_process():
@@ -152,8 +187,5 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 tools/infer_WSI.py \
-    log/WS850/mlc/hardsample_round0/config.py \
-    log/WS850/mlc/hardsample_round0/checkpoints/best.pth \
-    log/WS850/mlc/hardsample_round0
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 tools/infer_WSI.py
 '''

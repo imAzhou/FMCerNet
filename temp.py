@@ -1,18 +1,25 @@
-import json
-import cv2
-from tqdm import tqdm
-import os
+from cerwsi.nets import PatchNet,ValidClsNet
+from mmengine.config import Config
+import torch
+from mmpretrain.structures import DataSample
 
-with open('data_resource/WINDOW_SIZE_850/hardsample_annofiles/multilable_hs_round1.json', 'r', encoding='utf-8') as f:
-    json_data = json.load(f)
+pnmodel_rootdir = 'log/WS850/hs_round0'
+mmcls_config_file = f'{pnmodel_rootdir}/config.py'
+mmcls_ckpt = f'{pnmodel_rootdir}/checkpoints/best.pth'
+test_bs = 64
 
-for pinfo in tqdm(json_data['data_list'][11570:], ncols=80):
-    
-    prefix = pinfo['img_path'].split('/')[0]
-    if prefix != 'neg_slide_r1':
-        continue
+device = torch.device('cuda:1')
 
-    imgpath = f'data_resource/WINDOW_SIZE_850/images/{pinfo["img_path"]}'
-    result = cv2.imread(imgpath)
-    if result is None:
-        print(imgpath)
+cfg = Config.fromfile(mmcls_config_file)
+cfg.backbone_cfg['backbone_ckpt'] = None
+mlcls_model = PatchNet(cfg).to(device)
+mlcls_model.img_size = cfg.input_size
+mlcls_model.load_ckpt(mmcls_ckpt)
+mlcls_model.eval()
+
+for i in range(10):
+    inputs = torch.rand(test_bs, 3, mlcls_model.img_size, mlcls_model.img_size).to(device)
+    data_batch = dict(inputs=inputs, data_samples=[DataSample() for _ in range(test_bs)])
+    with torch.no_grad():
+        outputs = mlcls_model(data_batch, 'val')
+print()

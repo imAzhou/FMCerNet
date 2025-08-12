@@ -101,7 +101,10 @@ def cut_negslide():
             merged.extend(r)
         with open(neg_slide_json_savepath, 'w', encoding='utf-8') as f:
             json.dump(merged, f, ensure_ascii=False)
-        print(f'============== Total patches num : {len(merged)}; JSON file saved in : {neg_slide_json_savepath} ==============')
+        print(f'============================')
+        print(f'Total patches num : {len(merged)}; ')
+        print(f'JSON file saved in : {neg_slide_json_savepath}')
+        print(f'============================')
     torch.distributed.destroy_process_group()
 
 def concat_patchlist():
@@ -177,10 +180,10 @@ def concat_patchlist():
 if __name__ == "__main__":
     ann_dir = f'{data_root}/annofiles'
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
-    cut_negslide()
+    # cut_negslide()
     # partial_pos 样本只会用于阴阳二分类,不会用于多标签分类
     # neg_patch_thr 只会作用于训练集，验证集保持不变（真实情况就是阳性 patch 远少于阴性 patch）
-    # concat_patchlist()
+    concat_patchlist()
 
 '''
 WS = 850
@@ -192,8 +195,8 @@ puretrain binary_pn_cnt: [51450, 47883]
 val binary_pn_cnt: [26437, 6616]
 
 neg_patch_thr = 5
-puretrain multilabel_pn_cnt: [5481, 12607]
-puretrain binary_pn_cnt: [5481, 47883]
+puretrain multilabel_pn_cnt: [5481, 12607] + [5987, 0] = [11468, 12607]
+puretrain binary_pn_cnt: [5481, 47883] + [5987, 0] = [11468, 47883]
 
 
 WS = 1600
