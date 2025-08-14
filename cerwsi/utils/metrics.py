@@ -5,6 +5,7 @@ from sklearn.metrics import (
 from prettytable import PrettyTable
 import numpy as np
 import torch
+import torchmetrics
 from mmengine.evaluator import BaseMetric
 from mmpretrain.evaluation import MultiLabelMetric,SingleLabelMetric
 from mmengine.logging import MMLogger
@@ -122,96 +123,12 @@ class BinaryMetric(BaseMetric):
 
         return result_metrics
 
-class MyMultiClsMetric(SingleLabelMetric):
-    '''
-    预测图片多分类的概率，并同时计算敏感性特异性
-    '''
-    def __init__(self, logger_name, num_classes) -> None:
-        super(MyMultiClsMetric, self).__init__()
-        self.logger_name = logger_name
-        self.num_classes = num_classes
-
-    def process(self, data_batch, data_samples):
-        """Process one batch of data samples.
-
-        The processed results should be stored in ``self.results``, which will
-        be used to computed the metrics when all batches have been processed.
-
-        Args:
-            data_batch: A batch of data from the dataloader.
-            data_samples (Sequence[dict]): A batch of outputs from the model.
-        """
-        data_samples = data_samples[0]
-        bs_img_gt = data_samples['image_labels']
-        bs_img_pred = data_samples['pre_cls']
-        bs = bs_img_gt.shape[0]
-        
-        for bidx in range(bs):
-            result = dict(
-                img_gt = bs_img_gt[bidx],
-                img_pred = bs_img_pred[bidx],
-            )
-
-            # Save the result to `self.results`.
-            self.results.append(result)
-
-    def compute_metrics(self, results):
-        """Compute the metrics from processed results.
-
-        Args:
-            results (list): The processed results of each batch.
-
-        Returns:
-            Dict: The computed metrics. The keys are the names of the metrics,
-            and the values are corresponding results.
-        """
-        # NOTICE: don't access `self.results` from the method. `self.results`
-        # are a list of results from multiple batch, while the input `results`
-        # are the collected results.
-        result_metrics = dict()
-
-        def pack_results(precision, recall, f1_score, support):
-            single_metrics = {}
-            if 'precision' in self.items:
-                single_metrics['precision'] = precision
-            if 'recall' in self.items:
-                single_metrics['recall'] = recall
-            if 'f1-score' in self.items:
-                single_metrics['f1-score'] = f1_score
-            if 'support' in self.items:
-                single_metrics['support'] = support
-            return single_metrics
-
-        binary_img_gt = [(rs['img_gt']>0).int() for rs in results]
-        binary_img_pred = [(rs['img_pred']>0).int() for rs in results]
-
-        img_result = calculate_metrics(binary_img_gt,binary_img_pred)
-        for k,v in img_result.items():
-            if k != 'cm':
-                result_metrics['binary_'+k] = v
-
-        target = torch.stack([res['img_gt'] for res in results])
-        pred = torch.stack([res['img_pred'] for res in results])
-        metric_res = self.calculate(
-            pred,
-            target,
-            average=None,
-            num_classes=self.num_classes)
-
-        for k, v in pack_results(*metric_res).items():
-            result_metrics[k] = v.detach().cpu().tolist()
-        
-        logger = MMLogger.get_instance(self.logger_name)
-        logger.info(result_metrics)
-        
-        return result_metrics
-
-class MyMultiTokenMetric(MultiLabelMetric):
+class ExtendMultiLabelMetric(MultiLabelMetric):
     '''
     同时预测图片阴阳概率和含每个阳性类别的概率
     '''
     def __init__(self, thr, num_classes, logger_name) -> None:
-        super(MyMultiTokenMetric, self).__init__(thr=thr)
+        super(ExtendMultiLabelMetric, self).__init__(thr=thr)
         self.num_classes = num_classes
         self.logger_name = logger_name
         self.thr = thr
@@ -274,7 +191,7 @@ class MyMultiTokenMetric(MultiLabelMetric):
         result_table_1.field_names = result_metrics.keys()
         result_table_1.add_row(result_metrics.values())
         cmstr = print_confusion_matrix(cm, print_flag=False)
-        str_metric = '\n' + str(result_table_1) + '\n'+ '\n' + cmstr
+        str_metric = '\n' + str(result_table_1) + '\n' + cmstr
         logger.info(str_metric)
 
         gt_multi_label = [rs['gt_multi_label'] for rs in results]
@@ -318,13 +235,24 @@ class MyMultiTokenMetric(MultiLabelMetric):
 
         return result_metrics
 
-class MultiPosMetric(MultiLabelMetric):
+class SlideMetric(BaseMetric):
     '''
-    只需预测图片内含每个阳性类别的概率，通过后处理得到Image级别的评测结果
+    计算多类别: AUC, Acc, Cohen’s Kappa 系数, Precision, Recall, F1, Binary Sensitivity and Specificity
     '''
-    def __init__(self,**args) -> None:
-        super(MultiPosMetric, self).__init__(**args)
-
+    def __init__(self, num_classes, logger_name) -> None:
+        super(SlideMetric, self).__init__()
+        self.num_classes = num_classes
+        self.logger_name = logger_name
+        kwargs = {'task': 'multiclass', 'num_classes': num_classes}
+        self.AUROC = torchmetrics.AUROC(**kwargs, average = 'macro')
+        self.metrics = torchmetrics.MetricCollection([
+            torchmetrics.Accuracy(**kwargs, average='micro'),
+            torchmetrics.CohenKappa(**kwargs),
+            torchmetrics.F1Score(**kwargs, average = 'macro'),
+            torchmetrics.Recall(**kwargs, average = 'macro'),
+            torchmetrics.Precision(**kwargs, average = 'macro'),
+        ])
+        
     def process(self, data_batch, data_samples):
         """Process one batch of data samples.
 
@@ -335,35 +263,11 @@ class MultiPosMetric(MultiLabelMetric):
             data_batch: A batch of data from the dataloader.
             data_samples (Sequence[dict]): A batch of outputs from the model.
         """
-
-        thr = self.thr if self.thr else 0.3
-        data_samples = data_samples[0]
-        bs_pos_pred = (data_samples['pos_probs'] > thr).int()   # bs, num_cls-1
-        bs_img_gt = data_samples['image_labels']
-        bs = bs_img_gt.shape[0]
-
-        self.num_classes = data_samples['pos_probs'].shape[-1] + 1
-
-        for bidx in range(bs):
-            if 'token_labels' in data_samples:
-                gt_multi_label = list(set([tk[-1] for tk in data_samples['token_labels'][bidx]]))
-            else:
-                gt_multi_label = torch.nonzero(data_samples['multi_pos_label'][bidx], as_tuple=True)[0]
-                gt_multi_label = [i+1 for i in gt_multi_label]
-            if len(gt_multi_label) == 0:
-                gt_multi_label = [0]
-            
-            pred_multi_label = [clsidx+1 for clsidx,pred in enumerate(bs_pos_pred[bidx]) if pred == 1]
-            img_pred = 1
-            if len(pred_multi_label) == 0:
-                pred_multi_label = [0]
-                img_pred = 0
-
+        for item in data_samples:
             result = dict(
-                img_gt = bs_img_gt[bidx],
-                img_pred = img_pred,
-                gt_multi_label = gt_multi_label,
-                pred_multi_label = pred_multi_label,
+                pred_label = item['pred_label'].item(),
+                pred_prob = item['pred_prob'].tolist(),
+                gt_label = item['slide_label']
             )
 
             # Save the result to `self.results`.
@@ -382,99 +286,38 @@ class MultiPosMetric(MultiLabelMetric):
         # NOTICE: don't access `self.results` from the method. `self.results`
         # are a list of results from multiple batch, while the input `results`
         # are the collected results.
-        result_metrics = dict()
+        logger = MMLogger.get_instance(self.logger_name)
 
-        img_gt = [rs['img_gt'] for rs in results]
-        img_pred = [rs['img_pred'] for rs in results]
-        # feat_gt = torch.stack([rs['cls_feat_gt'] for rs in results]).flatten()
-        # feat_pred = torch.stack([rs['csl_feat_pred'] for rs in results]).flatten()
+        gt_label = torch.as_tensor([rs['gt_label'] for rs in results])
+        pred_label = torch.as_tensor([rs['pred_label'] for rs in results])
+        pred_prob = torch.as_tensor([rs['pred_prob'] for rs in results])
 
-        img_result = calculate_metrics(img_gt,img_pred)
+        result_table_1 = PrettyTable()
+        result_metrics_1 = dict()
+        auroc_score = self.AUROC(pred_prob, gt_label)   # tensor value
+        result_metrics_1['AUROC'] = round(auroc_score.item(), 4)
+        metric_scores = self.metrics(pred_label, gt_label)   # dict tensor value
+        for k,v in metric_scores.items():
+            result_metrics_1[k] = round(v.item(), 4)
+        result_table_1.field_names = result_metrics_1.keys()
+        result_table_1.add_row(result_metrics_1.values())
+
+        result_table_2 = PrettyTable()
+        result_metrics_2 = dict()
+        binary_gt = [int(rs['gt_label']!=0) for rs in results]
+        binary_pred = [int(rs['pred_label']!=0) for rs in results]
+        img_result = calculate_metrics(binary_gt,binary_pred)
+        cm = img_result['cm']
+        del img_result['cm']
         for k,v in img_result.items():
-            if k != 'cm':
-                result_metrics['img_'+k] = v
+            result_metrics_2['img_'+k] = v
+        result_table_2.field_names = result_metrics_2.keys()
+        result_table_2.add_row(result_metrics_2.values())    
 
-        gt_multi_label = [rs['gt_multi_label'] for rs in results]
-        pred_multi_label = [rs['pred_multi_label'] for rs in results]
-        metric_res = self.calculate(
-            pred_multi_label,
-            gt_multi_label,
-            pred_indices=True,
-            target_indices=True,
-            average=None,
-            num_classes=self.num_classes)
-
-        def pack_results(precision, recall, f1_score, support):
-            single_metrics = {}
-            if 'precision' in self.items:
-                single_metrics['precision'] = precision
-            if 'recall' in self.items:
-                single_metrics['recall'] = recall
-            if 'f1-score' in self.items:
-                single_metrics['f1-score'] = f1_score
-            if 'support' in self.items:
-                single_metrics['support'] = support
-            return single_metrics
+        cmstr = print_confusion_matrix(cm, print_flag=False)
+        str_metric = '\n' + str(result_table_1) + '\n'+ str(result_table_2) + '\n' + cmstr
         
-        suffix = '_classwise' if self.thr == 0.5 else f'_thr-{self.thr:.2f}_classwise'
-        for k, v in pack_results(*metric_res).items():
-            result_metrics[k + suffix] = v.detach().cpu().tolist()
-        
-        return result_metrics
-
-class TokenMetric(BaseMetric):
-    '''
-    预测每个token的类别属于多类别中的某一个
-    '''
-    def __init__(self) -> None:
-        super(TokenMetric, self).__init__()
-
-    def process(self, data_batch, data_samples):
-        """Process one batch of data samples.
-
-        The processed results should be stored in ``self.results``, which will
-        be used to computed the metrics when all batches have been processed.
-
-        Args:
-            data_batch: A batch of data from the dataloader.
-            data_samples (Sequence[dict]): A batch of outputs from the model.
-        """
-        data_samples = data_samples[0]
-        bs_img_gt = data_samples['image_labels']
-        # 取预测的类别最大值
-        bs_pred_cls = torch.max(data_samples['token_classes'], dim=-1)[0]
-        bs_img_pred = (bs_pred_cls > 0).int()
-        bs = bs_img_gt.shape[0]
-
-        for bidx in range(bs):
-            result = dict(
-                img_gt = bs_img_gt[bidx],
-                img_pred = bs_img_pred[bidx]
-            )
-
-            # Save the result to `self.results`.
-            self.results.append(result)
-
-    def compute_metrics(self, results):
-        """Compute the metrics from processed results.
-
-        Args:
-            results (list): The processed results of each batch.
-
-        Returns:
-            Dict: The computed metrics. The keys are the names of the metrics,
-            and the values are corresponding results.
-        """
-        # NOTICE: don't access `self.results` from the method. `self.results`
-        # are a list of results from multiple batch, while the input `results`
-        # are the collected results.
-        result_metrics = dict()
-
-        img_gt = [rs['img_gt'] for rs in results]
-        img_pred = [rs['img_pred'] for rs in results]
-        img_result = calculate_metrics(img_gt,img_pred)
-        for k,v in img_result.items():
-            if k != 'cm':
-                result_metrics['img_'+k] = v
-        
-        return result_metrics
+        logger.info(str_metric)
+        result = {**result_metrics_1, **result_metrics_2}
+        logger.info(result)
+        return result

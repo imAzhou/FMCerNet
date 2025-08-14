@@ -21,12 +21,12 @@ test_bs,topk_num = 64,100
 valid_ckpt = 'checkpoints/valid_cls_best.pth'
 WSI_feat_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/slide_feat'
 os.makedirs(WSI_feat_savedir, exist_ok=True, mode=0o777)
-infer_csv_file = 'data_resource/0630/4_pure_train.csv'
+infer_csv_file = 'data_resource/0630/6_val.csv'
 
 pnmodel_rootdir = 'log/WS850/hs_round0'
 mmcls_config_file = f'{pnmodel_rootdir}/config.py'
 mmcls_ckpt = f'{pnmodel_rootdir}/checkpoints/best.pth'
-infer_txt_savepath = f'{pnmodel_rootdir}/infer_result.txt'
+infer_txt_savepath = f'{pnmodel_rootdir}/infer_result_val.txt'
 tmp_save_dir = f'{pnmodel_rootdir}/tmp/extract_WSI_topk'
 os.makedirs(tmp_save_dir, exist_ok=True, mode=0o777)
 
@@ -37,19 +37,17 @@ def resume_infer():
         done_pidlist.append(pid)
     return done_pidlist
 
-def run_inference(valid_model, mlcls_model, resume):
-    done_pidlist = []
-    if resume:
-        done_pidlist = resume_infer()
+def run_inference(valid_model, mlcls_model):
+    done_pidlist = resume_infer()
 
     df = pd.read_csv(infer_csv_file)
     df = df.drop_duplicates(subset=["patientId"])   # 按 patientId 去重
+    df = df[~df["patientId"].isin(done_pidlist)]
     data_list = df.to_dict(orient="records")  # 每一行 -> dict
     if is_main_process():
         print(f"\n{'='*40}")
-        print(f'Total patients: {len(data_list)}')
-        if resume:
-            print(f'Resumed {len(done_pidlist)}, Left {len(data_list)-len(done_pidlist)}.')
+        print(f'Total patients: {len(data_list) + len(done_pidlist)}')
+        print(f'Resumed {len(done_pidlist)}, Left {len(data_list)}.')
         print(f"{'='*40}")
 
     # data_list = data_list[:10]
@@ -61,9 +59,7 @@ def run_inference(valid_model, mlcls_model, resume):
     for ridx,row in enumerate(data_per_rank):
         start_time = time.time()
         patientId,slide_clsname = row["patientId"],row["kfb_clsname"]
-        if patientId in done_pidlist:
-            continue
-        wsi_handler = WSIHandler(PATCH_EDGE, LEVEL, row["kfb_path"])
+        wsi_handler = WSIHandler(row["kfb_path"],PATCH_EDGE, LEVEL)
         slide_patchlist = wsi_handler.init_patchlist({
             'image': None,
             'valid_prob': 0, 
@@ -76,7 +72,8 @@ def run_inference(valid_model, mlcls_model, resume):
         # slide_patchlist = slide_patchlist[:100]
         valid_datapool, mlcls_datapool = [],[]
         for p_idx,patchinfo in enumerate(slide_patchlist):
-            patchinfo['image'] = wsi_handler.read_cv2img(patchinfo['xy'])
+            img_input,_ = wsi_handler.read_cv2img(patchinfo['xy'])
+            patchinfo['image'] = img_input
             valid_datapool.append(patchinfo)
             if len(valid_datapool) % test_bs == 0 or p_idx == len(slide_patchlist)-1:
                 wsi_handler.inference_valid_batch(valid_model, valid_datapool)
@@ -154,7 +151,7 @@ def collect_tmp():
         f.writelines(total_lines)
     shutil.rmtree(tmp_save_dir)
 
-def main(resume):
+def main():
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
     init_distributed_mode(args)
@@ -162,7 +159,7 @@ def main(resume):
     device = torch.device(f'cuda:{os.getenv("LOCAL_RANK")}')
     valid_model,mlcls_model = get_models(device,args.gpu)
     
-    run_inference(valid_model, mlcls_model, resume)
+    run_inference(valid_model, mlcls_model)
     torch.cuda.synchronize()    # 等当前 GPU 上的计算任务完成（防止 GPU 异步计算没结束）
     dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
     if dist.get_rank() == 0:    # rank0 汇总结果
@@ -174,7 +171,7 @@ def main(resume):
     torch.distributed.destroy_process_group()
 
 if __name__ == '__main__':
-    main(resume=True)
+    main()
     
 
 

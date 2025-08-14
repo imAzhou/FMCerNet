@@ -6,7 +6,7 @@ from typing import Tuple, Type
 from .feat_pe import get_feat_pe
 from .meta_classifier import MetaClassifier
 from torchvision.ops import sigmoid_focal_loss
-from cerwsi.utils import build_evaluator, MyMultiTokenMetric
+from cerwsi.utils import build_evaluator, ExtendMultiLabelMetric
 
 class MLPBlock(nn.Module):
     def __init__(
@@ -177,7 +177,7 @@ class WSCerMLC(MetaClassifier):
         num_patches = feat_size*feat_size
 
         num_classes = args.num_classes
-        evaluator = build_evaluator([MyMultiTokenMetric(
+        evaluator = build_evaluator([ExtendMultiLabelMetric(
             thr = args.positive_thr,
             num_classes = args.num_classes,
             logger_name = args.logger_name
@@ -298,13 +298,14 @@ class WSCerMLC(MetaClassifier):
         positive_logits = pred_logits[:, 1:]
         image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
         img_gt = image_labels.to(self.device).unsqueeze(-1).float()
-        pn_loss = sigmoid_focal_loss(
-            img_pn_logit,   # (bs, 1) logits，未经过 sigmoid
-            img_gt, # (bs, 1) 0/1 标签，float 类型
-            alpha=0.25,
-            gamma=2.0,
-            reduction="mean"
-        )
+        pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
+        # pn_loss = 5*sigmoid_focal_loss(
+        #     img_pn_logit,   # (bs, 1) logits，未经过 sigmoid
+        #     img_gt, # (bs, 1) 0/1 标签，float 类型
+        #     alpha=0.25,
+        #     gamma=2.0,
+        #     reduction="mean"
+        # )
         
         pos_loss = self.calc_pos_loss(positive_logits, databatch)
         loss = pn_loss + pos_loss

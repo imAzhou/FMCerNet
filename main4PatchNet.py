@@ -10,7 +10,7 @@ from mmengine.config import Config
 import torchvision
 from mmengine.optim import build_optim_wrapper
 torchvision.disable_beta_transforms_warning()
-from cerwsi.nets import PatchNet
+from cerwsi.nets import PatchNet,SlideNet
 from cerwsi.datasets import load_data
 from cerwsi.utils import set_seed, init_distributed_mode, get_logger, is_main_process,build_param_scheduler, lr_scheduler_step, scale_lr
 
@@ -101,6 +101,14 @@ def train_net(cfg, args, model):
                     print(f'Best score update: {prime_score}.')
                     torch.save(model.module.state_dict(), f'{files_save_dir}/checkpoints/best.pth')
 
+def get_net(cfg):
+    model = None
+    if cfg.net_type == 'patch':
+        model = PatchNet(cfg)
+    elif cfg.net_type == 'slide':
+        model = SlideNet(cfg)
+    return model
+
 def main():
     init_distributed_mode(args)
     set_seed(args.seed)
@@ -115,7 +123,7 @@ def main():
     for sub_cfg in [d_cfg, m_cfg, s_cfg]:
         cfg.merge_from_dict(sub_cfg.to_dict())
     cfg.save_result_dir = None
-    model = PatchNet(cfg).to(device)
+    model = get_net(cfg).to(device)
     if cfg.load_from is not None:
         model.load_ckpt(cfg.load_from)
 
@@ -137,9 +145,9 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=
     --record_save_dir log/WS850/mlc
     
 
-CUDA_VISIBLE_DEVICES=6,7 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \
-    configs/dataset/mmdet/l_cerscanv1_dataset.py \
-    configs/model/detr.py \
+CUDA_VISIBLE_DEVICES=2,3 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \
+    configs/dataset/slide_cfg.py \
+    configs/model/wsi_slidenet.py \
     configs/strategy.py \
     --record_save_dir log/debug
 '''

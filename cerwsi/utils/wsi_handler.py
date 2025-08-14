@@ -4,13 +4,14 @@ import torch
 import cv2
 from PIL import Image
 import numpy as np
+import random
 from mmpretrain.structures import DataSample
 
 from .KFBreader.kfbreader import KFBSlide,kfbslide_get_associated_image_names,kfbslide_read_associated_image
 
 class WSIHandler:
-    def __init__(self, 
-                 crop_ws, level, kfb_path,
+    def __init__(self, kfb_path, crop_ws,
+                 level=0, 
                  safe_margin=100, 
                  certain_thr=0.7,
                  positive_thr=0.7,
@@ -21,6 +22,13 @@ class WSIHandler:
         self.crop_ws = crop_ws
         self.certain_thr = certain_thr
         self.positive_thr = positive_thr
+
+    def save_thumbnail(self, savepath):
+        smallest_level = len(self.slide.level_downsamples)-1
+        width, height = self.slide.level_dimensions[smallest_level]
+        location, level, size = (0, 0), smallest_level, (width, height)
+        read_result = Image.fromarray(self.slide.read_region(location, level, size))
+        read_result.save(savepath)
 
     def init_patchlist(self, init_dict):
         width, height = self.slide.level_dimensions[self.level]
@@ -40,13 +48,21 @@ class WSIHandler:
                 slide_patchlist.append(_init_dict)
         return slide_patchlist
     
-    def read_cv2img(self, point_xy):
+    def read_cv2img(self, point_xy=None, random_cut=False):
         '''
         return BGR numpy imgdata, value in [0,255]
         '''
+        if random_cut:
+            max_x, max_y = self.slide.level_dimensions[self.level]
+            max_x, max_y = max_x-self.safe_margin, max_y-self.safe_margin
+            x1,y1 = random.randint(self.safe_margin, max_x-self.crop_ws),random.randint(self.safe_margin, max_y-self.crop_ws)
+            point_xy = (x1,y1)
+
         read_result = self.read_PILimg(point_xy)
         img_input = cv2.cvtColor(np.array(read_result), cv2.COLOR_RGB2BGR)
-        return img_input
+        x1,y1 = point_xy
+        coords = [x1, y1, x1+self.crop_ws, y1+self.crop_ws]
+        return img_input,coords
     
     def read_PILimg(self, point_xy):
         '''

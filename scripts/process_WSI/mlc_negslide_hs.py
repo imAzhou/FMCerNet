@@ -16,7 +16,7 @@ import pandas as pd
 import random
 import time
 
-LEVEL,PATCH_EDGE = 0,850
+LEVEL,PATCH_EDGE = 0,1600
 CERTAIN_THR,POSITIVE_THR = 0.7,0.5
 SEED,SAFE_MARGIN = 1234,100
 test_bs,FP_savenum = 64,5
@@ -24,7 +24,7 @@ hs_round_idx = 1
 valid_ckpt = 'checkpoints/valid_cls_best.pth'
 FP_img_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/images/neg_slide_r{hs_round_idx}'
 FP_json_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/ann_jsons'
-infer_csv_file = 'data_resource/0630/4_pure_train.csv'
+infer_csv_file = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/annofiles/45_purejfsw_train.csv'
 
 pnmodel_rootdir = 'log/WS850/hs_round0'
 mmcls_config_file = f'{pnmodel_rootdir}/config.py'
