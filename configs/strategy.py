@@ -2,7 +2,7 @@
 # strategy
 lr = 0.001
 weight_decay = 0.0001
-max_epochs = 40
+max_epochs = 50
 save_each_epoch = False
 val_interval = 5
 
@@ -40,7 +40,7 @@ param_scheduler = [
         begin=0,
         end=max_epochs,
         by_epoch=True,
-        milestones=[5, 15],
+        milestones=[25, 45],
         gamma=0.1)
 ]
 

@@ -1,15 +1,15 @@
 # dataset settings 
 
-data_root = 'data_resource/WINDOW_SIZE_850'
+data_root = 'data_resource/WINDOW_SIZE_1600'
 img_dir = f'{data_root}/images'
 classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'multicls'    # cls, instance
 train_bs = 32
 val_bs = 32
-input_size = 448  # 224, 392, 448, 512, 1024
-# 'hardsample_annofiles/multilable_hs_round1.json'
-train_annfile = 'annofiles/multilabel_puretrain.json'
+input_size = 1024  # 224, 392, 448, 512, 1024
+# train_annfile = 'hardsample_annofiles/multilable_hs_round1.json'
+train_annfile = 'annofiles/multilabel_extendtrain.json'
 
 rand_increasing_policies = [
     dict(type='AutoContrast'),

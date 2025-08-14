@@ -181,6 +181,10 @@ class ExtendMultiLabelMetric(MultiLabelMetric):
         
         fpr, tpr, thresholds = roc_curve(img_gt, img_probs)
         result_metrics['img_AUC'] = round((auc(fpr, tpr)).item(), 4)
+        cohenkappa = torchmetrics.CohenKappa(task="multiclass", num_classes=2)
+        ck_score = cohenkappa(torch.tensor(img_pred), torch.tensor(img_gt))
+        result_metrics['img_CohenKappa'] = round(ck_score.item(), 4)
+
         img_result = calculate_metrics(img_gt,img_pred)
         cm = img_result['cm']
         del img_result['cm']

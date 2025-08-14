@@ -37,7 +37,7 @@ def train_net(cfg, args, model):
     param_schedulers = build_param_scheduler(optimizer, cfg.param_scheduler, 
                                          cfg.max_epochs, len(trainloader))
     if is_main_process():
-        logger, files_save_dir = get_logger(args.record_save_dir, model, cfg)
+        logger, files_save_dir = get_logger(args.record_save_dir, model.module, cfg)
     
     max_acc = -1
     for epoch in range(cfg.max_epochs):
@@ -142,7 +142,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=
     configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
     configs/model/wscernet.py \
     configs/strategy.py \
-    --record_save_dir log/WS850/mlc
+    --record_save_dir log/WS1600/mlc
     
 
 CUDA_VISIBLE_DEVICES=2,3 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \

@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from typing import Tuple, Type
 from .feat_pe import get_feat_pe
 from .meta_classifier import MetaClassifier
-from torchvision.ops import sigmoid_focal_loss
 from cerwsi.utils import build_evaluator, ExtendMultiLabelMetric
 
 class MLPBlock(nn.Module):
@@ -176,7 +175,7 @@ class WSCerMLC(MetaClassifier):
         feat_size = img_size // input_downratio
         num_patches = feat_size*feat_size
 
-        num_classes = args.num_classes
+        num_classes = args.num_classes  # 只有阳性类别
         evaluator = build_evaluator([ExtendMultiLabelMetric(
             thr = args.positive_thr,
             num_classes = args.num_classes,
@@ -212,7 +211,8 @@ class WSCerMLC(MetaClassifier):
                     use_self_attn = use_self_attn
                 )
             )
-        self.cls_neg_head = nn.Linear(proj_dim_1 + num_classes, 1)
+        # self.cls_neg_head = nn.Linear(proj_dim_1 + num_classes, 1)
+        self.cls_neg_head = nn.Linear(input_embed_dim, 1)
         self.cls_pos_heads = nn.ModuleList()
         for i in range(num_classes):
             self.cls_pos_heads.append(nn.Linear(num_patches, 1))
@@ -230,6 +230,12 @@ class WSCerMLC(MetaClassifier):
             feat = inputs[:,1:,:]
         elif self.backbone_type == 'smartccs':
             feat = inputs['x_norm_patchtokens']
+            cls_token = inputs['x_norm_clstoken']
+        elif self.backbone_type == 'fusionnet':
+            feat_1 = inputs['x_norm_patchtokens']
+            feat_2 = inputs['dtcwt_output']
+            feat = feat_1+feat_2
+            cls_token = inputs['cls_token_cat']
         
         img_tokens = feat  # (bs, num_tokens, C)
         keys_1 = self.proj_1(img_tokens)  # (bs, num_tokens, C1=512)
@@ -266,10 +272,12 @@ class WSCerMLC(MetaClassifier):
         # attn_map = F.softmax(attn_map, dim=-1)
         # attn_map = (attn_map - attn_map.mean(-1, keepdim=True)) / (attn_map.std(-1, keepdim=True) + 1e-8)
         
-        avg_token = torch.mean(attn_map, dim=-1)
-        cls_pn_token = queries[:,0,:]  # (bs, C)
-        overall_neg_token = torch.cat([cls_pn_token, avg_token], dim=-1 )
-        pred_pn_logits = self.cls_neg_head(overall_neg_token)  # (bs, 1)
+        # avg_token = torch.mean(attn_map, dim=-1)
+        # cls_pn_token = queries[:,0,:]  # (bs, C)
+        # overall_neg_token = torch.cat([cls_pn_token, avg_token], dim=-1 )
+        # pred_pn_logits = self.cls_neg_head(overall_neg_token)  # (bs, 1)
+
+        pred_pn_logits = self.cls_neg_head(cls_token)  # (bs, 1)
 
         pred_pos_logits = []
         for i in range(self.num_classes):
@@ -277,7 +285,7 @@ class WSCerMLC(MetaClassifier):
         pred_pos_logits = torch.cat(pred_pos_logits, dim=-1)  # (bs, n_cls)
         out = torch.cat([pred_pn_logits, pred_pos_logits], dim=-1)   # (bs, n_cls+1)
         
-        return out, attn_array.detach().cpu(), overall_neg_token.detach().cpu()
+        return out, attn_array.detach().cpu(), cls_token.detach().cpu()
     
     def calc_pos_loss(self, pos_logits, databatch):
         loss_fn = nn.BCEWithLogitsLoss()
@@ -308,7 +316,7 @@ class WSCerMLC(MetaClassifier):
         # )
         
         pos_loss = self.calc_pos_loss(positive_logits, databatch)
-        loss = pn_loss + pos_loss
+        loss = 0.1*pn_loss + pos_loss
         loss_dict = {
             'pn_loss': pn_loss.item(),
             'pos_loss': pos_loss.item(),
