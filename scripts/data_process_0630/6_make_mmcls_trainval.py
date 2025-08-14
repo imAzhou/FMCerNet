@@ -14,11 +14,11 @@ from mmpretrain.structures import DataSample
 from cerwsi.nets import ValidClsNet
 from cerwsi.utils import KFBSlide,set_seed, init_distributed_mode, is_main_process
 
-WINDOW_SIZE = 850
+WINDOW_SIZE = 1600
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
 neg_patch_thr,max_try = 5,100   # 约束：neg_patch_thr <= max_try
-data_root = f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}'
+data_root = f'data_resource/WINDOW_SIZE_{WINDOW_SIZE}'
 neg_slide_csvfile = 'data_resource/0630/4_pure_train.csv'   # 4_pure_train,5_jfsw_train
 neg_slide_img_savedir = f'{data_root}/images/neg_slide'
 neg_slide_json_savepath = f'{data_root}/ann_jsons/patches_in_negslide_hs0.json'
@@ -176,6 +176,44 @@ def concat_patchlist():
         with open(f'{ann_dir}/binarylabel_{tag}.txt', 'w', encoding='utf-8') as f:
             f.writelines(binarylabel_txtdata)
         
+def add_negslide():
+    pid_patchlist = defaultdict(list)
+    for filename in tqdm(os.listdir(f'{data_root}/images/neg_slide_rc'), ncols=80):
+        pid = filename.split('_rc')[0]
+        pid_patchlist[pid].append({
+            "img_path": f"neg_slide_rc/{filename}",
+            "gt_label": []
+        })
+        
+    with open(f'{data_root}/annofiles/multilabel_puretrain.json', 'r', encoding='utf-8') as f:
+        traindata = json.load(f)
+    with open(f'{data_root}/annofiles/multilabel_val.json', 'r', encoding='utf-8') as f:
+        valdata = json.load(f)
+    df_train = pd.read_csv(f'{data_root}/annofiles/45_purejfsw_train.csv')
+    df_val = pd.read_csv(f'{data_root}/annofiles/6_val.csv')
+    new_datalist = []
+    for row in tqdm(df_train.itertuples(index=False), total=len(df_train), ncols=80):
+        new_datalist.extend(pid_patchlist[row.patientId])
+    traindata['data_list'].extend(new_datalist)
+    with open(f'{data_root}/annofiles/multilabel_extendtrain.json', 'w', encoding='utf-8') as f:
+        json.dump(traindata, f, ensure_ascii=False)
+    pn_cnt = [0,0]
+    for datainfo in traindata['data_list']:
+        diag = int(len(datainfo['gt_label'])>0)
+        pn_cnt[diag] += 1
+    print(f'Train add {len(new_datalist)} patches, pn_cnt: {pn_cnt}')
+
+    new_datalist = []
+    for row in tqdm(df_val.itertuples(index=False), total=len(df_val), ncols=80):
+        new_datalist.extend(pid_patchlist[row.patientId])
+    valdata['data_list'].extend(new_datalist)
+    with open(f'{data_root}/annofiles/multilabel_extendval.json', 'w', encoding='utf-8') as f:
+        json.dump(valdata, f, ensure_ascii=False)
+    pn_cnt = [0,0]
+    for datainfo in valdata['data_list']:
+        diag = int(len(datainfo['gt_label'])>0)
+        pn_cnt[diag] += 1
+    print(f'Val add {len(new_datalist)} patches, pn_cnt: {pn_cnt}')
 
 if __name__ == "__main__":
     ann_dir = f'{data_root}/annofiles'
@@ -183,7 +221,8 @@ if __name__ == "__main__":
     # cut_negslide()
     # partial_pos 样本只会用于阴阳二分类,不会用于多标签分类
     # neg_patch_thr 只会作用于训练集，验证集保持不变（真实情况就是阳性 patch 远少于阴性 patch）
-    concat_patchlist()
+    # concat_patchlist()
+    add_negslide()
 
 '''
 WS = 850
@@ -203,6 +242,8 @@ WS = 1600
 neg_patch_thr = -1
 puretrain multilabel_pn_cnt: [12814, 7801]
 val multilabel_pn_cnt: [6214, 3916]
+Train add 7996 patches, pn_cnt: [20810, 7801]
+Val add 1495 patches, pn_cnt: [7709, 3916]
 
 puretrain binary_pn_cnt: [12814, 21030]
 val binary_pn_cnt: [6214, 3927]

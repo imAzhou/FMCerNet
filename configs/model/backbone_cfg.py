@@ -70,4 +70,11 @@ backbone_cfgdict = {
         vit_patch_size = 14,
         default_input_size = 224
     ),
+    'fusionnet': dict(
+        backbone_output_dim = [1024],
+        backbone_output_downratio = [64],
+        backbone_ckpt = 'checkpoints/fusionnet.pth',
+        frozen_backbone = True,
+        use_peft = 'lora', 
+    ),
 }
