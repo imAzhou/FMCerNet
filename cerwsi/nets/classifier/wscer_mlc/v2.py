@@ -3,9 +3,9 @@ from torch import Tensor, nn
 import math
 import torch.nn.functional as F
 from typing import Tuple, Type
-from .wscer_mlc.feat_pe import get_feat_pe
-from .meta_classifier import MetaClassifier
-from cerwsi.utils import build_evaluator,BinaryMetric
+from .feat_pe import get_feat_pe
+from ..meta_classifier import MetaClassifier
+from cerwsi.utils import build_evaluator, ExtendMultiLabelMetric
 
 class MLPBlock(nn.Module):
     def __init__(
@@ -86,7 +86,7 @@ class TwoWayAttentionBlock(nn.Module):
             k = keys + key_pe
         else:
             k = keys
-        attn_out = self.cross_attn_token_to_image(q=q, k=k, v=keys)
+        attn_out, attn_score = self.cross_attn_token_to_image(q=q, k=k, v=keys)
         queries = queries + attn_out
         queries = self.norm2(queries)
 
@@ -101,11 +101,11 @@ class TwoWayAttentionBlock(nn.Module):
             k = keys + key_pe
         else:
             k = keys
-        attn_out = self.cross_attn_image_to_token(q=k, k=q, v=queries)
+        attn_out,_ = self.cross_attn_image_to_token(q=k, k=q, v=queries)
         keys = keys + attn_out
         keys = self.norm4(keys)
         
-        return queries, keys
+        return queries, keys, attn_score
 
 class Attention(nn.Module):
     """
@@ -162,28 +162,45 @@ class Attention(nn.Module):
         out = self._recombine_heads(out)
         out = self.out_proj(out)
 
-        return out
+        return out, attn_
 
 
-class WSCerBinary(MetaClassifier):
+class WSCerMLC(MetaClassifier):
     def __init__(self, args):
-        input_dim = args.neck_output_dim[0]
-        evaluator = build_evaluator([BinaryMetric(thr = args.positive_thr)])
-        super(WSCerBinary, self).__init__(evaluator, **args)
+        self.backbone_type = args.backbone_type
+        input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
+        input_downratio = args.backbone_cfg['backbone_output_downratio'][-1]
+
+        img_size = args.input_size
+        feat_size = img_size // input_downratio
+        num_patches = feat_size*feat_size
+
+        self.num_classes = args.num_classes  # 只有阳性类别
+        evaluator = build_evaluator([ExtendMultiLabelMetric(
+            thr = args.positive_thr,
+            num_classes = args.num_classes,
+            logger_name = args.logger_name
+        )])
+        super(WSCerMLC, self).__init__(evaluator, **args)
 
         depth = 2
+        proj_dim_1 = 512
         num_heads = 8
         mlp_dim = 2048
         use_self_attn = False
         self.pos_add_type = 'sam' # 'sam','query2label',None
-        self.num_classes = 1
         
-        self.cls_tokens = nn.Embedding(1, input_dim)
+        self.proj_1 = nn.Sequential(
+            nn.Linear(input_embed_dim, proj_dim_1),
+            nn.ReLU(),
+            nn.Dropout(0.25)
+        )
+        self.cls_tokens = nn.Embedding(self.num_classes, proj_dim_1)
         self.layers = nn.ModuleList()
         for i in range(depth):
             self.layers.append(
                 TwoWayAttentionBlock(
-                    embedding_dim=input_dim,
+                    embedding_dim=proj_dim_1,
                     num_heads=num_heads,
                     mlp_dim=mlp_dim,
                     activation=nn.ReLU,
@@ -192,11 +209,34 @@ class WSCerBinary(MetaClassifier):
                     use_self_attn = use_self_attn
                 )
             )
-        self.cls_neg_head = nn.Linear(input_dim, 1)
-        
+        self.cls_neg_head = nn.Linear(input_embed_dim, 1)
+        self.sim_q_proj = nn.Linear(proj_dim_1, proj_dim_1//2)
+        self.sim_k_proj = nn.Linear(proj_dim_1, proj_dim_1//2)
 
-    def calc_logits(self, img_tokens: torch.Tensor):
-        bs, num_tokens, embed_dim = img_tokens.shape
+
+    def calc_logits(self, inputs):
+        if self.backbone_type in ['resnet', 'convnext']:
+            feat = inputs[-1]   # (bs,c,h,w)
+            feat = feat.flatten(2).transpose(1, 2)
+        elif self.backbone_type == 'sam':
+            feat = inputs   # (bs,h*w,c)
+        elif self.backbone_type == 'sam2':
+            feat = inputs['trunk_outputs'][-1]   # (bs,c,h,w)
+            feat = feat.flatten(2).transpose(1, 2)
+        elif self.backbone_type in ['dinov2', 'uni']:
+            feat = inputs[:,1:,:]
+        elif self.backbone_type == 'smartccs':
+            feat = inputs['x_norm_patchtokens']
+            cls_token = inputs['x_norm_clstoken']
+        elif self.backbone_type == 'fusionnet':
+            feat_1 = inputs['x_norm_patchtokens']
+            feat_2 = inputs['dtcwt_output']
+            feat = feat_1 + feat_2
+            cls_token = inputs['cls_token_cat']
+            # cls_token = inputs['x_norm_clstoken']
+        
+        keys_1 = self.proj_1(feat)  # (bs, num_tokens, C1=512)
+        bs, num_tokens, embed_dim = keys_1.shape
         feat_size = int(math.sqrt(num_tokens))
         queries = self.cls_tokens.weight.unsqueeze(0).expand(bs, -1, -1)
         key_pe = None
@@ -205,32 +245,79 @@ class WSCerBinary(MetaClassifier):
             key_pe = get_feat_pe(self.pos_add_type, embed_dim, (feat_size,feat_size))
             key_pe = key_pe.flatten(2).permute(0, 2, 1).to(self.device)
 
+        attn_array = []
         for layer in self.layers:
-            queries, img_tokens = layer(
+            queries, keys_1, attn_out_q = layer(
                 queries=queries,
-                keys=img_tokens,
+                keys=keys_1,
                 key_pe=key_pe,
             )
+            # attn_out_q: (bs, num_heads, num_cls, L)
+            # attn_score: (bs, num_cls, L)
+            attn_score = torch.mean(attn_out_q, dim=1)
+            attn_array.append(attn_score)
 
-        cls_pn_token = queries[:,0,:]  # (bs, C)
-        pred_pn_logits = self.cls_neg_head(cls_pn_token)  # (bs, 1)
-        
-        return pred_pn_logits
+        # queries: (bs, n_cls, dim), keys_1: (bs, num_tokens, dim)
+        queries = self.sim_q_proj(queries)
+        keys_1 = keys_1 + key_pe
+        keys_1 = self.sim_k_proj(keys_1)
+        attn_map = torch.bmm(queries, keys_1.transpose(1, 2))   # (bs, n_cls, num_tokens)
+        attn_map = F.softmax(attn_map, dim=-1)
+        attn_array.append(attn_map)
+        attn_array = torch.stack(attn_array, dim=1)   # (bs, k, n_cls, num_tokens)
+
+        pred_pos_logits,_ = torch.max(attn_map, dim=-1)
+        pred_pn_logits = self.cls_neg_head(cls_token)  # (bs, 1)
+        out = torch.cat([pred_pn_logits, pred_pos_logits], dim=-1)   # (bs, n_cls+1)
+        return out, attn_array.detach().cpu(), cls_token.detach().cpu()
     
     def calc_pos_loss(self, pos_logits, databatch):
-        loss_fn = nn.BCEWithLogitsLoss()
-        binary_matrix = databatch['multi_pos_labels'].to(self.device)
+        loss_fn = nn.BCELoss()
+        bs = databatch['inputs'].shape[0]
+        # binary_matrix: (bs, pos_cls)
+        binary_matrix = torch.zeros((bs, self.num_classes), dtype=torch.float32).to(self.device)
+        for idx, sample in enumerate(databatch['data_samples']):
+            labels = sample.gt_label
+            if len(labels) > 0:  # 非空才更新
+                binary_matrix[idx, torch.as_tensor(labels, dtype=torch.long)] = 1.0
+   
         loss = loss_fn(pos_logits, binary_matrix)
         return loss
     
     def calc_loss(self,feature_emb, databatch):
-        img_pn_logit = self.calc_logits(feature_emb)
-        img_gt = databatch['image_labels'].to(self.device).unsqueeze(-1).float()
-        loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
-        return loss
+        pred_logits,_,_ = self.calc_logits(feature_emb)
+        img_pn_logit = pred_logits[:, 0].unsqueeze(1)
+        positive_logits = pred_logits[:, 1:]
+        image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
+        img_gt = image_labels.to(self.device).unsqueeze(-1).float()
+        pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
+        pos_loss = self.calc_pos_loss(positive_logits, databatch)
+        loss = pn_loss + pos_loss
+        loss_dict = {
+            'pn_loss': pn_loss.item(),
+            'pos_loss': pos_loss.item(),
+        }
+        return loss,loss_dict
+
 
     def set_pred(self,feature_emb, databatch):
-        img_pn_logit = self.calc_logits(feature_emb) # (bs, num_classes)
-        databatch['img_probs'] = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
-        databatch['attn_array'] = None
-        return databatch
+        # attn_array: (bs, num_classes, num_tokens)
+        pred_logits,attn_array,img_tokens = self.calc_logits(feature_emb) # (bs, num_classes)
+        img_pn_logit = pred_logits[:, 0]
+        positive_logits = pred_logits[:, 1:]
+        img_probs = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
+        bs = len(databatch['data_samples'])
+        if bs == 1:
+            img_probs = img_probs.unsqueeze(0)
+        pos_probs = torch.sigmoid(positive_logits) # (bs, num_classes)
+
+        data_sampels = []
+        for item, pn_p, pos_p, attn, imgtoken in zip(databatch['data_samples'], img_probs, pos_probs, attn_array, img_tokens):
+            item.img_prob = pn_p
+            item.pos_prob = pos_p
+            item.img_token = imgtoken
+            item.attn = attn
+            data_sampels.append(item)
+
+        return data_sampels
+

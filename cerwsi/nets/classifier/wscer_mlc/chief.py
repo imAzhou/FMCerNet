@@ -1,19 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .meta_classifier import MetaClassifier
-from cerwsi.utils import build_evaluator,BinaryMetric
-
 
 class Attn_Net_Gated(nn.Module):
     def __init__(self, L=1024, D=256, dropout=False, n_classes=1):
         super(Attn_Net_Gated, self).__init__()
-        self.attention_a = [
-            nn.Linear(L, D),
-            nn.Tanh()]
+        self.attention_a = [nn.Linear(L, D),nn.Tanh()]
 
-        self.attention_b = [nn.Linear(L, D),
-                            nn.Sigmoid()]
+        self.attention_b = [nn.Linear(L, D),nn.Sigmoid()]
         if dropout:
             self.attention_a.append(nn.Dropout(0.25))
             self.attention_b.append(nn.Dropout(0.25))
@@ -30,17 +24,10 @@ class Attn_Net_Gated(nn.Module):
         A = self.attention_c(A)  # N x n_classes
         return A, x
 
-class CHIEF(MetaClassifier):
-    '''/medical-data/lhr/Prostate/Gleason/code/穿刺数据二次微调_二分类_2/models'''
-    def __init__(self, args):
+class CHIEF(nn.Module):
+    def __init__(self, input_embed_dim):
         num_classes = 1 # 只能做阴阳二分类
-        evaluator = build_evaluator([BinaryMetric(args.logger_name, 
-                                                  thr = args.positive_thr,
-                                                  save_result_dir = args.save_result_dir,)])
-        super(CHIEF, self).__init__(evaluator, args)
-        
-        self.backbone_type = args.backbone_type
-        input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
+        super(CHIEF, self).__init__()
         if input_embed_dim == 384:
             size = [384, 256, 256]
         elif input_embed_dim == 768:
@@ -54,17 +41,16 @@ class CHIEF(MetaClassifier):
 
         fc = [nn.Linear(size[0], size[1]), 
             nn.ReLU(),
-            nn.Dropout(0.25)]
+            nn.Dropout(0.25)
+        ]
         attention_net = Attn_Net_Gated(L=size[1], D=size[2], dropout=True, n_classes=num_classes)
         fc.append(attention_net)
         self.attention_net = nn.Sequential(*fc)
         self.classifiers = nn.Linear(size[1], 1)
 
 
-    def calc_logits(self, inputs):
-        feat = self.get_img_tokens(inputs)  # (bs, num_tokens, C)
-        
-        # feat: (bs,img_token,C)
+    def forward(self, feat):
+        '''feat: (bs,img_token,C)'''
         # A: (bs, num_tokens, pos_cls_num), h: (bs, num_tokens, c=512)
         A, h = self.attention_net(feat)
         A_raw = A    # A_raw: (bs, num_tokens, 1)
@@ -81,31 +67,6 @@ class CHIEF(MetaClassifier):
         }
         return out.squeeze(-1), inter_var
     
-    def calc_loss(self,inputs, databatch):
-        img_pn_logit,_ = self.calc_logits(inputs)
-        image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
-        img_gt = image_labels.to(self.device).unsqueeze(-1).float()
-        pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
-        loss_dict = {
-            'pn_loss': pn_loss.item(),
-        }
-        return pn_loss,loss_dict
-
-    def set_pred(self,inputs, databatch):
-        img_pn_logit,inter_var = self.calc_logits(inputs) # (bs, num_classes-1)
-        img_probs = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
-        bs = len(databatch['data_samples'])
-        if bs == 1:
-            img_probs = img_probs.unsqueeze(0)
-
-        data_sampels = []
-        patch_prob = (self.patch_probs(inter_var))['patch_prob']
-        for item, pn_p,attn,imgtoken in zip(databatch['data_samples'], img_probs, patch_prob, inter_var['img_feat']):
-            item.img_prob = pn_p
-            item.attn = attn    # (num_tokens,)
-            item.img_token = imgtoken
-            data_sampels.append(item)
-        return data_sampels
 
     def patch_probs(self, inter_var):
         A_raw = inter_var['A_raw']  # A_raw: (bs, num_tokens, 1)

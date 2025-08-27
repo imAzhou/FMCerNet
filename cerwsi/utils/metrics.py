@@ -63,22 +63,18 @@ class BinaryMetric(BaseMetric):
             data_batch: A batch of data from the dataloader.
             data_samples (Sequence[dict]): A batch of outputs from the model.
         """
-        data_samples = data_samples[0]
-        bs_img_gt = data_samples['image_labels']
-        bs_img_pred = (data_samples['img_probs'] > self.thr).int()
-        
-        bs = bs_img_gt.shape[0]
-
-        for bidx in range(bs):
+        thr = self.thr if self.thr else 0.3
+ 
+        for item in data_samples:
             result = dict(
-                img_id = data_samples['data_samples'][bidx].img_id,
-                img_gt = bs_img_gt[bidx].item(),
-                img_pred = bs_img_pred[bidx].item(),
-                img_probs = data_samples['img_probs'][bidx].item()
+                img_gt = int(len(item['gt_label'])>0),
+                img_pred = int(item['img_prob'] > thr),
+                img_probs = item['img_prob'].item(),
             )
 
             # Save the result to `self.results`.
             self.results.append(result)
+
 
     def compute_metrics(self, results):
         """Compute the metrics from processed results.
@@ -93,6 +89,7 @@ class BinaryMetric(BaseMetric):
         # NOTICE: don't access `self.results` from the method. `self.results`
         # are a list of results from multiple batch, while the input `results`
         # are the collected results.
+        logger = MMLogger.get_instance(self.logger_name)
         result_metrics = dict()
 
         img_gt = [rs['img_gt'] for rs in results]
@@ -101,25 +98,23 @@ class BinaryMetric(BaseMetric):
  
         fpr, tpr, thresholds = roc_curve(img_gt, img_probs)
         result_metrics['AUC'] = round((auc(fpr, tpr)).item(), 4)
+        cohenkappa = torchmetrics.CohenKappa(task="multiclass", num_classes=2)
+        ck_score = cohenkappa(torch.tensor(img_pred), torch.tensor(img_gt))
+        result_metrics['CohenKappa'] = round(ck_score.item(), 4)
+
         img_result = calculate_metrics(img_gt,img_pred)
         cm = img_result['cm']
         del img_result['cm']
         for k,v in img_result.items():
-            result_metrics['img_'+k] = v
+            result_metrics[k] = v
         
         result_table_1 = PrettyTable()
         result_table_1.field_names = result_metrics.keys()
         result_table_1.add_row(result_metrics.values())
 
         cmstr = print_confusion_matrix(cm, print_flag=False)
-        str_metric = '\n' + str(result_table_1) + '\n'+ '\n' + cmstr
-        
-        logger = MMLogger.get_instance(self.logger_name)
+        str_metric = '\n' + str(result_table_1) + '\n' + cmstr
         logger.info(str_metric)
-
-        if self.save_result_dir is not None:
-            with open(f'{self.save_result_dir}/pred_result.json', 'w', encoding='utf-8') as f:
-                json.dump(results, f)
 
         return result_metrics
 
@@ -127,11 +122,12 @@ class ExtendMultiLabelMetric(MultiLabelMetric):
     '''
     同时预测图片阴阳概率和含每个阳性类别的概率
     '''
-    def __init__(self, thr, num_classes, logger_name) -> None:
+    def __init__(self, thr, num_classes, logger_name, with_binary) -> None:
         super(ExtendMultiLabelMetric, self).__init__(thr=thr)
         self.num_classes = num_classes
         self.logger_name = logger_name
         self.thr = thr
+        self.with_binary = with_binary
 
     def process(self, data_batch, data_samples):
         """Process one batch of data samples.
@@ -148,13 +144,24 @@ class ExtendMultiLabelMetric(MultiLabelMetric):
  
         for item in data_samples:
             pred_multi_label = [clsidx for clsidx,cls_score in enumerate(item['pos_prob']) if cls_score > thr]
-            result = dict(
-                img_gt = int(len(item['gt_label'])>0),
-                img_pred = int(item['img_prob'] > thr),
-                img_probs = item['img_prob'].item(),
-                gt_multi_label = item['gt_label'],
-                pred_multi_label = pred_multi_label,
-            )
+            if self.with_binary:
+                result = dict(
+                    img_gt = int(len(item['gt_label'])>0),
+                    img_pred = int(item['img_prob'] > thr),
+                    img_probs = item['img_prob'].item(),
+                    gt_multi_label = item['gt_label'],
+                    pred_multi_label = pred_multi_label,
+                )
+            else:
+                img_pred = int(len(pred_multi_label) > 0)
+                img_probs = max(item['pos_prob']).item()
+                result = dict(
+                    img_gt = int(len(item['gt_label'])>0),
+                    img_pred = img_pred,
+                    img_probs = img_probs,
+                    gt_multi_label = item['gt_label'],
+                    pred_multi_label = pred_multi_label,
+                )
 
             # Save the result to `self.results`.
             self.results.append(result)

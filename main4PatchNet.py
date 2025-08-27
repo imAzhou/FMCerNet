@@ -58,7 +58,7 @@ def train_net(cfg, args, model):
                 pbar.desc = f"loss: {round(loss.item(), 4)}"
 
             if idx % 50 == 0 and is_main_process():
-                print_str = f'Train Epoch [{epoch + 1}/{cfg.max_epochs}][{idx}/{len(trainloader)}], LR: {current_lr:.6f}'
+                print_str = f'Train Epoch [{epoch + 1}/{cfg.max_epochs}][{idx}/{len(trainloader)}], LR: {current_lr:.6f}, loss: {loss.item():.4f}'
                 if len(loss_dict.keys()) > 1:
                     for k,v in loss_dict.items():
                         print_str += f', {k}:{v:.6f}'
@@ -112,7 +112,6 @@ def get_net(cfg):
 def main():
     init_distributed_mode(args)
     set_seed(args.seed)
-    
     device = torch.device(f'cuda:{os.getenv("LOCAL_RANK")}')
 
     d_cfg = Config.fromfile(args.dataset_config_file)
@@ -138,16 +137,18 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12348 main4PatchNet.py \
     configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
     configs/model/wscernet.py \
-    configs/strategy.py \
-    --record_save_dir log/WS1600/mlc
+    configs/strategy_patch.py \
+    --record_save_dir log/WS1600/wscernet
     
+l_cerscanv1_dataset
+cdetector_ws400
 
-CUDA_VISIBLE_DEVICES=2,3 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \
+CUDA_VISIBLE_DEVICES=0,1 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \
     configs/dataset/slide_cfg.py \
     configs/model/wsi_slidenet.py \
-    configs/strategy.py \
-    --record_save_dir log/debug
+    configs/strategy_slide.py \
+    --record_save_dir log/slide_cls
 '''

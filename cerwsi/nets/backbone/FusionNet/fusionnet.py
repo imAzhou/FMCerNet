@@ -1,35 +1,29 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from peft import LoraConfig, FourierFTConfig, get_peft_model
+import math
 from ..SmartCCS.vision_transformer import vit_large
 from .dtcwt_module import DTCWTModule
+from .feat_pe import PositionEmbeddingRandom
 from ..meta_backbone import MetaBackbone
 
-def get_peft_config(peft_type:str):
-    if peft_type == 'lora':
-        return LoraConfig(
-                r=8,  # LoRA 的秩
-                lora_alpha=16,  # LoRA 的缩放因子
-                target_modules = ["attn.qkv", "attn.proj", "lin1", "lin2"],  # 应用 LoRA 的目标模块
-                lora_dropout=0.1,  # Dropout 概率
-                bias="none",  # 是否调整偏置
-            )
-    if peft_type == 'FourierFT':
-        return FourierFTConfig(
-            n_frequency = 1000,
-            target_modules = ["qkv", "proj", "fc1", "fc2"],
-            exclude_modules = ["patch_embed.proj"],
-            scaling = 300.0
-        )
+class LayerNorm2d(nn.Module):
+    def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(num_channels))
+        self.bias = nn.Parameter(torch.zeros(num_channels))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        u = x.mean(1, keepdim=True)
+        s = (x - u).pow(2).mean(1, keepdim=True)
+        x = (x - u) / torch.sqrt(s + self.eps)
+        x = self.weight[:, None, None] * x + self.bias[:, None, None]
+        return x
 
 class FusionNet(MetaBackbone):
     def __init__(self, args):
         super(FusionNet, self).__init__(args)
-        use_peft = args.backbone_cfg['use_peft']
-        frozen_backbone = args.backbone_cfg['frozen_backbone']
-        backbone_ckpt = args.backbone_cfg['backbone_ckpt']
-
         vit_kwargs = dict(
             img_size=224,
             patch_size=14,
@@ -44,50 +38,68 @@ class FusionNet(MetaBackbone):
         )
         self.vit_module = vit_large(**vit_kwargs)
         self.dtcwt_module = DTCWTModule(args.input_size)
+        feat_dim = 1024
         self.cat_fc = nn.Sequential(
-            nn.Linear(2048, 1024),
-            # nn.ReLU(),
+            nn.Linear(feat_dim*2, feat_dim),
+            nn.ReLU(),
+            nn.Dropout(0.25)
         )
-
-        if backbone_ckpt is not None:
-            self.load_backbone(backbone_ckpt)
-
-        if use_peft in ['lora', 'FourierFT']:
-            self.peft_config = get_peft_config(use_peft)
-            self.vit_module = get_peft_model(self.vit_module, self.peft_config).base_model
-
-        if frozen_backbone:
-            update_keys = ['lora']
-            self.freeze_backbone(update_keys)
+        self.pe_layer = PositionEmbeddingRandom(feat_dim // 2)
+        
+        self.load_backbone(args.backbone_cfg['backbone_ckpt'])
+        self.vit_module = self.get_peft_model(self.vit_module)
+        self.freeze_backbone(args.backbone_cfg['frozen_backbone'])
 
     def load_backbone(self, ckpt):
-        params_weight = torch.load(ckpt, map_location="cpu")
-        load_result = self.load_state_dict(params_weight, strict=False)
-        print('Load backbone FusionNet: ' + str(load_result))
+        if ckpt is not None:
+            params_weight = torch.load(ckpt, map_location="cpu")
+            load_result = self.load_state_dict(params_weight, strict=False)
+            print('Load backbone FusionNet: ' + str(load_result))
 
-    def freeze_backbone(self, update_keys):
-        '''frozen the backbone params'''
-        for name, param in self.vit_module.named_parameters():
-            param.requires_grad = False
-            for key in update_keys:
-                if key in name:
-                    param.requires_grad = True
+    def freeze_backbone(self, frozen_backbone):
+        '''frozen the vit_module params'''
+        update_keys = ['lora']
+        if frozen_backbone:
+            for name, param in self.vit_module.named_parameters():
+                param.requires_grad = False
+                for key in update_keys:
+                    if key in name:
+                        param.requires_grad = True
 
     def forward(self, x: torch.Tensor):
         x_224 = F.interpolate(x,size=224,mode='bilinear',align_corners=False)
         vit_output = self.vit_module(x_224, is_training=True) # dict
+        vit_imgtokens = vit_output['x_norm_patchtokens'] # Tensor: B,N,C
+        feat_size = int(math.sqrt(vit_imgtokens.shape[1]))
+        feat_pe = self.pe_layer((feat_size,feat_size)).unsqueeze(0) # (1,C,H,W)
+        feat_pe = feat_pe.flatten(2).permute(0, 2, 1).to(self.device) #  (1, N, C)
+
         dtcwt_output = self.dtcwt_module(x) # Tensor: B,N,C
-        dtcwt_mean = dtcwt_output.mean(dim=1)  # (B, C)
-        cls_token_cat = torch.cat([vit_output['x_norm_clstoken'], dtcwt_mean], dim=1)  # (B, 2C)
-        cls_token_cat = self.cat_fc(cls_token_cat)
+        
+        img_token_cat = torch.cat([(vit_imgtokens+feat_pe), dtcwt_output], dim=-1)  # (B, N, 2C)
+        img_token_cat = self.cat_fc(img_token_cat)
+
         output = {
             **vit_output, 
             'dtcwt_output':dtcwt_output,
-            'cls_token_cat':cls_token_cat,
+            'cat_output': img_token_cat     # Tensor: B,N,C
         }
         return output
 
-def make_pretrain_ckpt(model):
+def make_pretrain_ckpt():
+    import torch
+    from cerwsi.nets.backbone.FusionNet.fusionnet import FusionNet
+    import argparse
+    parser = argparse.ArgumentParser()
+    args = parser.parse_args()
+    args.input_size = 1024
+    args.backbone_cfg = {
+        'use_peft': None,
+        'frozen_backbone': True,
+        'backbone_ckpt': None
+    }
+
+    model = FusionNet(args)
     model_ckpt = {}
     smartccs_ckpt = torch.load('checkpoints/CCS_vitl_100M.pth', map_location="cpu", weights_only=True)["teacher"]
     for key,value in smartccs_ckpt.items():
@@ -104,6 +116,7 @@ def make_pretrain_ckpt(model):
     load_result = model.load_state_dict(model_ckpt, strict=False)
     print(load_result)
     torch.save(model.state_dict(), f'checkpoints/fusionnet.pth')
+
 
 if __name__ == "__main__":
     import argparse

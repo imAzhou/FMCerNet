@@ -20,6 +20,15 @@ backbone_cfgdict = {
         frozen_backbone = False,
         use_peft = None,
     ),
+    'vit': dict(
+        backbone_output_dim = [1024],
+        backbone_output_downratio = [16],
+        backbone_ckpt = 'checkpoints/vit-large-p16_in21k-pre-3rdparty_ft-64xb64_in1k-384_20210928-b20ba619.pth',
+        frozen_backbone = False,
+        use_peft = None,   # None, lora, FourierFT, dtcwt
+        vit_patch_size = 16,
+        default_input_size = 224
+    ),
     'dinov2': dict(
         backbone_output_dim = [1024],
         backbone_ckpt = 'checkpoints/vit-large-p14_dinov2-pre_3rdparty_20230426-f3302d9e.pth',
@@ -34,7 +43,6 @@ backbone_cfgdict = {
         backbone_ckpt = 'checkpoints/uni.bin',
         frozen_backbone = True,
         use_peft = 'lora',   # None, lora, FourierFT, dtcwt
-        use_dtcwt_indexes = range(2),
         vit_patch_size = 16,
         default_input_size = 224
     ),
@@ -44,7 +52,6 @@ backbone_cfgdict = {
         backbone_size_type = 'vit_l',
         frozen_backbone = True,
         use_peft = 'lora', 
-        use_dtcwt_indexes = [],
         vit_patch_size = 16,
         default_input_size = 1024
     ),
@@ -55,7 +62,6 @@ backbone_cfgdict = {
         backbone_ckpt = 'checkpoints/sam2.1_hiera_large.pt',
         frozen_backbone = True,
         use_peft = 'lora', 
-        use_dtcwt_indexes = range(2),  # stage num_blocks: [2,6,36,4]
         vit_patch_size = 16,
         default_input_size = 1024
     ),
@@ -65,8 +71,6 @@ backbone_cfgdict = {
         backbone_ckpt = 'checkpoints/CCS_vitl_100M.pth',
         frozen_backbone = True,
         use_peft = 'lora', 
-        # use_dtcwt_indexes = range(2),
-        use_dtcwt_indexes = [],
         vit_patch_size = 14,
         default_input_size = 224
     ),

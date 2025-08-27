@@ -10,6 +10,10 @@ class ResNet(MetaBackbone):
             pretrained=False, 
             backbone=dict(out_indices=(0, 1, 2, 3))
         ).backbone
+        
+        backbone_ckpt = args.backbone_cfg['backbone_ckpt']
+        if backbone_ckpt is not None:
+            self.load_backbone(backbone_ckpt)
 
     def load_backbone(self, ckpt):
         params_weight = torch.load(ckpt, map_location=self.device)

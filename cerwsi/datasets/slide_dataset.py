@@ -18,8 +18,8 @@ class SlideDataset(Dataset):
     def __getitem__(self, idx):
         slide_info = self.data_list[idx]
         patientId = slide_info['patientId']
-        # slide_tensor = torch.load(f'{self.feat_dir}/{patientId}.pt')
-        slide_tensor = torch.rand(100, 517)
+        slide_tensor = torch.load(f'{self.feat_dir}/{patientId}.pt')
+        # slide_tensor = torch.rand(100, 517)
         slide_clsname = slide_info['kfb_clsname']
         if self.cls_map is not None:
             slide_clsname = self.cls_map[slide_info['kfb_clsname']]

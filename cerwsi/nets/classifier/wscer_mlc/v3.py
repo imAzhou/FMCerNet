@@ -4,7 +4,7 @@ import math
 import torch.nn.functional as F
 from typing import Tuple, Type
 from .feat_pe import get_feat_pe
-from .meta_classifier import MetaClassifier
+from ..meta_classifier import MetaClassifier
 from cerwsi.utils import build_evaluator, ExtendMultiLabelMetric
 
 class MLPBlock(nn.Module):
@@ -175,7 +175,7 @@ class WSCerMLC(MetaClassifier):
         feat_size = img_size // input_downratio
         num_patches = feat_size*feat_size
 
-        num_classes = args.num_classes  # 只有阳性类别
+        self.num_classes = args.num_classes  # 只有阳性类别
         evaluator = build_evaluator([ExtendMultiLabelMetric(
             thr = args.positive_thr,
             num_classes = args.num_classes,
@@ -189,7 +189,6 @@ class WSCerMLC(MetaClassifier):
         mlp_dim = 2048
         use_self_attn = False
         self.pos_add_type = 'sam' # 'sam','query2label',None
-        self.num_classes = num_classes
         
         self.proj_1 = nn.Sequential(
             nn.Linear(input_embed_dim, proj_dim_1),
@@ -197,7 +196,7 @@ class WSCerMLC(MetaClassifier):
             nn.Dropout(0.25)
         )
         
-        self.cls_tokens = nn.Embedding(num_classes, proj_dim_1)
+        self.cls_tokens = nn.Embedding(self.num_classes, proj_dim_1)
         self.layers = nn.ModuleList()
         for i in range(depth):
             self.layers.append(
@@ -214,8 +213,8 @@ class WSCerMLC(MetaClassifier):
         # self.cls_neg_head = nn.Linear(proj_dim_1 + num_classes, 1)
         self.cls_neg_head = nn.Linear(input_embed_dim, 1)
         self.cls_pos_heads = nn.ModuleList()
-        for i in range(num_classes):
-            self.cls_pos_heads.append(nn.Linear(num_patches, 1))
+        for i in range(self.num_classes):
+            self.cls_pos_heads.append(nn.Linear(proj_dim_1, 1))
 
     def calc_logits(self, inputs):
         if self.backbone_type in ['resnet', 'convnext']:
@@ -234,8 +233,9 @@ class WSCerMLC(MetaClassifier):
         elif self.backbone_type == 'fusionnet':
             feat_1 = inputs['x_norm_patchtokens']
             feat_2 = inputs['dtcwt_output']
-            feat = feat_1+feat_2
+            feat = feat_1 + feat_2
             cls_token = inputs['cls_token_cat']
+            # cls_token = inputs['x_norm_clstoken']
         
         img_tokens = feat  # (bs, num_tokens, C)
         keys_1 = self.proj_1(img_tokens)  # (bs, num_tokens, C1=512)
@@ -247,9 +247,9 @@ class WSCerMLC(MetaClassifier):
         if self.pos_add_type is not None:
             # key_pe: (1, embed_dim, feat_size[0], feat_size[1])
             key_pe = get_feat_pe(self.pos_add_type, embed_dim, (feat_size,feat_size))
-            key_pe = key_pe.flatten(2).permute(0, 2, 1).to(self.device)
+            key_pe = key_pe.flatten(2).permute(0, 2, 1).to(self.device) #  (1, num_tokens, dim)
 
-        attn_array = []
+        # attn_array = []
         for layer in self.layers:
             queries, keys_1, attn_out_q = layer(
                 queries=queries,
@@ -258,8 +258,8 @@ class WSCerMLC(MetaClassifier):
             )
             # attn_out_q: (bs, num_heads, num_cls, L)
             # attn_score: (bs, num_cls, L)
-            attn_score = torch.mean(attn_out_q, dim=1)
-            attn_array.append(attn_score)
+            # attn_score = torch.mean(attn_out_q, dim=1)
+            # attn_array.append(attn_score)
         # out = self.fc(queries)   # (bs, n_cls, 1)
         # attn_map = None
 
@@ -267,8 +267,8 @@ class WSCerMLC(MetaClassifier):
         # keys_1 = keys_1 + key_pe
         attn_map = torch.bmm(queries, keys_1.transpose(1, 2))   # (bs, n_cls, num_tokens)
         # attn_map = attn_map / math.sqrt(embed_dim)
-        attn_array.append(attn_map)
-        attn_array = torch.stack(attn_array, dim=1)
+        # attn_array.append(attn_map)
+        # attn_array = torch.stack(attn_array, dim=1)   # (bs, k, n_cls, num_tokens)
         # attn_map = F.softmax(attn_map, dim=-1)
         # attn_map = (attn_map - attn_map.mean(-1, keepdim=True)) / (attn_map.std(-1, keepdim=True) + 1e-8)
         
@@ -281,11 +281,12 @@ class WSCerMLC(MetaClassifier):
 
         pred_pos_logits = []
         for i in range(self.num_classes):
-            pred_pos_logits.append(self.cls_pos_heads[i](attn_map[:,i,:]))  # [(bs, 1),]
+            pred_pos_logits.append(self.cls_pos_heads[i](queries[:,i,:]))  # [(bs, 1),]
         pred_pos_logits = torch.cat(pred_pos_logits, dim=-1)  # (bs, n_cls)
         out = torch.cat([pred_pn_logits, pred_pos_logits], dim=-1)   # (bs, n_cls+1)
+        # out = pred_pos_logits
         
-        return out, attn_array.detach().cpu(), cls_token.detach().cpu()
+        return out, attn_map, cls_token.detach().cpu()
     
     def calc_pos_loss(self, pos_logits, databatch):
         loss_fn = nn.BCEWithLogitsLoss()
@@ -301,45 +302,62 @@ class WSCerMLC(MetaClassifier):
         return loss
     
     def calc_loss(self,feature_emb, databatch):
-        pred_logits,_ ,_= self.calc_logits(feature_emb)
+        pred_logits,_,_ = self.calc_logits(feature_emb)
         img_pn_logit = pred_logits[:, 0].unsqueeze(1)
         positive_logits = pred_logits[:, 1:]
         image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
         img_gt = image_labels.to(self.device).unsqueeze(-1).float()
         pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
-        # pn_loss = 5*sigmoid_focal_loss(
-        #     img_pn_logit,   # (bs, 1) logits，未经过 sigmoid
-        #     img_gt, # (bs, 1) 0/1 标签，float 类型
-        #     alpha=0.25,
-        #     gamma=2.0,
-        #     reduction="mean"
-        # )
-        
         pos_loss = self.calc_pos_loss(positive_logits, databatch)
-        loss = 0.1*pn_loss + pos_loss
+        loss = pn_loss + pos_loss
         loss_dict = {
             'pn_loss': pn_loss.item(),
             'pos_loss': pos_loss.item(),
         }
         return loss,loss_dict
 
+
     def set_pred(self,feature_emb, databatch):
         # attn_array: (bs, num_classes, num_tokens)
-        pred_logits,attn_array,img_tokens = self.calc_logits(feature_emb) # (bs, num_classes)
+        pred_logits,attn_map,img_tokens = self.calc_logits(feature_emb) # (bs, num_classes)
         img_pn_logit = pred_logits[:, 0]
         positive_logits = pred_logits[:, 1:]
         img_probs = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
         bs = len(databatch['data_samples'])
         if bs == 1:
             img_probs = img_probs.unsqueeze(0)
-        pos_probs = torch.sigmoid(positive_logits) # (bs, num_classes)
+        pos_probs = torch.sigmoid(positive_logits) # (bs, n_cls)
+        
+        # heatmap = F.softmax(attn_map, dim=-1)   # (bs, n_cls, num_tokens)
+        heatmap = F.sigmoid(attn_map)   # (bs, n_cls, num_tokens)
+        # heatmap = pos_probs.unsqueeze(-1) * F.sigmoid(attn_map)   # (bs, n_cls, num_tokens)
+
+        # all_weights = torch.stack([head.weight.squeeze(0) for head in self.cls_pos_heads], dim=0)   # (n_cls, num_tokens)
+        # contribution = attn_map * all_weights.unsqueeze(0)  # (bs, n_cls, num_tokens)
+
+        # contribution = torch.softmax(attn_map, dim=-1)  # (bs, n_cls, num_tokens)
+
+        # grad = torch.autograd.grad(
+        #     outputs=positive_logits, 
+        #     inputs=keys_1,   # (bs, num_tokens, dim)
+        #     grad_outputs=torch.ones_like(positive_logits),
+        #     retain_graph=True, 
+        #     create_graph=False
+        # )[0]  # (bs, num_tokens, dim)
+        # positive_logits.sum().backward()
+        # # contribution = grad.abs().detach()*attn_map.detach()  # (bs, n_cls, num_tokens)
+        # heatmap = grad.detach()*keys_1.detach()
+        # del positive_logits,keys_1,grad
+        # torch.cuda.empty_cache()
 
         data_sampels = []
-        for item, pn_p, pos_p, attn, imgtoken in zip(databatch['data_samples'], img_probs, pos_probs, attn_array, img_tokens):
+        for item, pn_p, pos_p, attn, imgtoken in zip(databatch['data_samples'], img_probs, pos_probs, heatmap, img_tokens):
             item.img_prob = pn_p
             item.pos_prob = pos_p
             item.img_token = imgtoken
-            # item.attn = attn
+            # item.attn = attn.mean(-1)  # (num_tokens, )
+            item.attn = attn  # (n_cls, num_tokens)
             data_sampels.append(item)
 
         return data_sampels
+

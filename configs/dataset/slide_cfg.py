@@ -1,4 +1,4 @@
-data_root = 'data_resource/0630/WINDOW_SIZE_850'
+data_root = 'data_resource/WINDOW_SIZE_850'
 feat_dir = f'{data_root}/slide_feat'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 cls_map = {
