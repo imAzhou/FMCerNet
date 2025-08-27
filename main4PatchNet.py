@@ -10,7 +10,7 @@ from mmengine.config import Config
 import torchvision
 from mmengine.optim import build_optim_wrapper
 torchvision.disable_beta_transforms_warning()
-from cerwsi.nets import PatchNet
+from cerwsi.nets import PatchNet,SlideNet
 from cerwsi.datasets import load_data
 from cerwsi.utils import set_seed, init_distributed_mode, get_logger, is_main_process,build_param_scheduler, lr_scheduler_step, scale_lr
 
@@ -37,7 +37,7 @@ def train_net(cfg, args, model):
     param_schedulers = build_param_scheduler(optimizer, cfg.param_scheduler, 
                                          cfg.max_epochs, len(trainloader))
     if is_main_process():
-        logger, files_save_dir = get_logger(args.record_save_dir, model, cfg)
+        logger, files_save_dir = get_logger(args.record_save_dir, model.module, cfg)
     
     max_acc = -1
     for epoch in range(cfg.max_epochs):
@@ -58,7 +58,7 @@ def train_net(cfg, args, model):
                 pbar.desc = f"loss: {round(loss.item(), 4)}"
 
             if idx % 50 == 0 and is_main_process():
-                print_str = f'Train Epoch [{epoch + 1}/{cfg.max_epochs}][{idx}/{len(trainloader)}], LR: {current_lr:.6f}'
+                print_str = f'Train Epoch [{epoch + 1}/{cfg.max_epochs}][{idx}/{len(trainloader)}], LR: {current_lr:.6f}, loss: {loss.item():.4f}'
                 if len(loss_dict.keys()) > 1:
                     for k,v in loss_dict.items():
                         print_str += f', {k}:{v:.6f}'
@@ -86,25 +86,32 @@ def train_net(cfg, args, model):
                 #     break
                 with torch.no_grad():
                     outputs = model(data_batch, 'val')
-                model.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
+                model.module.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
 
-            metrics = model.taskhead.evaluator.evaluate(len(valloader.dataset))
+            metrics = model.module.taskhead.evaluator.evaluate(len(valloader.dataset))
             if is_main_process():
                 pbar.close()
                 # print(metrics)
                 if cfg.save_each_epoch:
-                    torch.save(model.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
+                    torch.save(model.module.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
                 prime_score_type = cfg.eval_prime_score
                 prime_score = metrics[prime_score_type]
                 if prime_score > max_acc:
                     max_acc = prime_score
                     print(f'Best score update: {prime_score}.')
-                    torch.save(model.state_dict(), f'{files_save_dir}/checkpoints/best.pth')
+                    torch.save(model.module.state_dict(), f'{files_save_dir}/checkpoints/best.pth')
+
+def get_net(cfg):
+    model = None
+    if cfg.net_type == 'patch':
+        model = PatchNet(cfg)
+    elif cfg.net_type == 'slide':
+        model = SlideNet(cfg)
+    return model
 
 def main():
     init_distributed_mode(args)
     set_seed(args.seed)
-    
     device = torch.device(f'cuda:{os.getenv("LOCAL_RANK")}')
 
     d_cfg = Config.fromfile(args.dataset_config_file)
@@ -115,15 +122,12 @@ def main():
     for sub_cfg in [d_cfg, m_cfg, s_cfg]:
         cfg.merge_from_dict(sub_cfg.to_dict())
     cfg.save_result_dir = None
-    model = PatchNet(cfg).to(device)
-    model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[args.gpu], find_unused_parameters=True)
-    model = model.module
-
+    model = get_net(cfg).to(device)
     if cfg.load_from is not None:
         model.load_ckpt(cfg.load_from)
+    model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[args.gpu], find_unused_parameters=True)
     train_net(cfg, args, model)
-
     torch.distributed.destroy_process_group()
 
 if __name__ == '__main__':
@@ -132,14 +136,16 @@ if __name__ == '__main__':
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchNet.py \
     configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
-    configs/model/wscernet.py \
-    configs/strategy.py \
-    --record_save_dir log/WS1600/mlc
+    configs/model/ml_decoder.py \
+    configs/strategy_patch.py \
+    --record_save_dir log/WS1600/ml_decoder
     
+l_cerscanv1_dataset
+cdetector_ws400
 
-CUDA_VISIBLE_DEVICES=6,7 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \
-    configs/dataset/mmdet/l_cerscanv1_dataset.py \
-    configs/model/detr.py \
-    configs/strategy.py \
-    --record_save_dir log/debug
+CUDA_VISIBLE_DEVICES=0,1 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \
+    configs/dataset/slide_cfg.py \
+    configs/model/wsi_slidenet.py \
+    configs/strategy_slide.py \
+    --record_save_dir log/slide_cls
 '''

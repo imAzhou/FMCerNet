@@ -1,18 +1,37 @@
-from PIL import Image
-import pandas as pd
-from cerwsi.utils import KFBSlide
 
 
-df_pure = pd.read_csv('data_resource/0630/4_pure_train.csv')
-df_jfsw = pd.read_csv('data_resource/0630/5_jfsw_train.csv')
-df_test = pd.read_csv('data_resource/0630/7_test.csv')
-df = pd.concat([df_pure, df_jfsw, df_test])
+def make_pretrain_ckpt():
+    import torch
+    from cerwsi.nets.backbone.FusionNet.fusionnet import FusionNet
+    import argparse
+    parser = argparse.ArgumentParser()
+    args = parser.parse_args()
+    args.input_size = 1024
+    args.backbone_cfg = {
+        'use_peft': None,
+        'frozen_backbone': True,
+        'backbone_ckpt': None
+    }
 
-for pid in ['ZY_ONLINE_1_1763','ZY_ONLINE_1_1764','ZY_ONLINE_1_1765','ZY_ONLINE_1_1766']:
-    rowinfo = df[df['patientId'] == pid].iloc[0]
-    slide = KFBSlide(rowinfo.kfb_path)
-    LEVEL = len(slide.level_dimensions) - 1 
-    max_x, max_y = slide.level_dimensions[LEVEL]
-    read_result = Image.fromarray(slide.read_region((0,0), LEVEL, (max_x,max_y)))
-    read_result.save(f'{pid}.png')
+    model = FusionNet(args)
+    # data = torch.randn((7, 3, 1024, 1024))
+    # output = model(data)
 
+    model_ckpt = {}
+    smartccs_ckpt = torch.load('checkpoints/CCS_vitl_100M.pth', map_location="cpu", weights_only=True)["teacher"]
+    for key,value in smartccs_ckpt.items():
+        if 'backbone' in key:
+            key = '.'.join(key.split('.')[1:])
+            model_ckpt['vit_module.'+key] = value
+    load_result = model.load_state_dict(model_ckpt, strict=False)
+    print(load_result)
+    sam_ckpt = torch.load('checkpoints/sam_vit_h_4b8939.pth', map_location="cpu")
+    for key,value in sam_ckpt.items():
+        if 'patch_embed' in key:
+            key = '.'.join(key.split('.')[1:])
+            model_ckpt['dtcwt_module.'+key] = value
+    load_result = model.load_state_dict(model_ckpt, strict=False)
+    print(load_result)
+    torch.save(model.state_dict(), f'checkpoints/fusionnet.pth')
+
+make_pretrain_ckpt()

@@ -4,6 +4,7 @@ from mmengine.registry import init_default_scope
 from mmengine.dataset.sampler import DefaultSampler
 from .cls_dataset import ClsDataset
 from .instance_dataset import InstanceDataset
+from .slide_dataset import SlideDataset
 from mmpretrain.datasets import MultiLabelDataset
 
 def load_data(cfg, load_modes = []):
@@ -28,6 +29,15 @@ def load_data(cfg, load_modes = []):
                 dataset_cfg = cfg.val_datasets
                 batch_size = cfg.val_bs
             dataset = MultiLabelDataset(**dataset_cfg)
+        
+        elif cfg.dataset_type == 'slide':
+            if mode == 'train':
+                csvfile = cfg.train_csvfile
+                batch_size = cfg.train_bs
+            elif mode == 'val':
+                csvfile = cfg.val_csvfile
+                batch_size = cfg.val_bs
+            dataset = SlideDataset(cfg, csvfile)
 
         elif cfg.dataset_type == 'instance':
             # register all modules in mmdet into the registries
@@ -40,8 +50,8 @@ def load_data(cfg, load_modes = []):
                 pin_memory = True,
                 batch_size = batch_size, 
                 sampler = sampler,
-                collate_fn=custom_collate,
-                num_workers=8)
+                collate_fn = custom_collate,
+                num_workers = 8)
             
         dataloaders.append(loader)
 

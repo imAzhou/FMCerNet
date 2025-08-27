@@ -68,9 +68,9 @@ def main():
     if args.val_json:
         cfg.val_datasets['ann_file'] = args.val_json
     model = PatchNet(cfg).to(device)
+    model.load_ckpt(args.ckpt)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
     model = model.module
-    model.load_ckpt(args.ckpt)
     test_net(cfg, model)
     torch.distributed.destroy_process_group()
 
@@ -80,10 +80,10 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 tools/test_PatchNet.py \
-    log/WS1600/2025_08_07_20_03_48/config.py \
-    log/WS1600/2025_08_07_20_03_48/checkpoints/best.pth \
-    log/WS1600/2025_08_07_20_03_48 \
-    --val_json annofiles/multilabel_puretrain.json \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
+    log/WS1600/wscernet/2025_08_23_09_35_32/config.py \
+    log/WS1600/wscernet/2025_08_23_09_35_32/checkpoints/best.pth \
+    log/WS1600/wscernet/2025_08_23_09_35_32 \
+    --val_json annofiles/multilabel_extendval.json \
     --save_result
 '''

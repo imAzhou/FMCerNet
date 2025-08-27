@@ -39,7 +39,7 @@ class CHIEF(MetaClassifier):
         evaluator = build_evaluator([BinaryMetric(args.logger_name, 
                                                   thr = args.positive_thr,
                                                   save_result_dir = args.save_result_dir,)])
-        super(CHIEF, self).__init__(evaluator, **args)
+        super(CHIEF, self).__init__(evaluator, args)
         
         self.backbone_type = args.backbone_type
         input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
@@ -85,15 +85,19 @@ class CHIEF(MetaClassifier):
         A = F.softmax(A, dim=-1)
         cls_feature = torch.bmm(A, h)    # cls_feature: (bs, 1, c=512)
         out = self.classifiers(cls_feature)    # (bs, 1, 1)
+        # img_embedding = torch.mm(A, feat).squeeze(1)
         inter_var = {
             'A_raw': A_raw,
             'token_feats': h,
+            'img_feat': cls_feature.squeeze(1),  # cls_feature: (bs, c=512)
+            # 'img_feat': img_embedding
         }
         return out.squeeze(-1), inter_var
     
     def calc_loss(self,inputs, databatch):
         img_pn_logit,_ = self.calc_logits(inputs)
-        img_gt = databatch['image_labels'].to(self.device).unsqueeze(-1).float()
+        image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
+        img_gt = image_labels.to(self.device).unsqueeze(-1).float()
         pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
         loss_dict = {
             'pn_loss': pn_loss.item(),
@@ -101,9 +105,20 @@ class CHIEF(MetaClassifier):
         return pn_loss,loss_dict
 
     def set_pred(self,inputs, databatch):
-        img_pn_logit,_ = self.calc_logits(inputs) # (bs, num_classes-1)
-        databatch['img_probs'] = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
-        return databatch
+        img_pn_logit,inter_var = self.calc_logits(inputs) # (bs, num_classes-1)
+        img_probs = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
+        bs = len(databatch['data_samples'])
+        if bs == 1:
+            img_probs = img_probs.unsqueeze(0)
+
+        data_sampels = []
+        patch_prob = (self.patch_probs(inter_var))['patch_prob']
+        for item, pn_p,attn,imgtoken in zip(databatch['data_samples'], img_probs, patch_prob, inter_var['img_feat']):
+            item.img_prob = pn_p
+            item.attn = attn    # (num_tokens,)
+            item.img_token = imgtoken
+            data_sampels.append(item)
+        return data_sampels
 
     def patch_probs(self, inter_var):
         A_raw = inter_var['A_raw']  # A_raw: (bs, num_tokens, 1)

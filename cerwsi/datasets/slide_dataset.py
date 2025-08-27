@@ -1,22 +1,33 @@
 import torch
-from PIL import Image
 from torch.utils.data import Dataset
-import os
-import glob
+import pandas as pd
 
 # 自定义数据集类
 class SlideDataset(Dataset):
-    def __init__(self, root_dir, transform):
-
-        self.total_imgs = glob.glob(f'{root_dir}/patientImgs/**/*.png')      
-        self.transform = transform
+    def __init__(self, cfg, csvfile):
+        df_data = pd.read_csv(csvfile)
+        df_data = df_data.drop_duplicates(subset=["patientId"])   # 按 patientId 去重
+        self.data_list = df_data.to_dict(orient="records")  # 每一行 -> dict
+        self.feat_dir = cfg.feat_dir
+        self.classes = cfg.classes
+        self.cls_map = cfg.cls_map
 
     def __len__(self):
-        return len(self.total_imgs)
+        return len(self.data_list)
 
     def __getitem__(self, idx):
-        imgpath = self.total_imgs[idx]
-        patientId = os.path.dirname(imgpath).split('/')[-1]
-        image = Image.open(imgpath)
-        input_tensor = self.transform(image)
-        return input_tensor,patientId,imgpath
+        slide_info = self.data_list[idx]
+        patientId = slide_info['patientId']
+        slide_tensor = torch.load(f'{self.feat_dir}/{patientId}.pt')
+        # slide_tensor = torch.rand(100, 517)
+        slide_clsname = slide_info['kfb_clsname']
+        if self.cls_map is not None:
+            slide_clsname = self.cls_map[slide_info['kfb_clsname']]
+        slide_label = self.classes.index(slide_clsname)
+        return {
+            'inputs': slide_tensor,
+            'data_samples': {
+                'slide_label': slide_label,
+                'slide_info': slide_info
+            }
+        }

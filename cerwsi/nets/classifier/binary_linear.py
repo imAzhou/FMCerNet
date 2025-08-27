@@ -31,7 +31,8 @@ class BinaryLinear(MetaClassifier):
     
     def calc_loss(self,inputs, databatch):
         img_pn_logit = self.calc_logits(inputs)
-        img_gt = databatch['image_labels'].to(self.device).unsqueeze(-1).float()
+        image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
+        img_gt = image_labels.to(self.device).unsqueeze(-1).float()
         pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
         loss_dict = {
             'pn_loss': pn_loss.item(),
@@ -40,5 +41,9 @@ class BinaryLinear(MetaClassifier):
 
     def set_pred(self,inputs, databatch):
         img_pn_logit = self.calc_logits(inputs) # (bs, 1)
-        databatch['img_probs'] = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
-        return databatch
+        img_probs = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
+        data_sampels = []
+        for item, pn_p in zip(databatch['data_samples'], img_probs):
+            item.img_prob = pn_p
+            data_sampels.append(item)
+        return data_sampels

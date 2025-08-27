@@ -300,7 +300,7 @@ class Block(nn.Module):
         return x
 
 class SVTBackbone(MetaBackbone):
-    def __init__(self, args):
+    def __init__(self, ):
         in_chans=3
         stem_hidden_dim = 64
         embed_dims = [96, 192, 384, 512]
@@ -312,7 +312,7 @@ class SVTBackbone(MetaBackbone):
         sr_ratios=[4, 2, 1, 1]
         num_stages=4
 
-        super(SVTBackbone, self).__init__(args)
+        super(SVTBackbone, self).__init__(None)
 
         self.depths = depths
         self.num_stages = num_stages

@@ -8,10 +8,13 @@ dataset_type = 'multicls'    # cls, instance
 train_bs = 32
 val_bs = 32
 input_size = 448  # 224, 392, 448, 512, 1024
+# train_annfile = 'hardsample_annofiles/multilable_hs_round1.json'
+# train_annfile = 'annofiles/multilabel_puretrain.json'
+train_annfile = 'hardsample_annofiles/hs_round1_hicervix_otsu.json'
 
 rand_increasing_policies = [
-    dict(type='AutoContrast'),
-    dict(type='Equalize'),
+    dict(type='AutoContrast', prob=0.5),
+    dict(type='Equalize', prob=0.5),
     dict(type='Rotate', magnitude_key='angle', magnitude_range=(-15, 15), prob=0.5),
     dict(type='Contrast', magnitude_range=(-0.9, 0.9), prob=0.5),
     dict(type='Brightness', magnitude_key='magnitude', magnitude_range=(-0.9, 0.9), prob=0.5),
@@ -31,7 +34,7 @@ rand_increasing_policies = [
 train_datasets = dict(
     data_root = data_root,
     data_prefix = 'images',
-    ann_file = 'hardsample_annofiles/multilable_hs_round0.json',
+    ann_file = train_annfile,
     pipeline = [
         dict(type='LoadImageFromFile'),
         dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),

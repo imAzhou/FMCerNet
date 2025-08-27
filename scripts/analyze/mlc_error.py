@@ -1,95 +1,17 @@
-import torch
+import pickle
 import os
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message=r"^xFormers is available \(.*\)")
 from tqdm import tqdm
-import argparse
 from mmengine.config import Config
-import mmengine.dist as dist
-from mmengine.fileio import dump
-import pickle
 from pycocotools.coco import COCO
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
 from collections import Counter
 from prettytable import PrettyTable
-from cerwsi.datasets import load_data
-from cerwsi.nets import PatchNet
-from cerwsi.utils import set_seed, init_distributed_mode, is_main_process
+from cerwsi.utils import calculate_metrics,print_confusion_matrix
 
-
-parser = argparse.ArgumentParser()
-# base args
-parser.add_argument('config_file', type=str)
-parser.add_argument('ckpt', type=str)
-parser.add_argument('save_dir', type=str)
-parser.add_argument('--save_result', action='store_true')
-parser.add_argument('--visual_FN_flag', action='store_true')
-parser.add_argument('--visual_FN_cocojsonfile', type=str, help='use to visual gt bboxes')
-parser.add_argument('--visual_FN_nums', type=int, default=-1, help='-1 means visual all FN imgs')
-parser.add_argument('--seed', type=int, default=1234, help='random seed')
-parser.add_argument('--print_interval', type=int, default=10, help='random seed')
-parser.add_argument('--world_size', default=3, type=int, help='number of distributed processes')
-parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
-
-args = parser.parse_args()
-
-def test_net(args, cfg, model):
-    valloader = load_data(cfg, ['val'])
-
-    model.eval()
-    pbar = valloader
-    if is_main_process():
-        pbar = tqdm(valloader, ncols=80)
-    
-    batch_outputs = []
-    for idx, data_batch in enumerate(pbar):
-        # if idx > 2:
-        #     break
-        with torch.no_grad():
-            outputs = model(data_batch, 'val')
-        batch_outputs.extend([item.cpu() for item in outputs])
-
-    results = dist.collect_results(batch_outputs, len(valloader.dataset), device='cpu')
-    if is_main_process():
-        pbar.close()
-        save_path = f"{args.save_dir}/error_analyze.txt"
-        analyze(results, cfg.classes, save_path)
-
-        if args.save_result:
-            out_file_path = f'{args.save_dir}/pred_result.pkl'
-            dump(results, out_file_path)
-            print(f'Results saved in {out_file_path}')
-        
-        if args.visual_FN_flag:
-            img_savedir = f'{args.save_dir}/visual_FN'
-            os.makedirs(img_savedir, exist_ok=True, mode=0o777)
-            visual_FN(results, args.visual_FN_cocojsonfile, args.visual_FN_nums, img_savedir)
-
-def main():
-    init_distributed_mode(args)
-    set_seed(args.seed)
-    device = torch.device(f'cuda:{os.getenv("LOCAL_RANK")}')
-
-    cfg = Config.fromfile(args.config_file)
-    cfg.backbone_cfg['backbone_ckpt'] = None
-    cfg.instance_ckpt = None
-    model = PatchNet(cfg).to(device)
-    model_without_ddp = model
-
-    os.makedirs(args.save_dir, exist_ok=True, mode=0o777)
-
-    if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
-        model_without_ddp = model.module
-    
-    model_without_ddp.load_ckpt(args.ckpt)
-    test_net(args, cfg, model)
-
-    # if args.distributed:
-    #     dist.barrier()
-    #     dist.destroy_process_group()
 
 def analyze(pred_result, classes, save_path):
     thr = 0.5
@@ -98,10 +20,12 @@ def analyze(pred_result, classes, save_path):
         "pred_diag_0": {"pred_multilabel_0": 0, "pred_multilabel_1": 0},
         "pred_diag_1": {"pred_multilabel_0": 0, "pred_multilabel_1": 0}
     }
-
+    img_gt,img_pred = [],[]
     for item in tqdm(pred_result, ncols=80):
         gt_diagnose = int(len(item.gt_label)>0)
+        img_gt.append(gt_diagnose)
         pred_diagnose = int(item.img_prob > 0.5)
+        img_pred.append(pred_diagnose)
         gt_multi_label = item.gt_label.tolist()
         pred_multi_label = [clsidx for clsidx,cls_score in enumerate(item.pos_prob) if cls_score > thr]
         total_poscls.extend(gt_multi_label)
@@ -123,6 +47,10 @@ def analyze(pred_result, classes, save_path):
             missed_poscls.extend(gt_multi_label)
         if gt_diagnose == 0 and pred_diagnose == 1:
             FP_poscls.extend(pred_multi_label)
+    
+    img_result = calculate_metrics(img_gt,img_pred)
+    cm = img_result['cm']
+    cmstr = print_confusion_matrix(cm, print_flag=False)
     
     total_cases = len(pred_result)
 
@@ -164,18 +92,14 @@ def analyze(pred_result, classes, save_path):
     consistency_count = matrix['pred_diag_0']['pred_multilabel_0'] + matrix['pred_diag_1']['pred_multilabel_1']
     consistency_ratio = round(consistency_count / total_cases * 100, 2)
 
-    # 打印
-    print("\n=== Per-class statistics ===")
-    print(stats_table)
-    print("\n=== Consistency matrix ===")
-    print(consistency_table)
-    print(f"\nconsistency_ratio (diagonal): {consistency_ratio}%")
 
     # 保存到txt
     with open(save_path, "w", encoding="utf-8") as f:
-        f.write("=== Per-class statistics ===\n")
+        f.write(f"{'='*8} Neg(0)/Pos(1) statistics {'='*8}\n")
+        f.write(cmstr)
+        f.write(f"\n\n{'='*8} Per-class statistics {'='*8}\n")
         f.write(str(stats_table))
-        f.write("\n\n=== Consistency matrix ===\n")
+        f.write(f"\n\n{'='*8} Consistency matrix {'='*8}\n")
         f.write(str(consistency_table))
         f.write(f"\n\nconsistency_ratio (diagonal): {consistency_ratio}%\n")
     print(f"Error analyze result saved in {save_path}")
@@ -234,27 +158,16 @@ def visual_FN(pred_result, coco_jsonfile, visual_nums, img_savedir):
 
 
 if __name__ == '__main__':
-    main()
+    log_root_dir = 'log/WS850/mlc/hs_round0'
+    gt_coco_jsonfile = 'data_resource/WINDOW_SIZE_850/annofiles/puretrain_noNeg_cocoformat.json'
 
-    # classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL', 'SCC']
-    # save_path = "log/cdetector/mlc/acc_87.92/error_analyze.txt"
-    # with open("log/cdetector/mlc/acc_87.92/pred_result.pkl", "rb") as f:
-    #     pred_result = pickle.load(f)
-    # analyze(pred_result, classes, save_path)
+    cfg = Config.fromfile(f'{log_root_dir}/config.py')
+    save_path = f"{log_root_dir}/error_analyze.txt"
+    with open(f"{log_root_dir}/pred_result.pkl", "rb") as f:
+        pred_result = pickle.load(f)
+    analyze(pred_result, cfg.classes, save_path)
 
-    # coco_jsonfile = 'data_resource/ComparisonDetectorDataset/WINDOW_SIZE_400/annofiles/val.json'
     # visual_nums = 50    # -1 means visual all FN imgs
-    # img_savedir = "log/cdetector/mlc/acc_87.92/visual_FN"
+    # img_savedir = f"{log_root_dir}/visual_FN"
     # os.makedirs(img_savedir, exist_ok=True, mode=0o777)
-    # visual_FN(pred_result, coco_jsonfile, visual_nums, img_savedir)
-
-'''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 scripts/analyze/mlc_error.py \
-    log/cdetector/mlc/acc_87.92/config.py \
-    log/cdetector/mlc/acc_87.92/checkpoints/best.pth \
-    log/cdetector/mlc/acc_87.92 \
-    --save_result \
-    --visual_FN_flag \
-    --visual_FN_cocojsonfile data_resource/ComparisonDetectorDataset/WINDOW_SIZE_400/annofiles/val.json \
-    --visual_FN_nums 50
-'''
+    # visual_FN(pred_result, gt_coco_jsonfile, visual_nums, img_savedir)

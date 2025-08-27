@@ -32,7 +32,7 @@ class Transformer(nn.Module):
         super().__init__()
 
         self.num_encoder_layers = num_encoder_layers
-        if num_decoder_layers > 0:
+        if num_encoder_layers > 0:
             encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
                                                     dropout, activation, normalize_before)
             encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
@@ -103,7 +103,6 @@ class Transformer(nn.Module):
         if mask is not None:
             mask = mask.flatten(1)
 
-        
         if self.num_encoder_layers > 0:
             memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
         else:
