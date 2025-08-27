@@ -110,7 +110,6 @@ def get_net(cfg):
 def main():
     init_distributed_mode(args)
     set_seed(args.seed)
-    
     device = torch.device(f'cuda:{os.getenv("LOCAL_RANK")}')
 
     d_cfg = Config.fromfile(args.dataset_config_file)
@@ -128,23 +127,24 @@ def main():
             model, device_ids=[args.gpu], find_unused_parameters=True)
 
     train_net(cfg, args, model)
-
     torch.distributed.destroy_process_group()
 
 if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12348 main4PatchNet.py \
     configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
     configs/model/wscernet.py \
-    configs/strategy.py \
-    --record_save_dir log/WS1600/mlc
+    configs/strategy_patch.py \
+    --record_save_dir log/WS1600/wscernet
     
+l_cerscanv1_dataset
+cdetector_ws400
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12342 main4PatchNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12346 main4PatchNet.py \
     configs/dataset/slide_cfg.py \
     configs/model/wsi_slidenet.py \
-    configs/strategy.py \
-    --record_save_dir log/slide_mc/WS850
+    configs/strategy_slide.py \
+    --record_save_dir log/slide_cls
 '''

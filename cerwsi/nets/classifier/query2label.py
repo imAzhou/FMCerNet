@@ -40,7 +40,6 @@ class GroupWiseLinear(nn.Module):
 
 class Query2Label(MetaClassifier):
     def __init__(self, args):
-        
         evaluator = build_evaluator([ExtendMultiLabelMetric(
             thr = args.positive_thr,
             num_classes = args.num_classes,
@@ -54,9 +53,10 @@ class Query2Label(MetaClassifier):
         
         img_size = args.input_size
         feat_size = img_size // input_downratio
+        hidden_dim = 2048
         local_args = {
             'feat_size': feat_size,
-            'hidden_dim': 2048,
+            'hidden_dim': hidden_dim,
             'dim_feedforward': 8192,
             'enc_layers': 1,
             'dec_layers': 2,
@@ -70,7 +70,6 @@ class Query2Label(MetaClassifier):
         local_args = SimpleNamespace(**local_args)
         self.transformer = build_transformer(local_args)
         self.position_embedding = build_position_encoding(local_args)
-        hidden_dim = self.transformer.d_model
         self.input_proj = nn.Conv2d(input_embed_dim, hidden_dim, kernel_size=1)
         self.query_embed = nn.Embedding(self.num_classes, hidden_dim)
         self.fc = GroupWiseLinear(self.num_classes, hidden_dim, bias=True)
@@ -82,7 +81,7 @@ class Query2Label(MetaClassifier):
         inputx = img_tokens.permute(0, 2, 1).reshape(bs, C, feat_size, feat_size)
         pos_emd = self.position_embedding(inputx).to(inputx.dtype)
         query_input = self.query_embed.weight
-        hs = self.transformer(self.input_proj(inputx), query_input, pos_emd)[0] # B,K,d
+        hs = self.transformer(self.input_proj(inputx), query_input, pos_emd)[0] # 1,B,num_cls,dim
         out = self.fc(hs[-1])  # (bs, num_classes)
         return out
     

@@ -19,7 +19,7 @@ POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
 neg_patch_thr,max_try = -1,100   # 约束：neg_patch_thr <= max_try
 data_root = f'data_resource/WINDOW_SIZE_{WINDOW_SIZE}'
-neg_slide_csvfile = 'data_resource/0630/4_pure_train.csv'   # 4_pure_train,5_jfsw_train
+neg_slide_csvfile = 'data_resource/WINDOW_SIZE_1600/annofiles/4_pure_train.csv'   # 4_pure_train,5_jfsw_train
 neg_slide_img_savedir = f'{data_root}/images/neg_slide'
 neg_slide_json_savepath = f'{data_root}/ann_jsons/patches_in_negslide_hs0.json'
 os.makedirs(neg_slide_img_savedir, exist_ok=True, mode=0o777)
@@ -120,8 +120,8 @@ def concat_patchlist():
         patient2patchlist[item['patientId']].append(item)
     
     data_group = {
-        'puretrain': 'data_resource/0630/4_pure_train.csv',
-        'val': 'data_resource/0630/6_val.csv'
+        'puretrain': 'data_resource/WINDOW_SIZE_1600/annofiles/4_pure_train.csv',
+        'val': 'data_resource/WINDOW_SIZE_1600/annofiles/6_val.csv'
     }
     for tag,csvpath in data_group.items():
         multilabel_pn_cnt, binary_pn_cnt = [0,0],[0,0]
@@ -150,7 +150,7 @@ def concat_patchlist():
         print(f'Format {tag} patchlist to mmcls...')
         for patchinfo in tqdm(patchlist, ncols=80):
             imgname = f"{patchinfo['prefix']}/{patchinfo['filename']}"
-            if patchinfo['prefix'] != 'partial_pos':
+            if patchinfo['prefix'] == 'total_pos':
                 clsids = []
                 for i in patchinfo['clsnames']:
                     if i == 'SCC':

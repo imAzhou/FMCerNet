@@ -235,7 +235,8 @@ class WSCerMLC(MetaClassifier):
         # queries: (bs, 1+n_cls, dim), keys_1: (bs, num_tokens, dim)
         cls_pn_token = queries[:,0,:]  # (bs, C)    # 判别整张图的阴阳性
         attn_map = torch.bmm(queries[:, 1:, :], keys_1.transpose(1, 2))   # (bs, n_cls, num_tokens)
-        avg_token = torch.mean(attn_map, dim=-1)
+        # avg_token = torch.mean(attn_map, dim=-1)
+        avg_token,_ = torch.max(F.softmax(attn_map, dim=-1), dim=-1)
         # avg_token,_ = torch.max(attn_map, dim=-1)
         overall_neg_token = torch.cat([cls_pn_token, avg_token], dim=-1 )
         pred_pn_logits = self.cls_neg_head(overall_neg_token)  # (bs, 1)
@@ -282,7 +283,7 @@ class WSCerMLC(MetaClassifier):
         
         # heatmap = F.softmax(attn_map, dim=-1)   # (bs, n_cls, num_tokens)
         # heatmap = F.sigmoid(attn_map)   # (bs, n_cls, num_tokens)
-        heatmap = pos_probs.unsqueeze(-1) * F.sigmoid(attn_map)   # (bs, n_cls, num_tokens)
+        heatmap = pos_probs.unsqueeze(-1) * F.sigmoid(attn_map, dim=-1)   # (bs, n_cls, num_tokens)
 
         data_sampels = []
         for item, pn_p, pos_p, attn, in zip(databatch['data_samples'], img_probs, pos_probs, heatmap):
