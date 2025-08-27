@@ -80,10 +80,10 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
-    log/WS1600/mlc/2025_08_13_18_46_40/config.py \
-    log/WS1600/mlc/2025_08_13_18_46_40/checkpoints/best.pth \
-    log/WS1600/mlc/2025_08_13_18_46_40 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 tools/test_PatchNet.py \
+    log/WS1600/2025_08_26_13_29_55/config.py \
+    log/WS1600/2025_08_26_13_29_55/checkpoints/best.pth \
+    log/WS1600/2025_08_26_13_29_55 \
     --val_json annofiles/multilabel_puretrain.json \
     --save_result
 '''

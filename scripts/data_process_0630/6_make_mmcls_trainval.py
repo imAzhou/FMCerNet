@@ -17,7 +17,7 @@ from cerwsi.utils import KFBSlide,set_seed, init_distributed_mode, is_main_proce
 WINDOW_SIZE = 1600
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
-neg_patch_thr,max_try = 5,100   # 约束：neg_patch_thr <= max_try
+neg_patch_thr,max_try = -1,100   # 约束：neg_patch_thr <= max_try
 data_root = f'data_resource/WINDOW_SIZE_{WINDOW_SIZE}'
 neg_slide_csvfile = 'data_resource/0630/4_pure_train.csv'   # 4_pure_train,5_jfsw_train
 neg_slide_img_savedir = f'{data_root}/images/neg_slide'
@@ -112,8 +112,8 @@ def concat_patchlist():
         RoI_patchlist = json.load(f)
     with open(f'{data_root}/ann_jsons/patches_in_RoI_jfsw_valid.json', 'r', encoding='utf-8') as f:
         jfsw_pos_patchdata = json.load(f)
-    with open(f'{data_root}/ann_jsons/patches_in_negslide_hs0.json', 'r', encoding='utf-8') as f:
-        negslide_patchlist = json.load(f)
+    # with open(f'{data_root}/ann_jsons/patches_in_negslide_hs0.json', 'r', encoding='utf-8') as f:
+    #     negslide_patchlist = json.load(f)
     
     patient2patchlist = defaultdict(list)
     for item in RoI_patchlist:
@@ -138,7 +138,7 @@ def concat_patchlist():
             patchlist.extend(samplelist)
         
         if tag == 'puretrain':
-            patchlist.extend(negslide_patchlist)
+            # patchlist.extend(negslide_patchlist)
             patchlist.extend(jfsw_pos_patchdata)
 
         multilabel_jsondata = {
@@ -171,10 +171,11 @@ def concat_patchlist():
 
         if tag == 'puretrain' and neg_patch_thr > 0:
             tag += f'_npt{neg_patch_thr}'
-        with open(f'{ann_dir}/multilabel_{tag}.json', 'w', encoding='utf-8') as f:
+        with open(f'{ann_dir}/multilabel_{tag}_noneg.json', 'w', encoding='utf-8') as f:
             json.dump(multilabel_jsondata, f, ensure_ascii=False)
-        with open(f'{ann_dir}/binarylabel_{tag}.txt', 'w', encoding='utf-8') as f:
-            f.writelines(binarylabel_txtdata)
+        # with open(f'{ann_dir}/binarylabel_{tag}.txt', 'w', encoding='utf-8') as f:
+        #     f.writelines(binarylabel_txtdata)
+
         
 def add_negslide():
     pid_patchlist = defaultdict(list)
@@ -221,8 +222,8 @@ if __name__ == "__main__":
     # cut_negslide()
     # partial_pos 样本只会用于阴阳二分类,不会用于多标签分类
     # neg_patch_thr 只会作用于训练集，验证集保持不变（真实情况就是阳性 patch 远少于阴性 patch）
-    # concat_patchlist()
-    add_negslide()
+    concat_patchlist()
+    # add_negslide()
 
 '''
 WS = 850

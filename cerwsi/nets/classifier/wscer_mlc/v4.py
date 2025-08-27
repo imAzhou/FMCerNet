@@ -3,9 +3,9 @@ from torch import Tensor, nn
 import math
 import torch.nn.functional as F
 from typing import Tuple, Type
-from .wscer_mlc.feat_pe import get_feat_pe
-from .meta_classifier import MetaClassifier
-from cerwsi.utils import build_evaluator,BinaryMetric
+from .feat_pe import get_feat_pe
+from ..meta_classifier import MetaClassifier
+from cerwsi.utils import build_evaluator, ExtendMultiLabelMetric
 
 class MLPBlock(nn.Module):
     def __init__(
@@ -86,7 +86,7 @@ class TwoWayAttentionBlock(nn.Module):
             k = keys + key_pe
         else:
             k = keys
-        attn_out = self.cross_attn_token_to_image(q=q, k=k, v=keys)
+        attn_out, attn_score = self.cross_attn_token_to_image(q=q, k=k, v=keys)
         queries = queries + attn_out
         queries = self.norm2(queries)
 
@@ -101,11 +101,11 @@ class TwoWayAttentionBlock(nn.Module):
             k = keys + key_pe
         else:
             k = keys
-        attn_out = self.cross_attn_image_to_token(q=k, k=q, v=queries)
+        attn_out,_ = self.cross_attn_image_to_token(q=k, k=q, v=queries)
         keys = keys + attn_out
         keys = self.norm4(keys)
         
-        return queries, keys
+        return queries, keys, attn_score
 
 class Attention(nn.Module):
     """
@@ -162,28 +162,45 @@ class Attention(nn.Module):
         out = self._recombine_heads(out)
         out = self.out_proj(out)
 
-        return out
+        return out, attn_
 
 
-class WSCerBinary(MetaClassifier):
+class WSCerMLC(MetaClassifier):
     def __init__(self, args):
-        input_dim = args.neck_output_dim[0]
-        evaluator = build_evaluator([BinaryMetric(thr = args.positive_thr)])
-        super(WSCerBinary, self).__init__(evaluator, **args)
+        evaluator = build_evaluator([ExtendMultiLabelMetric(
+            thr = args.positive_thr,
+            num_classes = args.num_classes,
+            logger_name = args.logger_name,
+            with_binary = True
+        )])
+        super(WSCerMLC, self).__init__(evaluator, args)
 
+        input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
+        input_downratio = args.backbone_cfg['backbone_output_downratio'][-1]
+        img_size = args.input_size
+        feat_size = img_size // input_downratio
+        num_patches = feat_size*feat_size
+        self.num_classes = args.num_classes  # 只有阳性类别
+        
         depth = 2
+        proj_dim_1 = 512
         num_heads = 8
         mlp_dim = 2048
         use_self_attn = False
         self.pos_add_type = 'sam' # 'sam','query2label',None
-        self.num_classes = 1
         
-        self.cls_tokens = nn.Embedding(1, input_dim)
+        self.proj_1 = nn.Sequential(
+            nn.Linear(input_embed_dim, proj_dim_1),
+            nn.ReLU(),
+            nn.Dropout(0.25)
+        )
+        
+        self.cls_tokens = nn.Embedding(1 + self.num_classes, proj_dim_1)
         self.layers = nn.ModuleList()
         for i in range(depth):
             self.layers.append(
                 TwoWayAttentionBlock(
-                    embedding_dim=input_dim,
+                    embedding_dim=proj_dim_1,
                     num_heads=num_heads,
                     mlp_dim=mlp_dim,
                     activation=nn.ReLU,
@@ -192,45 +209,87 @@ class WSCerBinary(MetaClassifier):
                     use_self_attn = use_self_attn
                 )
             )
-        self.cls_neg_head = nn.Linear(input_dim, 1)
-        
+        self.cls_neg_head = nn.Linear(proj_dim_1 + self.num_classes, 1)
+        self.cls_pos_heads = nn.ModuleList()
+        for i in range(self.num_classes):
+            self.cls_pos_heads.append(nn.Linear(num_patches, 1))
 
-    def calc_logits(self, img_tokens: torch.Tensor):
-        bs, num_tokens, embed_dim = img_tokens.shape
+    def calc_logits(self, inputs):
+        img_tokens = self.get_img_tokens(inputs)  # (bs, num_tokens, C)
+        keys_1 = self.proj_1(img_tokens)  # (bs, num_tokens, C1=512)
+        bs, num_tokens, embed_dim = keys_1.shape
         feat_size = int(math.sqrt(num_tokens))
         queries = self.cls_tokens.weight.unsqueeze(0).expand(bs, -1, -1)
         key_pe = None
         if self.pos_add_type is not None:
             # key_pe: (1, embed_dim, feat_size[0], feat_size[1])
             key_pe = get_feat_pe(self.pos_add_type, embed_dim, (feat_size,feat_size))
-            key_pe = key_pe.flatten(2).permute(0, 2, 1).to(self.device)
-
+            key_pe = key_pe.flatten(2).permute(0, 2, 1).to(self.device) #  (1, num_tokens, dim)
         for layer in self.layers:
-            queries, img_tokens = layer(
+            queries, keys_1, attn_out_q = layer(
                 queries=queries,
-                keys=img_tokens,
+                keys=keys_1,
                 key_pe=key_pe,
             )
 
-        cls_pn_token = queries[:,0,:]  # (bs, C)
-        pred_pn_logits = self.cls_neg_head(cls_pn_token)  # (bs, 1)
+        # queries: (bs, 1+n_cls, dim), keys_1: (bs, num_tokens, dim)
+        cls_pn_token = queries[:,0,:]  # (bs, C)    # 判别整张图的阴阳性
+        attn_map = torch.bmm(queries[:, 1:, :], keys_1.transpose(1, 2))   # (bs, n_cls, num_tokens)
+        avg_token = torch.mean(attn_map, dim=-1)
+        # avg_token,_ = torch.max(attn_map, dim=-1)
+        overall_neg_token = torch.cat([cls_pn_token, avg_token], dim=-1 )
+        pred_pn_logits = self.cls_neg_head(overall_neg_token)  # (bs, 1)
+        # pred_pn_logits = self.cls_neg_head(cls_pn_token)  # (bs, 1)
+
+        pred_pos_logits = []
+        for i in range(self.num_classes):
+            pred_pos_logits.append(self.cls_pos_heads[i](attn_map[:,i,:]))  # [(bs, 1),]
+        pred_pos_logits = torch.cat(pred_pos_logits, dim=-1)  # (bs, n_cls)
+        out = torch.cat([pred_pn_logits, pred_pos_logits], dim=-1)   # (bs, n_cls+1)
         
-        return pred_pn_logits
+        return out, attn_map
     
-    def calc_pos_loss(self, pos_logits, databatch):
+    def calc_loss(self, inputs, databatch):
+        pred_logits,_ = self.calc_logits(inputs)
+        img_pn_logit = pred_logits[:, 0].unsqueeze(1)
+        positive_logits = pred_logits[:, 1:]
+        image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
+        img_gt = image_labels.to(self.device).unsqueeze(-1).float()
+        pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
+
         loss_fn = nn.BCEWithLogitsLoss()
-        binary_matrix = databatch['multi_pos_labels'].to(self.device)
-        loss = loss_fn(pos_logits, binary_matrix)
-        return loss
-    
-    def calc_loss(self,feature_emb, databatch):
-        img_pn_logit = self.calc_logits(feature_emb)
-        img_gt = databatch['image_labels'].to(self.device).unsqueeze(-1).float()
-        loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
-        return loss
+        binary_matrix = self.get_mlc_labels(databatch)
+        pos_loss = loss_fn(positive_logits, binary_matrix)
+
+        loss = pn_loss + pos_loss
+        loss_dict = {
+            'pn_loss': pn_loss.item(),
+            'pos_loss': pos_loss.item(),
+        }
+        return loss,loss_dict
+
 
     def set_pred(self,feature_emb, databatch):
-        img_pn_logit = self.calc_logits(feature_emb) # (bs, num_classes)
-        databatch['img_probs'] = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
-        databatch['attn_array'] = None
-        return databatch
+        # attn_array: (bs, num_classes, num_tokens)
+        pred_logits,attn_map = self.calc_logits(feature_emb) # (bs, num_classes)
+        img_pn_logit = pred_logits[:, 0]
+        positive_logits = pred_logits[:, 1:]
+        img_probs = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
+        bs = len(databatch['data_samples'])
+        if bs == 1:
+            img_probs = img_probs.unsqueeze(0)
+        pos_probs = torch.sigmoid(positive_logits) # (bs, n_cls)
+        
+        # heatmap = F.softmax(attn_map, dim=-1)   # (bs, n_cls, num_tokens)
+        # heatmap = F.sigmoid(attn_map)   # (bs, n_cls, num_tokens)
+        heatmap = pos_probs.unsqueeze(-1) * F.sigmoid(attn_map)   # (bs, n_cls, num_tokens)
+
+        data_sampels = []
+        for item, pn_p, pos_p, attn, in zip(databatch['data_samples'], img_probs, pos_probs, heatmap):
+            item.img_prob = pn_p
+            item.pos_prob = pos_p
+            item.attn = attn  # (n_cls, num_tokens)
+            data_sampels.append(item)
+
+        return data_sampels
+

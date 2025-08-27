@@ -22,7 +22,6 @@ parser.add_argument('model_config_file', type=str)
 parser.add_argument('strategy_config_file', type=str)
 parser.add_argument('--record_save_dir', type=str)
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
-parser.add_argument('--print_interval', type=int, default=10, help='random seed')
 parser.add_argument('--world_size', default=3, type=int, help='number of distributed processes')
 parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
 
@@ -34,8 +33,7 @@ def train_net(cfg, args, model):
     optimizer = build_optim_wrapper(model, cfg.optim_wrapper)
     real_bs = args.world_size * cfg.train_bs
     scale_lr(real_bs, optimizer, cfg.auto_scale_lr)
-    param_schedulers = build_param_scheduler(optimizer, cfg.param_scheduler, 
-                                         cfg.max_epochs, len(trainloader))
+    param_schedulers = build_param_scheduler(optimizer, cfg.param_scheduler, cfg.max_epochs, len(trainloader))
     if is_main_process():
         logger, files_save_dir = get_logger(args.record_save_dir, model.module, cfg)
     
@@ -58,7 +56,7 @@ def train_net(cfg, args, model):
                 pbar.desc = f"loss: {round(loss.item(), 4)}"
 
             if idx % 50 == 0 and is_main_process():
-                print_str = f'Train Epoch [{epoch + 1}/{cfg.max_epochs}][{idx}/{len(trainloader)}], LR: {current_lr:.6f}'
+                print_str = f'Train Epoch [{epoch + 1}/{cfg.max_epochs}][{idx}/{len(trainloader)}], LR: {current_lr:.6f}, loss: {loss.item():.4f}'
                 if len(loss_dict.keys()) > 1:
                     for k,v in loss_dict.items():
                         print_str += f', {k}:{v:.6f}'
@@ -126,7 +124,6 @@ def main():
     model = get_net(cfg).to(device)
     if cfg.load_from is not None:
         model.load_ckpt(cfg.load_from)
-
     model = torch.nn.parallel.DistributedDataParallel(
             model, device_ids=[args.gpu], find_unused_parameters=True)
 
@@ -145,9 +142,9 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=
     --record_save_dir log/WS1600/mlc
     
 
-CUDA_VISIBLE_DEVICES=2,3 torchrun  --nproc_per_node=2 --master_port=12346 main4PatchNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12342 main4PatchNet.py \
     configs/dataset/slide_cfg.py \
     configs/model/wsi_slidenet.py \
     configs/strategy.py \
-    --record_save_dir log/debug
+    --record_save_dir log/slide_mc/WS850
 '''

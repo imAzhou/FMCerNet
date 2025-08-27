@@ -149,6 +149,7 @@ def main():
         print(f"\n{'='*40}")
         print(f'Saved patches num: {patch_num}.')
         print(f'JSON file saved in {neg_slide_json_savepath}')
+        print(f'Slide infer result saved in {infer_txt_savepath}')
         print(f"{'='*40}")
 
     torch.distributed.destroy_process_group()

@@ -1,3 +1,4 @@
+import copy
 import torch
 import os
 import shutil
@@ -6,9 +7,11 @@ os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'
 warnings.filterwarnings("ignore", category=UserWarning)
 import torch.distributed as dist
 import argparse
-from mmengine.config import Config
+from torchvision import transforms
+from types import SimpleNamespace
 from mmengine.registry import init_default_scope
-from cerwsi.nets import PatchNet,ValidClsNet
+from cerwsi.nets import ValidClsNet
+from cerwsi.nets.backbone.SmartCCS_backbone import SmartCCS
 from cerwsi.utils import set_seed, init_distributed_mode, is_main_process
 from cerwsi.utils.wsi_handler import WSIHandler
 from mmengine.logging import MMLogger
@@ -16,23 +19,22 @@ import pandas as pd
 import time
 
 LEVEL,PATCH_EDGE = 0,1600
-CERTAIN_THR,POSITIVE_THR = 0.7,0.5
+CERTAIN_THR = 0.7
 SEED,SAFE_MARGIN = 1234,100
-test_bs,topk_num = 64,200
+test_bs = 64
 valid_ckpt = 'checkpoints/valid_cls_best.pth'
-WSI_feat_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/slide_feat_ours'
+WSI_feat_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/slide_feat_all'
 os.makedirs(WSI_feat_savedir, exist_ok=True, mode=0o777)
 infer_csv_files = [
     'data_resource/0630/WINDOW_SIZE_1600/annofiles/45_purejfsw_train.csv',
     'data_resource/0630/WINDOW_SIZE_1600/annofiles/67_wsi_val.csv'
 ]
 
-pnmodel_rootdir = 'log/WS1600/2025_08_26_13_29_55'
-mmcls_config_file = f'{pnmodel_rootdir}/config.py'
-mmcls_ckpt = f'{pnmodel_rootdir}/checkpoints/best.pth'
-infer_log_savepath = f'{pnmodel_rootdir}/infer.log'
-infer_txt_savepath = f'{pnmodel_rootdir}/infer_result.txt'
-tmp_save_dir = f'{pnmodel_rootdir}/tmp/extract_WSI_topk'
+log_rootdir = 'log/extract_WSI_all'
+os.makedirs(log_rootdir, exist_ok=True, mode=0o777)
+infer_log_savepath = f'{log_rootdir}/infer.log'
+infer_txt_savepath = f'{log_rootdir}/infer_result.txt'
+tmp_save_dir = f'{log_rootdir}/tmp'
 os.makedirs(tmp_save_dir, exist_ok=True, mode=0o777)
 
 def resume_infer():
@@ -42,7 +44,7 @@ def resume_infer():
         done_pidlist.append(pid)
     return done_pidlist
 
-def run_inference(valid_model, mlcls_model):
+def run_inference(valid_model, extractor_model):
     done_pidlist = resume_infer()
     total_datalist = []
     for csv_file in infer_csv_files:
@@ -64,32 +66,42 @@ def run_inference(valid_model, mlcls_model):
         slide_clsname = row["kfb_clsname"]
         if is_main_process():
             start_time = time.time()
-        wsi_handler = WSIHandler(row["kfb_path"], PATCH_EDGE, LEVEL, 
-                                 certain_thr=CERTAIN_THR, positive_thr=POSITIVE_THR)
+        wsi_handler = WSIHandler(row["kfb_path"], PATCH_EDGE, LEVEL, certain_thr=CERTAIN_THR)
         slide_patchlist = wsi_handler.init_patchlist({
             'image': None,
             'valid_prob': 0, 
             'valid_flag': -1,
-            'img_prob': 0, 
-            'pred_label': -1,
             'img_token': None
         })
-
         # ---- 数据切分（保证每张卡处理的数据不重复） ----
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         data_per_rank = slide_patchlist[rank::world_size]
 
         valid_datapool, mlcls_datapool = [],[]
+        transform = transforms.Compose([
+            transforms.Resize(extractor_model.img_size),   # resize 到指定大小
+            transforms.ToTensor(),     # (H,W,C) [0,255] → (C,H,W) [0,1]
+            transforms.Normalize(mean=[0.485,0.456,0.406],std=[0.229,0.224,0.225])
+        ])
         for p_idx,patchinfo in enumerate(data_per_rank):
-            img_input,_ = wsi_handler.read_cv2img(patchinfo['xy'])
-            patchinfo['image'] = img_input
+            patchinfo['image'],_ = wsi_handler.read_cv2img(patchinfo['xy'])
             valid_datapool.append(patchinfo)
             if len(valid_datapool) % test_bs == 0 or p_idx == len(data_per_rank)-1:
                 wsi_handler.inference_valid_batch(valid_model, valid_datapool)
                 mlcls_datapool = [item for item in valid_datapool if item['valid_flag']==2]
                 if len(mlcls_datapool) > 0:
-                    wsi_handler.inference_batch_pn(mlcls_model, mlcls_datapool)
+                    inputs = []
+                    for item in mlcls_datapool:
+                        pil_img = wsi_handler.read_PILimg(item['xy'])
+                        tensor_img = transform(pil_img)
+                        inputs.append(tensor_img)
+                    inputs = torch.stack(inputs, dim=0).to(extractor_model.device)  # (bs,3,h,w)
+                    with torch.no_grad():
+                        outputs = extractor_model(inputs)
+                    for inputInfo, img_token in zip(mlcls_datapool, outputs['x_norm_clstoken']):
+                        inputInfo['img_token'] = copy.deepcopy(img_token.detach().cpu())
+                    del inputs,outputs
                 for item in valid_datapool:
                     del item['image']
                 torch.cuda.empty_cache()
@@ -102,32 +114,10 @@ def run_inference(valid_model, mlcls_model):
         dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
         if dist.get_rank() == 0:    # rank0 汇总结果
             merged = [x for r in all_results for x in r]
-            # 先取 img_prob > 0 的前 topk, 即有效 patch
-            selected = sorted(
-                [v for v in merged if v['img_prob'] > 0],
-                key=lambda x: x['img_prob'], reverse=True
-            )[:topk_num]
-            # 不足时用 无效 patch 的 valid_prob 补足
-            if len(selected) < topk_num:
-                selected_invalid = sorted(
-                    [v for v in merged if v['valid_flag'] != 2],
-                    key=lambda x: x['valid_prob'], reverse=True
-                )[:topk_num - len(selected)]
-                mlcls_datapool = []
-                for sel_idx,patchinfo in enumerate(selected_invalid):
-                    img_input,_ = wsi_handler.read_cv2img(patchinfo['xy'])
-                    patchinfo['image'] = img_input
-                    mlcls_datapool.append(patchinfo)
-                    if len(mlcls_datapool) % test_bs == 0 or sel_idx == len(selected_invalid)-1:
-                        wsi_handler.inference_batch_pn(mlcls_model, mlcls_datapool)
-                        for item in mlcls_datapool:
-                            del item['image']
-                        torch.cuda.empty_cache()
-                        mlcls_datapool = []
-                selected += selected_invalid
-
-            slide_feats = torch.stack([pinfo['img_token'].cpu() for pinfo in selected])
-            torch.save(slide_feats, f"{WSI_feat_savedir}/{patientId}.pt")
+            valid_tokens = [pinfo['img_token'] for pinfo in merged if pinfo['valid_flag']==2]
+            if len(valid_tokens) > 0:
+                slide_feats = torch.stack(valid_tokens)
+                torch.save(slide_feats, f"{WSI_feat_savedir}/{patientId}.pt")
             # 打印当前切片的推理结果
             t_delta = time.time() - start_time
             logstr = wsi_handler.format_logstr(merged)
@@ -148,17 +138,22 @@ def get_models(device, gpu):
         valid_model, device_ids=[gpu], find_unused_parameters=False)
     valid_model = valid_model.module
 
-    cfg = Config.fromfile(mmcls_config_file)
-    cfg.backbone_cfg['backbone_ckpt'] = None
-    mlcls_model = PatchNet(cfg).to(device)
-    mlcls_model.img_size = cfg.input_size
-    mlcls_model.load_ckpt(mmcls_ckpt)
-    mlcls_model.eval()
-    mlcls_model = torch.nn.parallel.DistributedDataParallel(
-        mlcls_model, device_ids=[gpu], find_unused_parameters=False)
-    mlcls_model = mlcls_model.module
+    model_cfg = {
+        'backbone_cfg': {
+            'use_peft': None,
+            'frozen_backbone': False,
+            'backbone_ckpt': 'checkpoints/CCS_vitl_100M.pth'
+        }
+    }
+    cfg = SimpleNamespace(**model_cfg)
+    extractor_model = SmartCCS(cfg).to(device)
+    extractor_model.img_size = 224
+    extractor_model.eval()
+    extractor_model = torch.nn.parallel.DistributedDataParallel(
+        extractor_model, device_ids=[gpu], find_unused_parameters=False)
+    extractor_model = extractor_model.module
 
-    return valid_model,mlcls_model
+    return valid_model,extractor_model
 
 def collect_tmp():
     total_lines = []
@@ -176,9 +171,9 @@ def main():
     init_distributed_mode(args)
     set_seed(SEED)
     device = torch.device(f'cuda:{os.getenv("LOCAL_RANK")}')
-    valid_model,mlcls_model = get_models(device,args.gpu)
+    valid_model,extractor_model = get_models(device,args.gpu)
     
-    run_inference(valid_model, mlcls_model)
+    run_inference(valid_model, extractor_model)
     torch.cuda.synchronize()    # 等当前 GPU 上的计算任务完成（防止 GPU 异步计算没结束）
     dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
     if dist.get_rank() == 0:    # rank0 汇总结果
@@ -195,5 +190,5 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 scripts/process_WSI/extract_WSI_topk.py
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12346 scripts/process_WSI/extract_WSI_all.py
 '''

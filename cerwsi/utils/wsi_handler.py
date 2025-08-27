@@ -114,16 +114,25 @@ class WSIHandler:
             pred_clsid = int(datasample.img_prob > self.positive_thr)
             inputInfo['img_prob'] = datasample.img_prob.item()
             inputInfo['pred_label'] = pred_clsid
-            inputInfo['img_token'] = datasample.img_token
+            if 'img_token' in inputInfo:
+                inputInfo['img_token'] = datasample.img_token
         return pn_datapool
 
     def format_logstr(self, slide_patchlist):
-        return "total:{}, invalid:{}, uncertain:{}, valid:{}, neg:{}, pos:{}".format(
-            len(slide_patchlist),
-            sum(p['valid_flag']==0 for p in slide_patchlist),
-            sum(p['valid_flag']==1 for p in slide_patchlist),
-            sum(p['valid_flag']==2 for p in slide_patchlist),
-            sum(p['valid_flag']==2 and p['pred_label']==0 for p in slide_patchlist),
-            sum(p['valid_flag']==2 and p['pred_label']==1 for p in slide_patchlist)
-        )
+        if 'pred_label' in slide_patchlist[0]:
+            return "total:{}, invalid:{}, uncertain:{}, valid:{}, neg:{}, pos:{}".format(
+                len(slide_patchlist),
+                sum(p['valid_flag']==0 for p in slide_patchlist),
+                sum(p['valid_flag']==1 for p in slide_patchlist),
+                sum(p['valid_flag']==2 for p in slide_patchlist),
+                sum(p['valid_flag']==2 and p['pred_label']==0 for p in slide_patchlist),
+                sum(p['valid_flag']==2 and p['pred_label']==1 for p in slide_patchlist)
+            )
+        else:
+            return "total:{}, invalid:{}, uncertain:{}, valid:{}".format(
+                len(slide_patchlist),
+                sum(p['valid_flag']==0 for p in slide_patchlist),
+                sum(p['valid_flag']==1 for p in slide_patchlist),
+                sum(p['valid_flag']==2 for p in slide_patchlist),
+            )
     

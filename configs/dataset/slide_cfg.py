@@ -15,8 +15,9 @@ cls_map = {
 }
 num_classes = len(classes)
 dataset_type = 'slide'    # cls, instance
+patch_nums = 1000
 train_bs = 32
 val_bs = 32
 
-train_csvfile = f'{data_root}/annofiles/4_pure_train.csv'
-val_csvfile = f'{data_root}/annofiles/6_val.csv'
+train_csvfile = f'{data_root}/annofiles/45_purejfsw_train.csv'
+val_csvfile = f'{data_root}/annofiles/67_wsi_val.csv'

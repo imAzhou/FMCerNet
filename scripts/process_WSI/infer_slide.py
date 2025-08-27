@@ -1,3 +1,4 @@
+import json
 import torch
 import os
 import shutil
@@ -18,54 +19,46 @@ import time
 LEVEL,PATCH_EDGE = 0,1600
 CERTAIN_THR,POSITIVE_THR = 0.7,0.5
 SEED,SAFE_MARGIN = 1234,100
-test_bs,topk_num = 64,200
-valid_ckpt = 'checkpoints/valid_cls_best.pth'
-WSI_feat_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/slide_feat_ours'
-os.makedirs(WSI_feat_savedir, exist_ok=True, mode=0o777)
-infer_csv_files = [
-    'data_resource/0630/WINDOW_SIZE_1600/annofiles/45_purejfsw_train.csv',
-    'data_resource/0630/WINDOW_SIZE_1600/annofiles/67_wsi_val.csv'
-]
+test_bs = 64
 
-pnmodel_rootdir = 'log/WS1600/2025_08_26_13_29_55'
+valid_ckpt = 'checkpoints/valid_cls_best.pth'
+infer_csv_file = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/annofiles/45_purejfsw_train.csv'
+
+pnmodel_rootdir = 'log/WS1600/mlc/2025_08_14_09_23_14'
 mmcls_config_file = f'{pnmodel_rootdir}/config.py'
 mmcls_ckpt = f'{pnmodel_rootdir}/checkpoints/best.pth'
-infer_log_savepath = f'{pnmodel_rootdir}/infer.log'
-infer_txt_savepath = f'{pnmodel_rootdir}/infer_result.txt'
-tmp_save_dir = f'{pnmodel_rootdir}/tmp/extract_WSI_topk'
+infer_log_savepath = f'{pnmodel_rootdir}/infer_slide.log'
+collect_result_savepath = f'{pnmodel_rootdir}/infer_slide_collect_result.txt'
+tmp_save_dir = f'{pnmodel_rootdir}/tmp/infer_slide'
 os.makedirs(tmp_save_dir, exist_ok=True, mode=0o777)
+
 
 def resume_infer():
     done_pidlist = []
-    for txtname in os.listdir(tmp_save_dir):
-        pid = txtname.split('.')[0]
+    for filename in os.listdir(tmp_save_dir):
+        pid = filename.split('.')[0]
         done_pidlist.append(pid)
     return done_pidlist
 
 def run_inference(valid_model, mlcls_model):
     done_pidlist = resume_infer()
-    total_datalist = []
-    for csv_file in infer_csv_files:
-        df = pd.read_csv(csv_file)
-        df = df.drop_duplicates(subset=["patientId"])   # 按 patientId 去重
-        df = df[~df["patientId"].isin(done_pidlist)]
-        data_list = df.to_dict(orient="records")  # 每一行 -> dict
-        total_datalist.extend(data_list)
-    # total_datalist = total_datalist[:2]
+    df = pd.read_csv(infer_csv_file)
+    df = df.drop_duplicates(subset=["patientId"])   # 按 patientId 去重
+    df = df[df['kfb_clsid']==1]
+    df = df[~df["patientId"].isin(done_pidlist)]
+    data_list = df.to_dict(orient="records")  # 每一行 -> dict
     if is_main_process():
         logger = MMLogger.get_instance('test_wsi', log_file=infer_log_savepath)
         print(f"\n{'='*40}")
-        print(f'Total patients: {len(total_datalist) + len(done_pidlist)}')
-        print(f'Resumed {len(done_pidlist)}, Left {len(total_datalist)}.')
+        print(f'Total patients: {len(data_list) + len(done_pidlist)}')
+        print(f'Resumed {len(done_pidlist)}, Left {len(data_list)}.')
         print(f"{'='*40}")
     
-    for ridx,row in enumerate(total_datalist):
+    for ridx,row in enumerate(data_list):
         patientId = row["patientId"]
-        slide_clsname = row["kfb_clsname"]
         if is_main_process():
             start_time = time.time()
-        wsi_handler = WSIHandler(row["kfb_path"], PATCH_EDGE, LEVEL, 
-                                 certain_thr=CERTAIN_THR, positive_thr=POSITIVE_THR)
+        wsi_handler = WSIHandler(row["kfb_path"], PATCH_EDGE, LEVEL, positive_thr=POSITIVE_THR)
         slide_patchlist = wsi_handler.init_patchlist({
             'image': None,
             'valid_prob': 0, 
@@ -74,12 +67,11 @@ def run_inference(valid_model, mlcls_model):
             'pred_label': -1,
             'img_token': None
         })
-
         # ---- 数据切分（保证每张卡处理的数据不重复） ----
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         data_per_rank = slide_patchlist[rank::world_size]
-
+    
         valid_datapool, mlcls_datapool = [],[]
         for p_idx,patchinfo in enumerate(data_per_rank):
             img_input,_ = wsi_handler.read_cv2img(patchinfo['xy'])
@@ -94,47 +86,25 @@ def run_inference(valid_model, mlcls_model):
                     del item['image']
                 torch.cuda.empty_cache()
                 valid_datapool, mlcls_datapool = [],[]
-                print(f'\r[Rank {rank}] Processed {p_idx+1}/{len(data_per_rank)} ', end='')
-
+                print(f'\r[Rank {rank}] Processed {p_idx+1}/{len(data_per_rank)}', end='')
+        
         all_results = [None for _ in range(dist.get_world_size())]
         torch.cuda.synchronize()    # 等当前 GPU 上的计算任务完成（防止 GPU 异步计算没结束）
         dist.all_gather_object(all_results, data_per_rank)
         dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
         if dist.get_rank() == 0:    # rank0 汇总结果
-            merged = [x for r in all_results for x in r]
-            # 先取 img_prob > 0 的前 topk, 即有效 patch
-            selected = sorted(
-                [v for v in merged if v['img_prob'] > 0],
-                key=lambda x: x['img_prob'], reverse=True
-            )[:topk_num]
-            # 不足时用 无效 patch 的 valid_prob 补足
-            if len(selected) < topk_num:
-                selected_invalid = sorted(
-                    [v for v in merged if v['valid_flag'] != 2],
-                    key=lambda x: x['valid_prob'], reverse=True
-                )[:topk_num - len(selected)]
-                mlcls_datapool = []
-                for sel_idx,patchinfo in enumerate(selected_invalid):
-                    img_input,_ = wsi_handler.read_cv2img(patchinfo['xy'])
-                    patchinfo['image'] = img_input
-                    mlcls_datapool.append(patchinfo)
-                    if len(mlcls_datapool) % test_bs == 0 or sel_idx == len(selected_invalid)-1:
-                        wsi_handler.inference_batch_pn(mlcls_model, mlcls_datapool)
-                        for item in mlcls_datapool:
-                            del item['image']
-                        torch.cuda.empty_cache()
-                        mlcls_datapool = []
-                selected += selected_invalid
-
-            slide_feats = torch.stack([pinfo['img_token'].cpu() for pinfo in selected])
-            torch.save(slide_feats, f"{WSI_feat_savedir}/{patientId}.pt")
+            merged = []
+            for r in all_results:
+                merged.extend(r)
             # 打印当前切片的推理结果
             t_delta = time.time() - start_time
             logstr = wsi_handler.format_logstr(merged)
-            logstr = f"[{patientId}]({slide_clsname}) cost:{t_delta:0.2f}s, {logstr}"
-            with open(f'{tmp_save_dir}/{patientId}.txt', 'w', encoding='utf-8') as f:
-                f.write(logstr)
-            logger.info(f"({ridx+1}/{len(total_datalist)}){logstr}")
+            logstr = f"[{patientId}] cost:{t_delta:0.2f}s, {logstr}"
+            with open(f'{tmp_save_dir}/{patientId}.json', 'w', encoding='utf-8') as f:
+                json.dump({
+                    'log_str': logstr,
+                }, f, ensure_ascii=False)
+            logger.info(f"({ridx+1}/{len(data_list)}){logstr}")
 
 
 def get_models(device, gpu):
@@ -161,13 +131,13 @@ def get_models(device, gpu):
     return valid_model,mlcls_model
 
 def collect_tmp():
-    total_lines = []
+    txt_lines = []
     for filename in os.listdir(tmp_save_dir):
-        with open(f'{tmp_save_dir}/{filename}', 'r') as f:
-            read_str = f.readline()
-            total_lines.append(f'{read_str}\n')
-    with open(infer_txt_savepath, 'w') as f: 
-        f.writelines(total_lines)
+        with open(f'{tmp_save_dir}/{filename}', 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+        txt_lines.append(json_data['log_str']+'\n')
+    with open(collect_result_savepath, 'w') as f:
+        f.writelines(txt_lines)
     shutil.rmtree(tmp_save_dir)
 
 def main():
@@ -182,18 +152,19 @@ def main():
     torch.cuda.synchronize()    # 等当前 GPU 上的计算任务完成（防止 GPU 异步计算没结束）
     dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
     if dist.get_rank() == 0:    # rank0 汇总结果
-        collect_tmp()
+        patch_num = collect_tmp()
         print(f"\n{'='*40}")
-        print(f'WSI infer result saved in {infer_txt_savepath}')
+        print(f'Saved patches num: {patch_num}.')
+        print(f'Slide infer result saved in {infer_log_savepath}')
         print(f"{'='*40}")
 
     torch.distributed.destroy_process_group()
 
 if __name__ == '__main__':
     main()
-    
+
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 scripts/process_WSI/extract_WSI_topk.py
+CUDA_VISIBLE_DEVICES=1,2,3,4,5,6,7 torchrun --nproc_per_node=7 --master_port=12340 scripts/process_WSI/infer_slide.py
 '''

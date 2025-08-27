@@ -12,94 +12,75 @@ from mmengine.registry import init_default_scope
 from cerwsi.nets import PatchNet,ValidClsNet
 from cerwsi.utils import set_seed, init_distributed_mode, is_main_process
 from cerwsi.utils.wsi_handler import WSIHandler
+from mmengine.logging import MMLogger
 import pandas as pd
 import random
 import time
 
-LEVEL,PATCH_EDGE = 0,1600
+LEVEL,PATCH_EDGE = 0,850
 CERTAIN_THR,POSITIVE_THR = 0.7,0.5
 SEED,SAFE_MARGIN = 1234,100
-test_bs,FP_savenum = 64,5
-hs_round_idx = 1
+test_bs,FP_savenum = 64,10
+hs_round_idx = 2
 valid_ckpt = 'checkpoints/valid_cls_best.pth'
 FP_img_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/images/neg_slide_r{hs_round_idx}'
-FP_json_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/ann_jsons'
+FP_json_savepath = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/ann_jsons/patches_in_negslide_hs{hs_round_idx}.json'
 infer_csv_file = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/annofiles/45_purejfsw_train.csv'
 
-pnmodel_rootdir = 'log/WS850/hs_round0'
+pnmodel_rootdir = 'log/WS850/hs_round1'
 mmcls_config_file = f'{pnmodel_rootdir}/config.py'
 mmcls_ckpt = f'{pnmodel_rootdir}/checkpoints/best.pth'
-infer_txt_savepath = f'{pnmodel_rootdir}/negslide_infer_result.txt'
+infer_log_savepath = f'{pnmodel_rootdir}/negslide_infer.log'
+collect_result_savepath = f'{pnmodel_rootdir}/negslide_collect_result.txt'
 tmp_save_dir = f'{pnmodel_rootdir}/tmp/mlc_hs_negslide'
 os.makedirs(tmp_save_dir, exist_ok=True, mode=0o777)
 
 
 def resume_infer():
-    done_pidlist,done_results = [],[]
-    for txtname in os.listdir(tmp_save_dir):
-        pid = txtname.split('.')[0]
+    done_pidlist = []
+    for filename in os.listdir(tmp_save_dir):
+        pid = filename.split('.')[0]
         done_pidlist.append(pid)
-    for pngname in os.listdir(FP_img_savedir):
-        pid = pngname.split(f'_round{hs_round_idx}')[0]
-        done_results.append({
-            'patientId': pid,
-            'filename': pngname,
-            'square_coords': [-1]*4,
-            'bboxes': [],
-            'clsnames': [],
-            'prefix': f'neg_slide_r{hs_round_idx}',
-            'diagnose': 0,
-            'maskfile': ''
-        })
-    return done_pidlist,done_results
+    return done_pidlist
 
-def run_inference(valid_model, mlcls_model,resume):
+def run_inference(valid_model, mlcls_model):
     infer_results = []
-    done_pidlist,done_results = [],[]
-    if resume:
-        done_pidlist,done_results = resume_infer()
-        if is_main_process():
-            infer_results.extend(done_results)
-
+    done_pidlist = resume_infer()
     df = pd.read_csv(infer_csv_file)
     df = df.drop_duplicates(subset=["patientId"])   # 按 patientId 去重
     df = df[df['kfb_clsid']==0]
+    df = df[~df["patientId"].isin(done_pidlist)]
     data_list = df.to_dict(orient="records")  # 每一行 -> dict
     if is_main_process():
+        logger = MMLogger.get_instance('test_wsi', log_file=infer_log_savepath)
         print(f"\n{'='*40}")
-        print(f'Total patients: {len(data_list)}')
-        if resume:
-            print(f'Resumed {len(done_pidlist)}, Left {len(data_list)-len({done_pidlist})}.')
+        print(f'Total patients: {len(data_list) + len(done_pidlist)}')
+        print(f'Resumed {len(done_pidlist)}, Left {len(data_list)}.')
         print(f"{'='*40}")
-
-    # data_list = data_list[:10]
-    # ---- 数据切分（保证每张卡处理的数据不重复） ----
-    rank = dist.get_rank()
-    world_size = dist.get_world_size()
-    data_per_rank = data_list[rank::world_size]
     
-    for ridx,row in enumerate(data_per_rank):
+    for ridx,row in enumerate(data_list):
         patientId = row["patientId"]
-        if patientId in done_pidlist:
-            continue
-        # if row["patientId"] != 'ZY_ONLINE_1_3522':
-        #     continue
-        start_time = time.time()
-        wsi_handler = WSIHandler(PATCH_EDGE, LEVEL, row["kfb_path"])
+        if is_main_process():
+            start_time = time.time()
+        wsi_handler = WSIHandler(row["kfb_path"], PATCH_EDGE, LEVEL, positive_thr=POSITIVE_THR)
         slide_patchlist = wsi_handler.init_patchlist({
             'image': None,
             'valid_prob': 0, 
             'valid_flag': -1,
             'img_prob': 0, 
             'pred_label': -1,
-            'img_token': None
         })
-
+        # ---- 数据切分（保证每张卡处理的数据不重复） ----
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+        data_per_rank = slide_patchlist[rank::world_size]
+    
         valid_datapool, mlcls_datapool = [],[]
-        for p_idx,patchinfo in enumerate(slide_patchlist):
-            patchinfo['image'] = wsi_handler.read_cv2img(patchinfo['xy'])
+        for p_idx,patchinfo in enumerate(data_per_rank):
+            img_input,_ = wsi_handler.read_cv2img(patchinfo['xy'])
+            patchinfo['image'] = img_input
             valid_datapool.append(patchinfo)
-            if len(valid_datapool) % test_bs == 0 or p_idx == len(slide_patchlist)-1:
+            if len(valid_datapool) % test_bs == 0 or p_idx == len(data_per_rank)-1:
                 wsi_handler.inference_valid_batch(valid_model, valid_datapool)
                 mlcls_datapool = [item for item in valid_datapool if item['valid_flag']==2]
                 if len(mlcls_datapool) > 0:
@@ -108,32 +89,43 @@ def run_inference(valid_model, mlcls_model,resume):
                     del item['image']
                 torch.cuda.empty_cache()
                 valid_datapool, mlcls_datapool = [],[]
-                print(f'\r[Rank {rank}] Processed {p_idx+1}/{len(slide_patchlist)}', end='')
+                print(f'\r[Rank {rank}] Processed {p_idx+1}/{len(data_per_rank)}', end='')
+        
+        all_results = [None for _ in range(dist.get_world_size())]
+        torch.cuda.synchronize()    # 等当前 GPU 上的计算任务完成（防止 GPU 异步计算没结束）
+        dist.all_gather_object(all_results, data_per_rank)
+        dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
+        if dist.get_rank() == 0:    # rank0 汇总结果
+            merged = [x for r in all_results for x in r]
+            FP_patches = [i for i in merged if i['pred_label']==1]
+            random.shuffle(FP_patches)
+            infer_results = []
+            for idx,patchinfo in enumerate(FP_patches[:FP_savenum]):
+                filename = f'{patientId}_round{hs_round_idx}_{idx}.png'
+                read_result = wsi_handler.read_PILimg(patchinfo['xy'])
+                read_result.save(f'{FP_img_savedir}/{filename}')
+                infer_results.append({
+                    'patientId': patientId,
+                    'filename': filename,
+                    'square_coords': patchinfo['coords'],
+                    'bboxes': [],
+                    'clsnames': [],
+                    'prefix': f'neg_slide_r{hs_round_idx}',
+                    'diagnose': 0,
+                    'maskfile': ''
+                })
 
-        FP_patches = [i for i in slide_patchlist if i['pred_label']==1]
-        random.shuffle(FP_patches)
-        for idx,patchinfo in enumerate(FP_patches[:FP_savenum]):
-            filename = f'{patientId}_round{hs_round_idx}_{idx}.png'
-            read_result = wsi_handler.read_PILimg(patchinfo['xy'])
-            read_result.save(f'{FP_img_savedir}/{filename}')
-            infer_results.append({
-                'patientId': patientId,
-                'filename': filename,
-                'square_coords': patchinfo['coords'],
-                'bboxes': [],
-                'clsnames': [],
-                'prefix': f'neg_slide_r{hs_round_idx}',
-                'diagnose': 0,
-                'maskfile': ''
-            })
+            # 打印当前切片的推理结果
+            t_delta = time.time() - start_time
+            logstr = wsi_handler.format_logstr(merged)
+            logstr = f"[{patientId}] cost:{t_delta:0.2f}s, {logstr}"
+            with open(f'{tmp_save_dir}/{patientId}.json', 'w', encoding='utf-8') as f:
+                json.dump({
+                    'log_str': logstr,
+                    'neg_patch_list': infer_results,
+                }, f, ensure_ascii=False)
+            logger.info(f"({ridx+1}/{len(data_list)}){logstr}")
 
-        # 打印当前切片的推理结果
-        logstr = wsi_handler.format_logstr(slide_patchlist)
-        t_delta = time.time() - start_time
-        with open(f'{tmp_save_dir}/{patientId}.txt', 'w', encoding='utf-8') as f:
-            f.write(f'[{patientId}] cost:{t_delta:0.2f}s, ' + logstr)
-        print(f'\t[Rank {rank}] ({ridx+1}/{len(data_per_rank)}) Processed {len(slide_patchlist)} patches.')
-    return infer_results
 
 def get_models(device, gpu):
     init_default_scope('mmpretrain')
@@ -159,16 +151,22 @@ def get_models(device, gpu):
     return valid_model,mlcls_model
 
 def collect_tmp():
-    total_lines = []
+    total_patchlist,txt_lines = [],[]
     for filename in os.listdir(tmp_save_dir):
-        with open(f'{tmp_save_dir}/{filename}', 'r') as f:
-            read_str = f.readline()
-            total_lines.append(f'{read_str}\n')
-    with open(infer_txt_savepath, 'w') as f: 
-        f.writelines(total_lines)
+        with open(f'{tmp_save_dir}/{filename}', 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+        total_patchlist.extend(json_data['neg_patch_list'])
+        txt_lines.append(json_data['log_str']+'\n')
+    with open(FP_json_savepath, 'w', encoding='utf-8') as f:
+        json.dump(total_patchlist, f, ensure_ascii=False)
+    txt_lines.append(f'Saved patches num: {len(total_patchlist)}.\n')
+    with open(collect_result_savepath, 'w') as f:
+        f.writelines(txt_lines)
+        
     shutil.rmtree(tmp_save_dir)
+    return len(total_patchlist)
 
-def main(resume):
+def main():
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
     init_distributed_mode(args)
@@ -177,32 +175,24 @@ def main(resume):
     valid_model,mlcls_model = get_models(device,args.gpu)
     os.makedirs(FP_img_savedir, exist_ok=True, mode=0o777)
     
-    results = run_inference(valid_model, mlcls_model,resume)
-    all_results = [None for _ in range(dist.get_world_size())]
+    run_inference(valid_model, mlcls_model)
     torch.cuda.synchronize()    # 等当前 GPU 上的计算任务完成（防止 GPU 异步计算没结束）
-    dist.all_gather_object(all_results, results)
     dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
     if dist.get_rank() == 0:    # rank0 汇总结果
-        merged = []
-        for r in all_results:
-            merged.extend(r)
-        save_jsonpath = f'{FP_json_savedir}/patches_in_negslide_hs{hs_round_idx}.json'
-        with open(save_jsonpath, 'w', encoding='utf-8') as f:
-            json.dump(merged, f, ensure_ascii=False)
-        collect_tmp()
+        patch_num = collect_tmp()
         print(f"\n{'='*40}")
-        print(f'Total hardsample_round{hs_round_idx} patches num: {len(merged)}')
-        print(f'JSON file saved in {save_jsonpath}')
-        print(f'Neg slide infer result saved in {infer_txt_savepath}')
+        print(f'Saved patches num: {patch_num}.')
+        print(f'JSON file saved in {FP_json_savepath}')
+        print(f'Slide infer result saved in {infer_log_savepath}')
         print(f"{'='*40}")
 
     torch.distributed.destroy_process_group()
 
 if __name__ == '__main__':
-    main(resume=True)
+    main()
 
 
 
 '''
-CUDA_VISIBLE_DEVICES=1,2,3,4,5,6,7 torchrun --nproc_per_node=7 --master_port=12340 scripts/process_WSI/mlc_hardsample_negslide.py
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12342 scripts/process_WSI/mlc_negslide_hs.py
 '''

@@ -184,7 +184,7 @@ class Block(nn.Module):
         self.norm2 = norm_layer(dim)
         self.attn = SVT_channel_mixing(dim,featlen)
         self.mlp = PVT2FFN(in_features=dim, hidden_features=int(dim * mlp_ratio))
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        # self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -202,9 +202,14 @@ class Block(nn.Module):
             if m.bias is not None:
                 m.bias.data.zero_()
 
+    # def forward(self, x, H, W):
+    #     x = x + self.drop_path(self.attn(self.norm1(x), H, W))
+    #     x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
+    #     return x
+    
     def forward(self, x, H, W):
-        x = x + self.drop_path(self.attn(self.norm1(x), H, W))
-        x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
+        x = x + self.attn(self.norm1(x), H, W)
+        x = self.mlp(self.norm2(x), H, W)
         return x
 
 class DTCWTModule(nn.Module):
@@ -222,7 +227,7 @@ class DTCWTModule(nn.Module):
         self.fc1 = nn.Sequential(
             nn.Linear(1280, 512),
             nn.ReLU(),
-            # nn.Dropout(0.01)
+            nn.Dropout(0.25)
         )
         self.block = nn.ModuleList([Block(
                 dim = 512, 

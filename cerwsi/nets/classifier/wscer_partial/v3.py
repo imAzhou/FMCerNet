@@ -6,7 +6,7 @@ from typing import List, Tuple, Type
 from torchvision.ops import nms
 import numpy as np
 import cv2
-from ..feat_pe import get_feat_pe
+from ..wscer_mlc.feat_pe import get_feat_pe
 from ..meta_classifier import MetaClassifier
 from cerwsi.nets.backbone.SAM.common import LayerNorm2d,MLP
 from cerwsi.utils import build_evaluator,ImgODMetric
