@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-from types import SimpleNamespace
 from .meta_classifier import MetaClassifier
 from cerwsi.utils import build_evaluator,BinaryMetric
 
@@ -64,18 +62,7 @@ class CHIEF(MetaClassifier):
 
 
     def calc_logits(self, inputs):
-        if self.backbone_type == 'resnet':
-            feat = inputs[-1]   # (bs,c,h,w)
-            feat = feat.flatten(2).transpose(1, 2)
-        elif self.backbone_type == 'sam':
-            feat = inputs   # (bs,h*w,c)
-        elif self.backbone_type == 'sam2':
-            feat = inputs['vision_features']   # (bs,c,h,w)
-            feat = feat.flatten(2).transpose(1, 2)
-        elif self.backbone_type in ['dinov2', 'uni']:
-            feat = inputs[:,1:,:]
-        elif self.backbone_type == 'smartccs':
-            feat = inputs['x_norm_patchtokens']
+        feat = self.get_img_tokens(inputs)  # (bs, num_tokens, C)
         
         # feat: (bs,img_token,C)
         # A: (bs, num_tokens, pos_cls_num), h: (bs, num_tokens, c=512)

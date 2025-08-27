@@ -125,8 +125,10 @@ def main():
     model = get_net(cfg).to(device)
     if cfg.load_from is not None:
         model.load_ckpt(cfg.load_from)
+
     model = torch.nn.parallel.DistributedDataParallel(
             model, device_ids=[args.gpu], find_unused_parameters=True)
+
     train_net(cfg, args, model)
     torch.distributed.destroy_process_group()
 
@@ -134,11 +136,11 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12348 main4PatchNet.py \
     configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
-    configs/model/ml_decoder.py \
+    configs/model/wscernet.py \
     configs/strategy_patch.py \
-    --record_save_dir log/WS1600/ml_decoder
+    --record_save_dir log/WS1600/wscernet
     
 l_cerscanv1_dataset
 cdetector_ws400

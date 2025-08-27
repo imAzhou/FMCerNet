@@ -202,12 +202,14 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 scripts/analyze/mlc_attn.py \
-    log/WS1600/wscernet/mlc_f1_27.35/config.py \
-    log/WS1600/wscernet/mlc_f1_27.35/checkpoints/best.pth \
-    log/WS1600/wscernet/mlc_f1_27.35 \
+    log/WS1600/wscernet/mlc_f1_36.37/config.py \
+    log/WS1600/wscernet/mlc_f1_36.37/checkpoints/best.pth \
+    log/WS1600/wscernet/mlc_f1_36.37 \
     data_resource/WINDOW_SIZE_1600/annofiles/val_noNeg_cocoformat.json \
     --visual_nums 50
 
+data_resource/ComparisonDetectorDataset/WINDOW_SIZE_400/annofiles/val.json
 data_resource/WINDOW_SIZE_1600/annofiles/puretrain_noNeg_cocoformat.json
 data_resource/WINDOW_SIZE_1600/annofiles/val_noNeg_cocoformat.json
+data_resource/WINDOW_SIZE_850/annofiles/val_noNeg_cocoformat.json
 '''

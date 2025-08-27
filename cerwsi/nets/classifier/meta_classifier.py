@@ -37,9 +37,10 @@ class MetaClassifier(nn.Module):
         elif self.backbone_type == 'smartccs':
             img_tokens = inputs['x_norm_patchtokens']
         elif self.backbone_type == 'fusionnet':
-            feat_1 = inputs['x_norm_patchtokens']
-            feat_2 = inputs['dtcwt_output']
-            img_tokens = feat_1 + feat_2
+            # feat_1 = inputs['x_norm_patchtokens']
+            # feat_2 = inputs['dtcwt_output']
+            # img_tokens = feat_1 + feat_2
+            img_tokens = inputs['cat_output']
         return img_tokens
     
     def get_cls_token(self, inputs):
@@ -54,6 +55,11 @@ class MetaClassifier(nn.Module):
             cls_token = inputs[:,0,:]
         elif self.backbone_type == 'smartccs':
             cls_token = inputs['x_norm_clstoken']
+        elif self.backbone_type == 'fusionnet':
+            vit_cls = inputs['x_norm_clstoken']
+            dtcwt_mean = inputs['dtcwt_output'].mean(dim=1)  # (B, C)
+            cls_token = vit_cls + dtcwt_mean
+            # cls_token = torch.cat([vit_cls, dtcwt_mean], dim=1)  # (B, C1+C2)
         return cls_token
 
     @abstractmethod

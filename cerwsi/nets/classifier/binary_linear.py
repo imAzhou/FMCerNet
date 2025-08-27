@@ -7,10 +7,9 @@ from cerwsi.utils import build_evaluator, BinaryMetric
 
 class BinaryLinear(MetaClassifier):
     def __init__(self, args):
-        input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
         evaluator = build_evaluator([BinaryMetric(args.logger_name, thr = args.positive_thr)])
-        super(BinaryLinear, self).__init__(evaluator, **args)
-
+        super(BinaryLinear, self).__init__(evaluator, args)
+        input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
         self.backbone_type = args.backbone_type
         self.cls_linear_head = nn.Linear(input_embed_dim, 1)
 
@@ -29,7 +28,7 @@ class BinaryLinear(MetaClassifier):
         pred_img_logits = self.cls_linear_head(feat)  # (bs, 1)
         return pred_img_logits
     
-    def calc_loss(self,inputs, databatch):
+    def calc_loss(self, inputs, databatch):
         img_pn_logit = self.calc_logits(inputs)
         image_labels = torch.tensor([int(len(item.gt_label)>0) for item in databatch['data_samples']])
         img_gt = image_labels.to(self.device).unsqueeze(-1).float()

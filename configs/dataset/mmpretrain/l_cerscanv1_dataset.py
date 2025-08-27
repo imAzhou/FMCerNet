@@ -7,8 +7,8 @@ num_classes = len(classes)
 dataset_type = 'multicls'    # cls, instance
 train_bs = 32
 val_bs = 32
-input_size = 448  # 224, 392, 448, 512, 1024
-# train_annfile = 'hardsample_annofiles/multilable_hs_round1.json'
+input_size = 1024  # 224, 392, 448, 512, 1024
+# train_annfile = 'hardsample_annofiles/multilable_hs_round2.json'
 # train_annfile = 'annofiles/multilabel_puretrain.json'
 train_annfile = 'hardsample_annofiles/hs_round1_hicervix_otsu.json'
 

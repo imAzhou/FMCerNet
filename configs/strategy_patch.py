@@ -35,13 +35,13 @@ optim_wrapper = dict(
 auto_scale_lr = dict(base_batch_size=8*32)
 
 param_scheduler = [
-    dict(
-        type='MultiStepLR',
-        begin=0,
-        end=max_epochs,
-        by_epoch=True,
-        milestones=[20],
-        gamma=0.1)
+    # dict(
+    #     type='MultiStepLR',
+    #     begin=0,
+    #     end=max_epochs,
+    #     by_epoch=True,
+    #     milestones=[25, 45],
+    #     gamma=0.1)
 ]
 
 logger_name = 'wscer_patch'

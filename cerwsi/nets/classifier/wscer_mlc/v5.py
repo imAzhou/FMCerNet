@@ -224,7 +224,7 @@ class MLCQuery(nn.Module):
             pred_pos_logits.append(self.cls_pos_heads[i](queries[:,i,:]))  # [(bs, 1),]
         pred_pos_logits = torch.cat(pred_pos_logits, dim=-1)  # (bs, n_cls)
 
-        return pred_pos_logits
+        return pred_pos_logits,queries
 
 class WSCerMLC(MetaClassifier):
     def __init__(self, args):
@@ -249,7 +249,8 @@ class WSCerMLC(MetaClassifier):
         key_pe = key_pe.flatten(2).permute(0, 2, 1).to(self.device) #  (1, num_tokens, dim)
         pred_pn_logits, inter_var = self.binary_branch(img_tokens+key_pe)
 
-        pred_pos_logits = self.mlc_branch(img_tokens)
+        pred_pos_logits,pos_cls_tokens = self.mlc_branch(img_tokens)
+        inter_var['pos_cls_tokens'] = pos_cls_tokens
         
         out = torch.cat([pred_pn_logits, pred_pos_logits], dim=-1)   # (bs, n_cls+1)
         return out, inter_var
@@ -285,12 +286,17 @@ class WSCerMLC(MetaClassifier):
         pos_probs = torch.sigmoid(positive_logits) # (bs, n_cls)
         
         heatmap = (self.binary_branch.patch_probs(inter_var))['patch_prob']  # (bs, num_tokens)
+        _,clsid = torch.max(pos_probs, 1)       # (bs, )
+        img_pn_feat = inter_var['img_feat']     # (bs, dim)
+        img_pos_feat = inter_var['pos_cls_tokens'][torch.arange(bs), clsid]     # (bs, dim)
+        img_clstokens = torch.cat([img_pn_feat,img_pos_feat],dim=1)     # (bs, dim*2)
 
         data_sampels = []
-        for item, pn_p, pos_p, attn, in zip(databatch['data_samples'], img_probs, pos_probs, heatmap):
+        for item, pn_p, pos_p, imgtoken, attn in zip(databatch['data_samples'], img_probs, pos_probs, img_clstokens, heatmap):
             item.img_prob = pn_p
             item.pos_prob = pos_p
             item.attn = attn  # (num_tokens)
+            item.img_token = imgtoken
             data_sampels.append(item)
 
         return data_sampels

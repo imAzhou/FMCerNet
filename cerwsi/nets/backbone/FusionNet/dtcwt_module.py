@@ -4,7 +4,7 @@ from functools import partial
 import math
 import torch.nn.functional as F
 from typing import Optional, Tuple, Type
-from timm.layers import DropPath, trunc_normal_
+from timm.layers import trunc_normal_
 from pytorch_wavelets import DTCWTForward, DTCWTInverse
 
 class PatchEmbed(nn.Module):
@@ -106,7 +106,7 @@ class SVT_channel_mixing(nn.Module):
         xl,xh = self.xfm(x)
         xl = xl * self.complex_weight_ll
 
-        xh[0]=torch.permute(xh[0], (5, 0, 2, 3, 4, 1))
+        xh[0] = torch.permute(xh[0], (5, 0, 2, 3, 4, 1))
         xh[0] = xh[0].reshape(xh[0].shape[0], xh[0].shape[1], xh[0].shape[2], xh[0].shape[3], xh[0].shape[4], self.num_blocks, self.block_size)
         
         x_real=xh[0][0]
@@ -121,7 +121,7 @@ class SVT_channel_mixing(nn.Module):
         xh[0] = torch.stack([x_real_2, x_imag_2], dim=-1).float()
         xh[0] = F.softshrink(xh[0], lambd=self.softshrink) if self.softshrink else xh[0]
         xh[0] = xh[0].reshape(B, xh[0].shape[1], xh[0].shape[2], xh[0].shape[3], self.hidden_size, xh[0].shape[6])
-        xh[0]=torch.permute(xh[0], (0, 4, 1, 2, 3, 5))
+        xh[0] = torch.permute(xh[0], (0, 4, 1, 2, 3, 5))
 
         x = self.ifm((xl,xh))
         x=torch.permute(x, (0, 2, 3, 1))
@@ -176,7 +176,6 @@ class Block(nn.Module):
         dim, 
         featlen,
         mlp_ratio,
-        drop_path=0., 
         norm_layer=nn.LayerNorm, 
     ):
         super().__init__()
@@ -184,7 +183,6 @@ class Block(nn.Module):
         self.norm2 = norm_layer(dim)
         self.attn = SVT_channel_mixing(dim,featlen)
         self.mlp = PVT2FFN(in_features=dim, hidden_features=int(dim * mlp_ratio))
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -201,10 +199,10 @@ class Block(nn.Module):
             m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
             if m.bias is not None:
                 m.bias.data.zero_()
-
+    
     def forward(self, x, H, W):
-        x = x + self.drop_path(self.attn(self.norm1(x), H, W))
-        x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
+        x = x + self.attn(self.norm1(x), H, W)
+        x = self.mlp(self.norm2(x), H, W)
         return x
 
 class DTCWTModule(nn.Module):
@@ -222,15 +220,14 @@ class DTCWTModule(nn.Module):
         self.fc1 = nn.Sequential(
             nn.Linear(1280, 512),
             nn.ReLU(),
-            # nn.Dropout(0.01)
+            nn.Dropout(0.25)
         )
         self.block = nn.ModuleList([Block(
                 dim = 512, 
                 featlen = featlen,
                 mlp_ratio = 4, 
-                drop_path=0, 
                 norm_layer=partial(nn.LayerNorm, eps=1e-6))
-            for j in range(3)])
+            for j in range(1)])
         self.norm = nn.LayerNorm((512,), eps=1e-06)
         self.downsample = DownSamples(512, 1024)
         

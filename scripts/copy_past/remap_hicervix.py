@@ -7,7 +7,6 @@ from collections import defaultdict
 import random
 
 dataroot = 'data_resource/HiCervix'
-json_savepath = 'scripts/copy_past/hicervix.json'
 clsname_map = {
     'Normal': 'NILM',
     'ECC': 'NILM',
@@ -36,6 +35,8 @@ clsname_map = {
     'HSIL': 'HSIL',
     'SCC': 'HSIL',
 }
+WINDOW_SIZE = 850
+json_savepath = f'scripts/copy_past/hicervix_WS{WINDOW_SIZE}.json'
 
 def statistic():
     total_df = []
@@ -51,7 +52,7 @@ def statistic():
                 imgpath = f'{dataroot}/{mode}/{row.image_name}'
                 img = Image.open(imgpath)
                 w,h = img.size
-                if w<1600 and h<1600:
+                if w<WINDOW_SIZE and h<WINDOW_SIZE:
                     if clsname == 'AGC' and random.random() > 0.25:
                         continue
                     total_w.append(w)
@@ -102,6 +103,7 @@ Total pos cls cnt: 17229
 total width: min(58), max(3826)
 total height: min(63), max(2160)
 
+WS1600
 +---------------------+-------+
 | Class Name (Mapped) | Count |
 +---------------------+-------+
@@ -114,4 +116,18 @@ total height: min(63), max(2160)
 Total pos cls cnt: 10302
 total width: min(58), max(1599)
 total height: min(63), max(1591)
+
+WS850
++------------+-------+
+| Class Name | Count |
++------------+-------+
+|    LSIL    |  1083 |
+|   ASC-US   |  2104 |
+|   ASC-H    |  1298 |
+|    HSIL    |  2190 |
+|    AGC     |  1386 |
++------------+-------+
+Total pos cls cnt: 8061
+total width: min(58), max(849)
+total height: min(63), max(849)
 '''

@@ -3,7 +3,7 @@ from torch import Tensor, nn
 import math
 import torch.nn.functional as F
 from typing import Tuple, Type
-from .feat_pe import get_feat_pe
+from .wscer_mlc.feat_pe import get_feat_pe
 from .meta_classifier import MetaClassifier
 from cerwsi.utils import build_evaluator,BinaryMetric
 

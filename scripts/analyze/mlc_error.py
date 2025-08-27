@@ -158,7 +158,7 @@ def visual_FN(pred_result, coco_jsonfile, visual_nums, img_savedir):
 
 
 if __name__ == '__main__':
-    log_root_dir = 'log/WS850/mlc/hs_round0'
+    log_root_dir = 'log/WS850/wscernet/2025_08_25_11_15_43'
     gt_coco_jsonfile = 'data_resource/WINDOW_SIZE_850/annofiles/puretrain_noNeg_cocoformat.json'
 
     cfg = Config.fromfile(f'{log_root_dir}/config.py')

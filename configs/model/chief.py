@@ -3,7 +3,7 @@ _base_ = [
 ]
 net_type = 'patch'
 # backbone
-backbone_type = 'smartccs'
+backbone_type = 'fusionnet'
 backbone_cfg = _base_.backbone_cfgdict[backbone_type]
 
 # neck

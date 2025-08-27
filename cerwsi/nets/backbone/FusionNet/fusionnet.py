@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import math
 from ..SmartCCS.vision_transformer import vit_large
 from .dtcwt_module import DTCWTModule
+from .feat_pe import PositionEmbeddingRandom
 from ..meta_backbone import MetaBackbone
 
 class LayerNorm2d(nn.Module):
@@ -36,6 +38,13 @@ class FusionNet(MetaBackbone):
         )
         self.vit_module = vit_large(**vit_kwargs)
         self.dtcwt_module = DTCWTModule(args.input_size)
+        feat_dim = 1024
+        self.cat_fc = nn.Sequential(
+            nn.Linear(feat_dim*2, feat_dim),
+            nn.ReLU(),
+            nn.Dropout(0.25)
+        )
+        self.pe_layer = PositionEmbeddingRandom(feat_dim // 2)
         
         self.load_backbone(args.backbone_cfg['backbone_ckpt'])
         self.vit_module = self.get_peft_model(self.vit_module)
@@ -60,10 +69,20 @@ class FusionNet(MetaBackbone):
     def forward(self, x: torch.Tensor):
         x_224 = F.interpolate(x,size=224,mode='bilinear',align_corners=False)
         vit_output = self.vit_module(x_224, is_training=True) # dict
+        vit_imgtokens = vit_output['x_norm_patchtokens'] # Tensor: B,N,C
+        feat_size = int(math.sqrt(vit_imgtokens.shape[1]))
+        feat_pe = self.pe_layer((feat_size,feat_size)).unsqueeze(0) # (1,C,H,W)
+        feat_pe = feat_pe.flatten(2).permute(0, 2, 1).to(self.device) #  (1, N, C)
+
         dtcwt_output = self.dtcwt_module(x) # Tensor: B,N,C
+        
+        img_token_cat = torch.cat([(vit_imgtokens+feat_pe), dtcwt_output], dim=-1)  # (B, N, 2C)
+        img_token_cat = self.cat_fc(img_token_cat)
+
         output = {
             **vit_output, 
             'dtcwt_output':dtcwt_output,
+            'cat_output': img_token_cat     # Tensor: B,N,C
         }
         return output
 
