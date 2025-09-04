@@ -295,7 +295,7 @@ class WSCerMLC(MetaClassifier):
         for item, pn_p, pos_p, imgtoken, attn in zip(databatch['data_samples'], img_probs, pos_probs, img_clstokens, heatmap):
             item.img_prob = pn_p
             item.pos_prob = pos_p
-            item.attn = attn  # (num_tokens)
+            item.attn = attn  # (num_tokens,)
             item.img_token = imgtoken
             data_sampels.append(item)
 

@@ -1,5 +1,5 @@
-data_root = 'data_resource/WINDOW_SIZE_850'
-feat_dir = f'{data_root}/slide_feat'
+data_root = 'data_resource/0630/WINDOW_SIZE_1600'
+feat_dir = f'{data_root}/slide_feat_ours'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 cls_map = {
     'NILM': 'NILM',
@@ -15,7 +15,7 @@ cls_map = {
 }
 num_classes = len(classes)
 dataset_type = 'slide'    # cls, instance
-patch_nums = 1000
+patch_nums = 200
 train_bs = 32
 val_bs = 32
 

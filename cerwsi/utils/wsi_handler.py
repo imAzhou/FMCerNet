@@ -29,6 +29,7 @@ class WSIHandler:
         location, level, size = (0, 0), smallest_level, (width, height)
         read_result = Image.fromarray(self.slide.read_region(location, level, size))
         read_result.save(savepath)
+        return read_result
 
     def init_patchlist(self, init_dict):
         width, height = self.slide.level_dimensions[self.level]
@@ -94,7 +95,6 @@ class WSIHandler:
             input_patch['valid_flag'] = valid_flag
             input_patch['valid_prob'] = pred_output.pred_score[1].item()
 
-
     def inference_batch_pn(self, pn_m, pn_datapool):
         '''
         Need attribute: image
@@ -116,6 +116,8 @@ class WSIHandler:
             inputInfo['pred_label'] = pred_clsid
             if 'img_token' in inputInfo:
                 inputInfo['img_token'] = datasample.img_token
+            if 'img_attnmap' in inputInfo:
+                inputInfo['img_attnmap'] = datasample.attn
         return pn_datapool
 
     def format_logstr(self, slide_patchlist):

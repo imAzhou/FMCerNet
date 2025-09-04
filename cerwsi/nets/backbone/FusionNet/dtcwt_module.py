@@ -227,7 +227,7 @@ class DTCWTModule(nn.Module):
                 featlen = featlen,
                 mlp_ratio = 4, 
                 norm_layer=partial(nn.LayerNorm, eps=1e-6))
-            for j in range(1)])
+            for j in range(3)])
         self.norm = nn.LayerNorm((512,), eps=1e-06)
         self.downsample = DownSamples(512, 1024)
         
