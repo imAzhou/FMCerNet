@@ -14,6 +14,5 @@ neck_type = 'identity'
 
 # classifier
 taskhead_type = 'cls'
-taskhead_model = 'mlc_linear'
-positive_thr = 0.5
-eval_prime_score = 'multi-label/f1-score'
+taskhead_model = 'mc_linear'
+eval_prime_score = 'single-label/mc_f1_score'

@@ -37,7 +37,7 @@ class FusionNet(MetaBackbone):
             dtcwt_featlen = args.input_size // 14
         )
         self.vit_module = vit_large(**vit_kwargs)
-        self.dtcwt_module = DTCWTModule(args.input_size)
+        self.dtcwt_module = DTCWTModule(args.input_size, args.backbone_cfg['DTBlock_nums'])
         feat_dim = 1024
         self.cat_fc = nn.Sequential(
             nn.Linear(feat_dim*2, feat_dim),

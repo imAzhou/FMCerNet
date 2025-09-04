@@ -3,7 +3,7 @@ import torch.nn as nn
 from functools import partial
 import math
 import torch.nn.functional as F
-from typing import Optional, Tuple, Type
+from typing import Tuple
 from timm.layers import trunc_normal_
 from pytorch_wavelets import DTCWTForward, DTCWTInverse
 
@@ -91,7 +91,7 @@ class SVT_channel_mixing(nn.Module):
 
         self.xfm = DTCWTForward(J=1, biort='near_sym_b', qshift='qshift_b')
         self.ifm = DTCWTInverse(biort='near_sym_b', qshift='qshift_b')
-        self.softshrink =0.0 
+        self.softshrink = 0.0 
 
     def multiply(self, input, weights):
         return torch.einsum('...bd,bdk->...bk', input, weights)
@@ -99,7 +99,7 @@ class SVT_channel_mixing(nn.Module):
     def forward(self, x, H, W):
         B, N, C = x.shape 
         x = x.view(B, H, W, C)
-        x=torch.permute(x, (0, 3, 1, 2))
+        x = torch.permute(x, (0, 3, 1, 2))
         B, C, H, W = x.shape 
         x = x.to(torch.float32) 
         
@@ -109,8 +109,8 @@ class SVT_channel_mixing(nn.Module):
         xh[0] = torch.permute(xh[0], (5, 0, 2, 3, 4, 1))
         xh[0] = xh[0].reshape(xh[0].shape[0], xh[0].shape[1], xh[0].shape[2], xh[0].shape[3], xh[0].shape[4], self.num_blocks, self.block_size)
         
-        x_real=xh[0][0]
-        x_imag=xh[0][1]
+        x_real = xh[0][0]
+        x_imag = xh[0][1]
         
         x_real_1 = F.relu(self.multiply(x_real, self.complex_weight_lh_1[0]) - self.multiply(x_imag, self.complex_weight_lh_1[1]) + self.complex_weight_lh_b1[0])
         x_imag_1 = F.relu(self.multiply(x_real, self.complex_weight_lh_1[1]) + self.multiply(x_imag, self.complex_weight_lh_1[0]) + self.complex_weight_lh_b1[1])
@@ -121,68 +121,23 @@ class SVT_channel_mixing(nn.Module):
         xh[0] = torch.stack([x_real_2, x_imag_2], dim=-1).float()
         xh[0] = F.softshrink(xh[0], lambd=self.softshrink) if self.softshrink else xh[0]
         xh[0] = xh[0].reshape(B, xh[0].shape[1], xh[0].shape[2], xh[0].shape[3], self.hidden_size, xh[0].shape[6])
-        xh[0] = torch.permute(xh[0], (0, 4, 1, 2, 3, 5))
+        xh[0] = torch.permute(xh[0], (0, 4, 1, 2, 3, 5))   # (B, C, 6, H, W, 2), 6: 六个方向，2: 实部+虚部
+        # save_wavelet_vis(xh[0][0], save_dir="statistic_results/visual_results", reduce="max")
 
-        x = self.ifm((xl,xh))
-        x=torch.permute(x, (0, 2, 3, 1))
-        x = x.reshape(B, N, C)# permute is not same as reshape or view
-        return x
-
-class DWConv(nn.Module):
-    def __init__(self, dim=768):
-        super(DWConv, self).__init__()
-        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
-
-    def forward(self, x, H, W):
-        B, N, C = x.shape
-        x = x.transpose(1, 2).contiguous().view(B, C, H, W)
-        x = self.dwconv(x)
-        x = x.flatten(2).transpose(1, 2)
-        return x
-
-class PVT2FFN(nn.Module):
-    def __init__(self, in_features, hidden_features):
-        super().__init__()
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        self.dwconv = DWConv(hidden_features)
-        self.act = nn.GELU()
-        self.fc2 = nn.Linear(hidden_features, in_features)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv2d):
-            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-            if m.bias is not None:
-                m.bias.data.zero_()
-
-    def forward(self, x, H, W):
-        x = self.fc1(x)
-        x = self.dwconv(x, H, W)
-        x = self.act(x)
-        x = self.fc2(x)
+        x = self.ifm((xl,xh))   # (B, C, H, W)
+        x = torch.permute(x, (0, 2, 3, 1))   # (B, H, W, C)
+        x = x.reshape(B, N, C)  # (B, H*W, C)
         return x
 
 class Block(nn.Module):
     def __init__(self, 
         dim, 
         featlen,
-        mlp_ratio,
         norm_layer=nn.LayerNorm, 
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
-        self.norm2 = norm_layer(dim)
         self.attn = SVT_channel_mixing(dim,featlen)
-        self.mlp = PVT2FFN(in_features=dim, hidden_features=int(dim * mlp_ratio))
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -202,11 +157,10 @@ class Block(nn.Module):
     
     def forward(self, x, H, W):
         x = x + self.attn(self.norm1(x), H, W)
-        x = self.mlp(self.norm2(x), H, W)
         return x
 
 class DTCWTModule(nn.Module):
-    def __init__(self, input_size):
+    def __init__(self, input_size, DTBlock_nums):
         super(DTCWTModule, self).__init__()
         patchsize = 16
         assert input_size % patchsize == 0
@@ -225,9 +179,8 @@ class DTCWTModule(nn.Module):
         self.block = nn.ModuleList([Block(
                 dim = 512, 
                 featlen = featlen,
-                mlp_ratio = 4, 
                 norm_layer=partial(nn.LayerNorm, eps=1e-6))
-            for j in range(3)])
+            for j in range(DTBlock_nums)])
         self.norm = nn.LayerNorm((512,), eps=1e-06)
         self.downsample = DownSamples(512, 1024)
         
