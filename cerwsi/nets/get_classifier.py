@@ -1,6 +1,7 @@
 from .classifier.binary_linear import BinaryLinear
 # from .classifier.multicls_linear import MultiClsLinear
 from .classifier.mlc_linear import MLCLinear
+from .classifier.mc_linear import MCLinear
 from .classifier.chief import CHIEF
 from .classifier.ml_decoder import MLDecoder
 from .classifier.query2label import Query2Label
@@ -10,7 +11,7 @@ from .classifier.query2label import Query2Label
 # from .classifier.wscer_alltoken import WSCerAllToken
 from .classifier.wscer_mlc import WSCerMLC
 
-allowed_classifier_type = ['online_version','binary_linear', 'multicls_linear', 'mlc_linear', 'chief', 'ml_decoder', 'query2label', 'svt', 'wscer_mlc', 'wscer_binary', 'wscer_partial', 'wscer_alltoken']
+allowed_classifier_type = ['online_version','binary_linear', 'mc_linear', 'mlc_linear', 'chief', 'ml_decoder', 'query2label', 'svt', 'wscer_mlc', 'wscer_binary', 'wscer_partial', 'wscer_alltoken']
 
 def get_classifier(args):
     classifier_type = args.taskhead_model
@@ -19,8 +20,8 @@ def get_classifier(args):
     classifier = None
     if classifier_type == 'binary_linear':
         classifier = BinaryLinear
-    # if classifier_type == 'multicls_linear':
-    #     classifier = MultiClsLinear
+    if classifier_type == 'mc_linear':
+        classifier = MCLinear
     if classifier_type == 'mlc_linear':
         classifier = MLCLinear
     if classifier_type == 'chief':

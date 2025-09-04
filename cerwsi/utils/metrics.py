@@ -246,6 +246,109 @@ class ExtendMultiLabelMetric(MultiLabelMetric):
 
         return result_metrics
 
+class ExtendSingleLabelMetric(SingleLabelMetric):
+    '''
+    预测图片属于每个类别的概率，并计算二分类指标
+    '''
+    def __init__(self, num_classes, logger_name) -> None:
+        super(ExtendSingleLabelMetric, self).__init__()
+        self.num_classes = num_classes
+        self.logger_name = logger_name
+
+    def process(self, data_batch, data_samples):
+        """Process one batch of data samples.
+
+        The processed results should be stored in ``self.results``, which will
+        be used to computed the metrics when all batches have been processed.
+
+        Args:
+            data_batch: A batch of data from the dataloader.
+            data_samples (Sequence[dict]): A batch of outputs from the model.
+        """
+ 
+        for item in data_samples:
+            result = dict(
+                img_pn_gt = int(item['gt_label']>0),
+                img_pn_pred = int(item['pred_label']>0),
+                img_pn_prob = max(item['pred_prob']).item(),
+                img_mc_gt = item['gt_label'].cpu(),
+                img_mc_pred = item['pred_label'].cpu(),
+            )
+
+            # Save the result to `self.results`.
+            self.results.append(result)
+
+    def compute_metrics(self, results):
+        """Compute the metrics from processed results.
+
+        Args:
+            results (list): The processed results of each batch.
+
+        Returns:
+            Dict: The computed metrics. The keys are the names of the metrics,
+            and the values are corresponding results.
+        """
+        # NOTICE: don't access `self.results` from the method. `self.results`
+        # are a list of results from multiple batch, while the input `results`
+        # are the collected results.
+        logger = MMLogger.get_instance(self.logger_name)
+        result_metrics = dict()
+
+        img_gt = [rs['img_pn_gt'] for rs in results]
+        img_pred = [rs['img_pn_pred'] for rs in results]
+        img_probs = [rs['img_pn_prob'] for rs in results]
+        
+        fpr, tpr, thresholds = roc_curve(img_gt, img_probs)
+        result_metrics['img_AUC'] = round((auc(fpr, tpr)).item(), 4)
+        img_result = calculate_metrics(img_gt,img_pred)
+        cm = img_result['cm']
+        del img_result['cm']
+        for k,v in img_result.items():
+            result_metrics['img_'+k] = v
+        
+        result_table_1 = PrettyTable()
+        result_table_1.field_names = result_metrics.keys()
+        result_table_1.add_row(result_metrics.values())
+        cmstr = print_confusion_matrix(cm, print_flag=False)
+        str_metric = '\n' + str(result_table_1) + '\n' + cmstr
+        logger.info(str_metric)
+
+        def pack_results(precision, recall, f1_score, support):
+            single_metrics = {}
+            if 'precision' in self.items:
+                single_metrics['precision'] = precision
+            if 'recall' in self.items:
+                single_metrics['recall'] = recall
+            if 'f1-score' in self.items:
+                single_metrics['f1-score'] = f1_score
+            if 'support' in self.items:
+                single_metrics['support'] = support
+            return single_metrics
+        
+        y_pred = [rs['img_mc_pred'] for rs in results]
+        y_true = [rs['img_mc_gt'] for rs in results]
+        precision, recall, f1_score, support = self.calculate(
+            y_pred,
+            y_true,
+            num_classes=self.num_classes)
+        result_metrics['mc_precision'] = round(precision.item(), 4)
+        result_metrics['mc_recall'] = round(recall.item(), 4)
+        result_metrics['mc_f1_score'] = round(f1_score.item(), 4)
+        
+        clswise_metric_res = self.calculate(
+            y_pred,
+            y_true,
+            average=None,
+            num_classes=self.num_classes)
+        for k, v in pack_results(*clswise_metric_res).items():
+            value = [round(i, 4) for i in v.detach().cpu().tolist()]
+            result_metrics[k+'_classwise'] = value
+ 
+        logger.info(result_metrics)
+
+        return result_metrics
+
+
 class SlideMetric(BaseMetric):
     '''
     计算多类别: AUC, Acc, Cohen’s Kappa 系数, Precision, Recall, F1, Binary Sensitivity and Specificity
