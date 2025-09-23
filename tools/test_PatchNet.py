@@ -8,7 +8,7 @@ from mmengine.fileio import dump
 import argparse
 from mmengine.config import Config
 from cerwsi.datasets import load_data
-from cerwsi.nets import PatchNet
+from cerwsi.nets import PatchNet,SlideNet
 from cerwsi.utils import set_seed, init_distributed_mode, is_main_process
 
 
@@ -27,7 +27,7 @@ parser.add_argument('--dist_url', default='env://', help='url used to set up dis
 args = parser.parse_args()
 
 def test_net(cfg, model):
-    valloader = load_data(cfg, ['val'])
+    valloader = load_data(cfg, ['train'])
 
     model.eval()
     pbar = valloader
@@ -40,14 +40,14 @@ def test_net(cfg, model):
         #     break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
-        model.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
+        model.module.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
         
         if args.save_result:
             batch_outputs.extend([item.cpu() for item in outputs])
     if args.save_result:
         results = dist.collect_results(batch_outputs, len(valloader.dataset), device='cpu')
     
-    metrics = model.taskhead.evaluator.evaluate(len(valloader.dataset))
+    metrics = model.module.taskhead.evaluator.evaluate(len(valloader.dataset))
     if is_main_process():
         pbar.close()
         print(metrics)
@@ -63,14 +63,17 @@ def main():
 
     cfg = Config.fromfile(args.config_file)
     cfg.save_result_dir = args.save_dir
-    cfg.backbone_cfg['backbone_ckpt'] = None
-    cfg.instance_ckpt = None
-    if args.val_json:
-        cfg.val_datasets['ann_file'] = args.val_json
-    model = PatchNet(cfg).to(device)
+    if cfg.net_type == 'patch':
+        cfg.backbone_cfg['backbone_ckpt'] = None
+        cfg.instance_ckpt = None
+        if args.val_json:
+            cfg.val_datasets['ann_file'] = args.val_json
+        model = PatchNet(cfg).to(device)
+    elif cfg.net_type == 'slide':
+        model = SlideNet(cfg).to(device)
+
     model.load_ckpt(args.ckpt)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
-    model = model.module
     test_net(cfg, model)
     torch.distributed.destroy_process_group()
 
@@ -81,9 +84,10 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
-    log/WS1600/2025_08_26_13_29_55/config.py \
-    log/WS1600/2025_08_26_13_29_55/checkpoints/best.pth \
-    log/WS1600/2025_08_26_13_29_55 \
+    log/slide_mc/ours_WS1600/2025_09_10_15_50_31/config.py \
+    log/slide_mc/ours_WS1600/2025_09_10_15_50_31/checkpoints/best.pth \
+    log/slide_mc/ours_WS1600/2025_09_10_15_50_31 \
+    --save_result
     --val_json annofiles/multilabel_puretrain.json \
     --save_result
 '''

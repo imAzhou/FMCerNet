@@ -1,12 +1,19 @@
+# from pytorch_wavelets import DTCWTForward, DTCWTInverse
+# import torch
+
+# xfm = DTCWTForward(J=1, biort='near_sym_b', qshift='qshift_b')
+# ifm = DTCWTInverse(biort='near_sym_b', qshift='qshift_b')
+
+# x = torch.randn(3,1280,64,64)
+# xl,xh = xfm(x)
+# print()
 
 import json
+from collections import Counter
+from cerwsi.utils import generate_cut_regions
 
 
-valid_patchlist_jsonpath = '/medical-data_NB/data/cervix/slide_patches/valid_patches_WS1600.json'
 
-def main():
-    with open(valid_patchlist_jsonpath, 'r', encoding='utf-8') as f:
-        json_data = json.load(f)
+cut_points = generate_cut_regions((0,0), 1650,1650, 800, 750, minlen=100)
+print(len(cut_points))
 
-if __name__ == "__main__":
-    main()

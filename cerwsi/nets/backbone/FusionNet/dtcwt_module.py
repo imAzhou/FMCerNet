@@ -103,6 +103,10 @@ class SVT_channel_mixing(nn.Module):
         B, C, H, W = x.shape 
         x = x.to(torch.float32) 
         
+        '''
+        xl: (B, C, H, W)
+        xh: [(B, C, 6, H//2, W//2, 2)]
+        '''
         xl,xh = self.xfm(x)
         xl = xl * self.complex_weight_ll
 

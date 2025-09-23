@@ -22,12 +22,13 @@ SEED,SAFE_MARGIN = 1234,100
 test_bs = 128
 valid_ckpt = 'checkpoints/valid_cls_best.pth'
 infer_csv_files = [
-    'data_resource/0630/WINDOW_SIZE_1600/annofiles/45_purejfsw_train.csv',
-    'data_resource/0630/WINDOW_SIZE_1600/annofiles/67_wsi_val.csv'
+    # 'data_resource/0630/WINDOW_SIZE_1600/annofiles/45_purejfsw_train.csv',
+    # 'data_resource/0630/WINDOW_SIZE_1600/annofiles/67_wsi_val.csv'
+    'data_resource/missed.csv'
 ]   # 有效 patch 块全部保存大约需要 11T 的内存
-valid_imgsavedir = f'/medical-data_NB/data/cervix/slide_patches/WS{PATCH_EDGE}'
-valid_jsonpath = f'/medical-data_NB/data/cervix/slide_patches/valid_patches_WS{PATCH_EDGE}.json'
-log_rootdir = f'/medical-data_NB/data/cervix/slide_patches/log_WS{PATCH_EDGE}'
+valid_imgsavedir = f'/nfs-medical3/zly/WS{PATCH_EDGE}'
+valid_jsonpath = f'/nfs-medical3/zly/2_valid_patches_WS{PATCH_EDGE}.json'
+log_rootdir = f'/nfs-medical3/zly/2_log_WS{PATCH_EDGE}'
 os.makedirs(log_rootdir, exist_ok=True, mode=0o777)
 infer_log_savepath = f'{log_rootdir}/infer.log'
 collect_result_savepath = f'{log_rootdir}/collect_result.txt'
@@ -81,7 +82,7 @@ def run_inference(valid_model):
             patchinfo['image'] = img_input
             valid_datapool.append(patchinfo)
             if len(valid_datapool) % test_bs == 0 or p_idx == len(data_per_rank)-1:
-                wsi_handler.inference_valid_batch(valid_model, valid_datapool)
+                wsi_handler.infer_valid_fn(valid_model, valid_datapool)
                 for item in valid_datapool:
                     if item['valid_flag'] != 0: # 保留不确定&有效 patch 块
                         savedir = f'{valid_imgsavedir}/{patientId}'

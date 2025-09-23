@@ -1,3 +1,4 @@
+import json
 import torch
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message=r"^xFormers is available \(.*\)")
@@ -17,7 +18,7 @@ from torchvision import transforms
 from mmdet.structures import DetDataSample
 from mmdet.models.detectors import FasterRCNN,DINO
 
-POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL', 'SCC']
+POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 
 parser = argparse.ArgumentParser()
 # base args
@@ -121,16 +122,18 @@ def test_net(cfg, pn_model):
             ann_file=cfg.val_annojson,
             metric='proposal',
             classwise=False,
-            iou_thrs=[0.3],
+            iou_thrs=np.array([0.3]),
             proposal_nums=(100, 300, 1000)
         )
         coco_metric.dataset_meta = dict(classes=POSITIVE_CLASS)
     
     visual_cnt = 0
-    for item in tqdm(coco.imgs.values(), ncols=80):
+    for idx,item in enumerate(tqdm(coco.imgs.values(), ncols=80)):
+        # if idx > 4:
+        #     break
         purename = item["file_name"].split('/')[-1]
-        if purename != 'JFSW_2_6_2488482245663_6.png':
-            continue
+        # if purename != 'JFSW_2_6_2488482245663_6.png':
+        #     continue
         img_path = f'{cfg.img_dir}/{item["file_name"]}'
         img_tensor = transform(Image.open(img_path))
         img_tensor = img_tensor.unsqueeze(0).to(pn_model.device)
@@ -157,8 +160,9 @@ def test_net(cfg, pn_model):
             os.makedirs(savedir, exist_ok=True, mode=0o777)
             visua_pred(img_path, gt_info, filtered_bboxes, filtered_scores, filtered_labels, f'{savedir}/{purename}')
             visual_cnt += 1
+            print(f'visual_cnt: {visual_cnt}')
         
-        if args.visual_nums > 0 and visual_cnt > args.visual_nums:
+        if args.visual_nums > 0 and visual_cnt >= args.visual_nums:
             break
 
         if args.calc_metric:
@@ -196,11 +200,13 @@ if __name__ == '__main__':
     main()
 
 '''
-python test_MMdetNet.py \
-    log/WS1600/vis_data/config.py \
-    log/WS1600/epoch_8.pth \
-    log/WS1600 \
-    data_resource/0630/WINDOW_SIZE_1600/annofiles/puretrain_noNeg_cocoformat.json \
+python tools/test_MMdetNet.py \
+    log/WS1600/20250910_155612/vis_data/config.py \
+    log/WS1600/20250910_155612/epoch_3.pth \
+    log/WS1600/20250910_155612 \
+    data_resource/0630/WINDOW_SIZE_1600/annofiles/val_noNeg_cocoformat.json \
     data_resource/0630/WINDOW_SIZE_1600/images \
+    --calc_metric
     --visual_nums 50
+    --calc_metric
 '''
