@@ -80,6 +80,6 @@ backbone_cfgdict = {
         backbone_ckpt = 'checkpoints/fusionnet.pth',
         frozen_backbone = True,
         use_peft = 'lora', 
-        DTBlock_nums = 3
+        DTBlock_nums = 1
     ),
 }
