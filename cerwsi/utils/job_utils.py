@@ -32,7 +32,7 @@ valid_model_ckpt = f"{root_dir}/checkpoints/valid_cls_best.pth"
 config_file = f"{root_dir}/log/WS1600/vis_data/config.py"
 pn_model_ckpt = f"{root_dir}/log/WS1600/epoch_8.pth"
 
-def inference_valid_batch(valid_model, read_result_pool, curent_id, visual_pred=None, save_prefix=None):
+def infer_valid_fn(valid_model, read_result_pool, curent_id, visual_pred=None, save_prefix=None):
     data_batch = dict(inputs=[], data_samples=[])
     imgs = [item['image'] for item in read_result_pool]
     for read_result in imgs:
@@ -69,7 +69,7 @@ def inference_valid_batch(valid_model, read_result_pool, curent_id, visual_pred=
     return valid_idx,curent_id
 
 
-def inference_batch_pn(pn_model, valid_input, downsample_ratio, visual_pred=None, save_prefix=None):
+def infer_pn_fn(pn_model, valid_input, downsample_ratio, visual_pred=None, save_prefix=None):
     inputsize = pn_model.img_size
     imgw,imgh = PATCH_EDGE,PATCH_EDGE
     transform = transforms.Compose([

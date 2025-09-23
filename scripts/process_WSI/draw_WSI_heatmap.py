@@ -113,10 +113,10 @@ def main():
         patchinfo['image'] = img_input
         valid_datapool.append(patchinfo)
         if len(valid_datapool) % test_bs == 0 or p_idx == len(slide_patchlist)-1:
-            wsi_handler.inference_valid_batch(valid_model, valid_datapool)
+            wsi_handler.infer_valid_fn(valid_model, valid_datapool)
             mlcls_datapool = [item for item in valid_datapool if item['valid_flag']==2]
             if len(mlcls_datapool) > 0:
-                wsi_handler.inference_batch_pn(mlcls_model, mlcls_datapool)
+                wsi_handler.infer_pn_fn(mlcls_model, mlcls_datapool)
             for item in valid_datapool:
                 if item['pred_label'] == 1:
                     wsi_heatmap = set_heatmap(wsi_heatmap, downsample_ratio, item)

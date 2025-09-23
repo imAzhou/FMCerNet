@@ -21,7 +21,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules
 
 CERTAIN_THR = 0.7
 LEVEL = 0
-WINDOW_SIZE = 850
+WINDOW_SIZE = 1600
 STRIDE = WINDOW_SIZE - 50
 
 test_patientId = [
@@ -68,6 +68,7 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
         # if item['patientId'] not in test_patientId:
         #     continue
         for RoIItem in item['annotations']:
+
             rx1,ry1,rx2,ry2 = (np.array(RoIItem['region']).astype(np.int32)).tolist()
             rw,rh = rx2-rx1, ry2-ry1
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
@@ -85,7 +86,7 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
                 random_x1,random_y1 = random_cut_square([0,0,rw,rh],WINDOW_SIZE)  # 在 RoI 中的相对坐标
                 cut_points = [(random_x1,random_y1,random_x1+WINDOW_SIZE,random_y1+WINDOW_SIZE)]
             else:
-                cut_points = generate_cut_regions((0,0), rw, rh, WINDOW_SIZE, STRIDE, minlen=50)
+                cut_points = generate_cut_regions((0,0), rw, rh, WINDOW_SIZE, STRIDE, minlen=100)
 
             # 按照bbox area 从大到小排序
             RoIItem['children'] = sorted(
@@ -127,6 +128,7 @@ def gene_patch_jsonlist(proc_id, all_json_datas, npz_mask_save_dir, patch_npz_sa
 
                 patchitems.append(pItem)
                 RoI_patch_idx += 1
+
         if (idx+1) % 10 == 0:
             print(f'Core {proc_id} processed : {idx+1}/{len(all_json_datas)}.')
     return patchitems
@@ -323,8 +325,11 @@ if __name__ == "__main__":
  
 '''
 WINDOW_SIZE = 1600, STRIDE = 1550:
-['neg', 'total_pos', 'partial_pos']: [19028, 11717, 2571], [0, 0, 10669] ([19028, 11717, 13240])
+['neg', 'total_pos', 'partial_pos']: [18902, 11214, 2571], [0, 0, 10667]
 
-WINDOW_SIZE = 850, STRIDE = 800:
-['neg', 'total_pos', 'partial_pos']: [77887, 19191, 7478], [0, 0, 27830] ([77887, 19191, 35308])
+WINDOW_SIZE = 800, STRIDE = 750:
+[88873, 19335, 6448] [0, 0, 24942]
+
+WINDOW_SIZE = 1200, STRIDE = 1150:
+[35750, 13783, 10264] [0, 0, 42330]
 '''

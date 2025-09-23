@@ -220,26 +220,20 @@ def generate_cut_regions(region_start, region_width, region_height, k, stride=40
     :return: 裁切区域坐标列表 [[x1, y1, x2, y2], ...]
     """
     x_start, y_start = region_start
+    overlap = k - stride
     cut_regions = []
+    # 刚刚好分割的宽高（没有余数的情况）
+    exact_w = (region_width // stride)*stride + overlap
+    exact_h = (region_height // stride)*stride + overlap
 
-    # 1. 调整宽度
-    w_rem = region_width % stride
-    if w_rem <= minlen:
-        region_width -= w_rem  # 舍弃不足 minlen 的部分
-        new_width = region_width
-    else:
-        new_width = region_width + (stride-w_rem)
-    # 2. 调整高度
-    h_rem = region_height % stride
-    if h_rem <= minlen:
-        region_height -= h_rem
-        new_height = region_height
-    else:
-        new_height = region_height + (stride-h_rem)
+    w_rem = region_width-exact_w
+    end_x = exact_w if w_rem > minlen else exact_w-stride
+    h_rem = region_height-exact_h
+    end_y = exact_h if h_rem > minlen else exact_h-stride
 
-    # 3. 均匀取点
-    for y in range(0, new_width, stride):
-        for x in range(0, new_height, stride):
+    # 均匀取点
+    for x in range(0, end_x, stride):
+        for y in range(0, end_y, stride):
             x1, y1 = x, y
             x2, y2 = x1 + k, y1 + k
 
@@ -252,7 +246,6 @@ def generate_cut_regions(region_start, region_width, region_height, k, stride=40
                 y1 = y2 - k
 
             cut_regions.append([x1+x_start, y1+y_start, x2+x_start, y2+y_start])
-
     return cut_regions
 
 def draw_OD(read_image, save_path, square_coords, inside_items, class_labels):
