@@ -19,7 +19,7 @@ import re
 LEVEL,PATCH_EDGE = 0,1600
 CERTAIN_THR,POSITIVE_THR = 0.7,0.5
 SEED,SAFE_MARGIN = 1234,100
-test_bs,topk_num = 64,400
+test_bs = 64
 valid_ckpt = 'checkpoints/valid_cls_best.pth'
 WSI_feat_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/slide_feat_ours_topk'
 os.makedirs(WSI_feat_savedir, exist_ok=True, mode=0o777)
@@ -102,13 +102,13 @@ def run_inference(valid_model, mlcls_model):
         dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
         if dist.get_rank() == 0:    # rank0 汇总结果
             merged = [x for r in all_results for x in r]
-            # 取 img_prob > 0 的前 topk, 即有效 patch
+            # 取 img_prob > 0 的 tile, 即有效 tile
             selected = sorted(
                 [v for v in merged if v['img_prob'] > 0],
                 key=lambda x: x['img_prob'], reverse=True
-            )[:topk_num]
+            )
             if len(selected) > 0:
-                slide_feats = torch.stack([pinfo['img_token'] for pinfo in selected])
+                slide_feats = torch.stack([pinfo['img_token'].unsqueeze(0) for pinfo in selected])
                 torch.save(slide_feats, f"{WSI_feat_savedir}/{patientId}.pt")
             # 打印当前切片的推理结果
             t_delta = time.time() - start_time
