@@ -1,19 +1,36 @@
-# from pytorch_wavelets import DTCWTForward, DTCWTInverse
-# import torch
+import torch
+from thop import profile
+from thop.vision.basic_hooks import zero_ops
+from cerwsi.nets import PatchNet
+from mmengine.config import Config
+import peft
+from mmpretrain.structures import DataSample
 
-# xfm = DTCWTForward(J=1, biort='near_sym_b', qshift='qshift_b')
-# ifm = DTCWTInverse(biort='near_sym_b', qshift='qshift_b')
-
-# x = torch.randn(3,1280,64,64)
-# xl,xh = xfm(x)
-# print()
-
-import json
-from collections import Counter
-from cerwsi.utils import generate_cut_regions
+device = torch.device('cuda:0')
+config_file = 'log/WS1200/query2label/2025_09_25_09_37_47/config.py'
+cfg = Config.fromfile(config_file)
+model = PatchNet(cfg).to(device)
+input = torch.randn(1, 3, 448, 448).to(device)  # batch=1, 3通道, 224x224输入
 
 
+data_batch = {
+    'inputs': input,
+    'data_samples':[DataSample()]
+}
+flops, params = profile(model, inputs=(data_batch, 'val'))
+print(f"FLOPs: {flops/1e9:.2f} GFLOPs")
+print(f"Params: {params/1e6:.2f} M")
 
-cut_points = generate_cut_regions((0,0), 1650,1650, 800, 750, minlen=100)
-print(len(cut_points))
+'''
+Ours: 
+FLOPs: 90.21 GFLOPs
+Params: 326.76 M
 
+ml_decoder 224 / 448:
+FLOPs: 78.85 / 314.42 GFLOPs
+Params: 310.01 M
+
+query2label 224 / 448:
+FLOPs: 88.10 / 350.46 GFLOPs
+Params: 408.90 M
+'''

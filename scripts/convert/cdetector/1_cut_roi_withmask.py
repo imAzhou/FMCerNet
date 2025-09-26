@@ -92,7 +92,6 @@ def cut_img(roi_img, patch_coords):
     
     return patch
 
-
 def gene_patch_jsonlist(npz_mask_save_dir, img_save_dir, json_save_dir):
     for mode in ['train', 'test']:
         jsonfile = f'{root_dir}/{mode}.json'
@@ -101,6 +100,7 @@ def gene_patch_jsonlist(npz_mask_save_dir, img_save_dir, json_save_dir):
         coco = COCO(jsonfile)
         
         format_result = {
+            'info': {},
             'categories': [{
                 'id': idx+1,
                 'name': clsname,
@@ -131,19 +131,16 @@ def gene_patch_jsonlist(npz_mask_save_dir, img_save_dir, json_save_dir):
             else:
                 roi_mask = np.zeros((rh,rw), dtype=np.int16)
             
-            cut_points = generate_cut_regions((0,0), rw, rh, WINDOW_SIZE, STRIDE, minlen=50)
-            for iidx,rect_coords in enumerate(cut_points):
-                x1,y1 = rect_coords
-                x2,y2 = x1+WINDOW_SIZE,y1+WINDOW_SIZE
-                patch_coords = [x1,y1,x2,y2]    # 在 RoI 中的相对坐标
+            cut_points = generate_cut_regions((0,0), rw, rh, WINDOW_SIZE, STRIDE, minlen=100)
+            for iidx,patch_coords in enumerate(cut_points):
                 bboxes,clsids,patch_mask = calc_patch_anns(patch_coords, imgitem['annos'], roi_mask)
                 
                 filename = f'{purename}_{iidx}.png'
                 diagnose = int(len(bboxes) > 0)
                 prefix = 'Neg' if diagnose == 0 else 'Pos'
                 
-                # cropimg = cut_img(roi_img, patch_coords)
-                # cropimg.save(f"{img_save_dir}/{prefix}/{filename}")
+                cropimg = cut_img(roi_img, patch_coords)
+                cropimg.save(f"{img_save_dir}/{prefix}/{filename}")
 
                 # clsnames = [clsname_map[catinfo['name']] for catinfo in coco.loadCats(clsids)]
                 # vis_patch_sample(cropimg, bboxes, clsnames, patch_mask, filename)
@@ -248,11 +245,11 @@ if __name__ == "__main__":
     os.makedirs(json_save_dir, exist_ok=True, mode=0o777)
     gene_patch_jsonlist(npz_mask_save_dir,img_save_dir,json_save_dir)
 
-    # statistic_imgs()
+    statistic_imgs()
     # vis_sample_img()
 
 '''
 WINDOW_SIZE = 400, STRIDE = 350:
-train ['neg', 'pos']: [27489, 22524]
-val ['neg', 'pos']: [3367, 2503]
+train ['neg', 'pos']: [28702, 32532]
+val ['neg', 'pos']: [3572, 3678]
 '''

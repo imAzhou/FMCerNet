@@ -27,7 +27,7 @@ parser.add_argument('--dist_url', default='env://', help='url used to set up dis
 args = parser.parse_args()
 
 def test_net(cfg, model):
-    valloader = load_data(cfg, ['train'])
+    valloader = load_data(cfg, ['val'])
 
     model.eval()
     pbar = valloader
@@ -84,9 +84,9 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
-    log/slide_mc/ours_WS1600/2025_09_10_15_50_31/config.py \
-    log/slide_mc/ours_WS1600/2025_09_10_15_50_31/checkpoints/best.pth \
-    log/slide_mc/ours_WS1600/2025_09_10_15_50_31 \
+    log/WS1200/wscernet/2025_09_26_00_10_17/config.py \
+    log/WS1200/wscernet/2025_09_26_00_10_17/checkpoints/best.pth \
+    log/WS1200/wscernet/2025_09_26_00_10_17 \
     --save_result
     --val_json annofiles/multilabel_puretrain.json \
     --save_result

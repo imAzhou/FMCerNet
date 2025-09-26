@@ -3,7 +3,7 @@
 lr = 0.00001
 weight_decay = 0.0001
 max_epochs = 30
-save_each_epoch = False
+save_each_epoch = True
 val_interval = 5
 
 # optim_wrapper = dict(

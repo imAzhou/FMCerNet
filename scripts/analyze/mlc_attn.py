@@ -31,7 +31,7 @@ parser.add_argument('--seed', type=int, default=1234, help='random seed')
 args = parser.parse_args()
 
 def test_net(args, cfg, model):
-    valloader = load_data(cfg, ['train'])
+    valloader = load_data(cfg, ['val'])
     model.eval()
     pbar = valloader
     if is_main_process():
@@ -42,8 +42,8 @@ def test_net(args, cfg, model):
         # if idx > 2:
         #     break
         filename = os.path.basename(data_batch['data_samples'][0].img_path)
-        if filename != 'ZY_ONLINE_1_193_1608818429399_44.png':
-            continue
+        # if filename != 'ZY_ONLINE_1_193_1608818429399_44.png':
+        #     continue
         with torch.no_grad():
             outputs = model(data_batch, 'val')
         batch_outputs.extend([item.cpu() for item in outputs])
@@ -178,9 +178,15 @@ def visual_attn(pred_result, coco_jsonfile, visual_nums, img_savedir):
     for item in tqdm(pred_result, ncols=90, desc='Visual attn images'):
         gt_diagnose = int(len(item.gt_label)>0)
         pred_diagnose = int(item.img_prob > 0.5)
-        pred_multi_label = [clsidx for clsidx,cls_score in enumerate(item.pos_prob) if cls_score > thr]
-        TP_flag = gt_diagnose == 1 and pred_diagnose == 1 and len(pred_multi_label) > 0
-        TN_flag = gt_diagnose == 0 and pred_diagnose == 0 and len(pred_multi_label) == 0
+        if 'pos_prob' in item:
+            pred_multi_label = [clsidx for clsidx,cls_score in enumerate(item.pos_prob) if cls_score > thr]
+            TP_flag = gt_diagnose == 1 and pred_diagnose == 1 and len(pred_multi_label) > 0
+            TN_flag = gt_diagnose == 0 and pred_diagnose == 0 and len(pred_multi_label) == 0
+        else:
+            pred_multi_label = []
+            TP_flag = gt_diagnose == 1 and pred_diagnose == 1
+            TN_flag = gt_diagnose == 0 and pred_diagnose == 0
+
         if not (TP_flag or TN_flag):
             continue
         if TN_flag and visual_cnt[0] > visual_nums:
@@ -254,10 +260,13 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 scripts/analyze/mlc_attn.py \
-    log/WS850/wscernet/mlc_f1_29.71/config.py \
-    log/WS850/wscernet/mlc_f1_29.71/checkpoints/best.pth \
-    log/WS850/wscernet/mlc_f1_29.71 \
-    data_resource/WINDOW_SIZE_850/annofiles/puretrain_noNeg_cocoformat.json \
+    log/WS1200/wscernet/2025_09_26_00_10_17/config.py \
+    log/WS1200/wscernet/2025_09_26_00_10_17/checkpoints/epoch_19.pth \
+    log/WS1200/wscernet/2025_09_26_00_10_17 \
+    data_resource/WINDOW_SIZE_1200/annofiles/puretrain_cocoformat.json \
+    --val_json annofiles/multilabel_puretrain.json \
+    --visual_nums 50
+
     --patientId ZY_ONLINE_1_1418 ZY_ONLINE_1_1467 ZY_ONLINE_1_193  \
     --visual_nums 50 \
     

@@ -49,15 +49,16 @@ class MLCQuery(nn.Module):
         bs, num_tokens, embed_dim = keys.shape
         feat_size = int(math.sqrt(num_tokens))
         # key_pe: (1, embed_dim, feat_size[0], feat_size[1])
-        key_pe = get_feat_pe('sam', embed_dim, (feat_size,feat_size))
-        key_pe = key_pe.flatten(2).permute(0, 2, 1).to(keys.device) #  (1, num_tokens, dim)
+        # key_pe = get_feat_pe('sam', embed_dim, (feat_size,feat_size))
+        # key_pe = key_pe.flatten(2).permute(0, 2, 1).to(keys.device) #  (1, num_tokens, dim)
 
         queries = self.cls_tokens.weight.unsqueeze(0).expand(bs, -1, -1)
         for layer in self.layers:
             queries, keys = layer(
                 queries=queries,
                 keys=keys,
-                key_pe=key_pe,
+                # key_pe=key_pe,
+                key_pe=None,
             )
         # queries: (bs, n_cls, dim), keys: (bs, num_tokens, dim)
         pred_pos_logits = []
@@ -88,7 +89,7 @@ class WSCerMLC(MetaClassifier):
         # key_pe: (1, embed_dim, feat_size[0], feat_size[1])
         key_pe = get_feat_pe('sam', embed_dim, (feat_size,feat_size))
         key_pe = key_pe.flatten(2).permute(0, 2, 1).to(self.device) #  (1, num_tokens, dim)
-        pred_pn_logits, inter_var = self.binary_branch(img_tokens+key_pe)
+        pred_pn_logits, inter_var = self.binary_branch(img_tokens)
 
         pred_pos_logits,pos_cls_tokens = self.mlc_branch(img_tokens)
         inter_var['pos_cls_tokens'] = pos_cls_tokens
@@ -127,11 +128,17 @@ class WSCerMLC(MetaClassifier):
         pos_probs = torch.sigmoid(positive_logits) # (bs, n_cls)
         
         heatmap = (self.binary_branch.patch_probs(inter_var))['patch_prob']  # (bs, num_tokens)
-        _,clsid = torch.max(pos_probs, 1)       # (bs, )
         img_pn_feat = inter_var['img_feat']     # (bs, dim)
-        img_pos_feat = inter_var['pos_cls_tokens'][torch.arange(bs), clsid]     # (bs, dim)
-        img_clstokens = torch.cat([img_pn_feat,img_pos_feat],dim=1)     # (bs, dim*2)
+        pn_prob_feat = torch.cat([img_probs.unsqueeze(-1),img_pn_feat],dim=1)   # (bs, 1+dim)
 
+        img_pos_feat = inter_var['pos_cls_tokens']  # (bs, n_cls, dim)
+        pos_prob_feat = torch.cat([pos_probs.unsqueeze(-1),img_pos_feat],dim=2)  # (bs, n_cls, 1+dim)
+        img_clstokens = torch.cat([pn_prob_feat.unsqueeze(1),pos_prob_feat],dim=1)     # (bs, 1+n_cls, 1+dim)
+
+        # _,clsid = torch.max(pos_probs, 1)       # (bs, )
+        # img_pos_feat = inter_var['pos_cls_tokens'][torch.arange(bs), clsid]     # (bs, dim)
+        # img_clstokens = torch.cat([img_pn_feat,img_pos_feat],dim=1)     # (bs, dim*2)
+        
         data_sampels = []
         for item, pn_p, pos_p, imgtoken, attn in zip(databatch['data_samples'], img_probs, pos_probs, img_clstokens, heatmap):
             item.img_prob = pn_p
