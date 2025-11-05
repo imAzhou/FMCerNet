@@ -135,9 +135,9 @@ if __name__ == '__main__':
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12348 main4PatchNet.py \
     configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
-    configs/model/wscernet.py \
+    configs/model/mlc_linear.py \
     configs/strategy_patch.py \
-    --record_save_dir log/WS1600/wscernet
+    --record_save_dir log/WS850/mlc_linear
     
 l_cerscanv1_dataset
 cdetector_ws400
