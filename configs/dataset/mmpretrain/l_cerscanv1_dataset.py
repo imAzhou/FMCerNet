@@ -1,6 +1,6 @@
 # dataset settings 
 
-data_root = 'data_resource/WINDOW_SIZE_1200'
+data_root = 'data_resource/WINDOW_SIZE_400'
 img_dir = f'{data_root}/images'
 classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)

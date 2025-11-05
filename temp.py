@@ -1,36 +1,48 @@
-import torch
-from thop import profile
-from thop.vision.basic_hooks import zero_ops
-from cerwsi.nets import PatchNet
-from mmengine.config import Config
-import peft
-from mmpretrain.structures import DataSample
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from pycocotools import mask as mask_utils
 
-device = torch.device('cuda:0')
-config_file = 'log/WS1200/query2label/2025_09_25_09_37_47/config.py'
-cfg = Config.fromfile(config_file)
-model = PatchNet(cfg).to(device)
-input = torch.randn(1, 3, 448, 448).to(device)  # batch=1, 3通道, 224x224输入
+def visualize_segmentation_comparison(imgRGB, our_object_list, cellpose_object_list, save_path):
+    """
+    可视化原图与两组分割结果的比较。
+    
+    Args:
+        imgpath (str): 原图路径。
+        our_object_list (list[dict]): 第一组检测结果，每个元素包含 'segmentation'。
+        cellpose_object_list (list[dict]): 第二组检测结果。
+        save_path (str): 输出图片保存路径。
+    """
+    # 创建两张副本用于绘制边缘
+    img_our = imgRGB.copy()
+    img_cellpose = imgRGB.copy()
 
+    def draw_segmentation_edges(target_img, object_list, color):
+        """在 target_img 上绘制 segmentation 的边缘线"""
+        for obj in object_list:
+            rle = obj['segmentation']
+            mask = mask_utils.decode(rle)
+            contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(target_img, contours, -1, color, 2)
 
-data_batch = {
-    'inputs': input,
-    'data_samples':[DataSample()]
-}
-flops, params = profile(model, inputs=(data_batch, 'val'))
-print(f"FLOPs: {flops/1e9:.2f} GFLOPs")
-print(f"Params: {params/1e6:.2f} M")
+    # 绘制两组结果
+    draw_segmentation_edges(img_our, our_object_list, color=(255, 0, 0))       # 红色线条
+    draw_segmentation_edges(img_cellpose, cellpose_object_list, color=(0, 255, 0))  # 绿色线条
 
-'''
-Ours: 
-FLOPs: 90.21 GFLOPs
-Params: 326.76 M
+    # 绘制三行图像
+    fig, axes = plt.subplots(3, 1, figsize=(8, 12))
+    axes[0].imshow(imgRGB)
+    axes[0].set_title("Original Image")
+    axes[1].imshow(img_our)
+    axes[1].set_title("Our Model Segmentation")
+    axes[2].imshow(img_cellpose)
+    axes[2].set_title("Cellpose Segmentation")
 
-ml_decoder 224 / 448:
-FLOPs: 78.85 / 314.42 GFLOPs
-Params: 310.01 M
+    for ax in axes:
+        ax.axis("off")
 
-query2label 224 / 448:
-FLOPs: 88.10 / 350.46 GFLOPs
-Params: 408.90 M
-'''
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"可视化结果已保存到：{save_path}")
+    

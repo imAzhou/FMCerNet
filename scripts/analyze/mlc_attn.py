@@ -260,12 +260,12 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 scripts/analyze/mlc_attn.py \
-    log/WS1200/wscernet/2025_09_26_00_10_17/config.py \
-    log/WS1200/wscernet/2025_09_26_00_10_17/checkpoints/epoch_19.pth \
-    log/WS1200/wscernet/2025_09_26_00_10_17 \
-    data_resource/WINDOW_SIZE_1200/annofiles/puretrain_cocoformat.json \
+    log/WS800/chief/2025_09_26_15_01_17/config.py \
+    log/WS800/chief/2025_09_26_15_01_17/checkpoints/best.pth \
+    log/WS800/chief/2025_09_26_15_01_17 \
+    data_resource/WINDOW_SIZE_800/annofiles/puretrain_cocoformat.json \
     --val_json annofiles/multilabel_puretrain.json \
-    --visual_nums 50
+    --visual_nums 200
 
     --patientId ZY_ONLINE_1_1418 ZY_ONLINE_1_1467 ZY_ONLINE_1_193  \
     --visual_nums 50 \

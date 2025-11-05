@@ -219,9 +219,9 @@ if __name__ == "__main__":
     proposal_savedir = f'{root_dir}/proposals_file/cp_0722'
     os.makedirs(proposal_savedir, exist_ok=True, mode=0o777)
     GPU_idx = 7
-    # demo_test(GPU_idx)
+    demo_test(GPU_idx)
     # infer(GPU_idx)
-    eval_metric()
+    # eval_metric()
 
     # foramt_proposal2coco()
     # visual_saveroot = 'statistic_results/cellpose_infer/hmchh_missed_0722'
