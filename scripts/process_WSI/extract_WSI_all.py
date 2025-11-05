@@ -88,7 +88,7 @@ def run_inference(valid_model, extractor_model):
             patchinfo['image'],_ = wsi_handler.read_cv2img(patchinfo['xy'])
             valid_datapool.append(patchinfo)
             if len(valid_datapool) % test_bs == 0 or p_idx == len(data_per_rank)-1:
-                wsi_handler.inference_valid_batch(valid_model, valid_datapool)
+                wsi_handler.infer_valid_fn(valid_model, valid_datapool)
                 mlcls_datapool = [item for item in valid_datapool if item['valid_flag']==2]
                 if len(mlcls_datapool) > 0:
                     inputs = []

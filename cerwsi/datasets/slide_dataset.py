@@ -3,6 +3,7 @@ from torch.utils.data import Dataset
 import torch.nn.functional as F
 import pandas as pd
 import os
+from mmpretrain.structures import DataSample
 
 # 自定义数据集类
 class SlideDataset(Dataset):
@@ -41,10 +42,10 @@ class SlideDataset(Dataset):
         if self.cls_map is not None:
             slide_clsname = self.cls_map[slide_info['kfb_clsname']]
         slide_label = self.classes.index(slide_clsname)
+        data_samples = DataSample()
+        data_samples.slide_label = slide_label
+        data_samples.slide_info = slide_info
         return {
             'inputs': slide_tensor,
-            'data_samples': {
-                'slide_label': slide_label,
-                'slide_info': slide_info
-            }
+            'data_samples': data_samples
         }

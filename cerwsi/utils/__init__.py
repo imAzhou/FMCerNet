@@ -8,4 +8,5 @@ from .OD_coco_metric import *
 from .visualization import *
 from .loss import *
 from .ddp import *
-# from .infer_cell import *
+from .infer_cell import *
+from .wsi_handler import WSIHandler

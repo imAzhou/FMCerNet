@@ -75,7 +75,7 @@ def load_models():
     print('='*10 + 'Models Load Done!' + '='*10)
     return valid_model,pn_model
 
-def inference_valid_batch(valid_model, read_result_pool):
+def infer_valid_fn(valid_model, read_result_pool):
     data_batch = dict(inputs=[], data_samples=[])
     for start_point, read_result in read_result_pool:
         img_input = cv2.cvtColor(np.array(read_result), cv2.COLOR_RGB2BGR)
@@ -99,7 +99,7 @@ def inference_valid_batch(valid_model, read_result_pool):
 
     return _valids, _invalids, _uncertains
 
-def inference_batch_pn(pn_model, valid_input):
+def infer_pn_fn(pn_model, valid_input):
     data_batch = dict(inputs=[], data_samples=[])
     for start_point, read_result in valid_input:
         img_input = cv2.cvtColor(np.array(read_result), cv2.COLOR_RGB2BGR)
@@ -132,7 +132,7 @@ def process_patches(proc_id, start_points, valid_model, pn_model,kfb_path):
         curent_process += 1
 
         if len(read_result_pool) % test_bs == 0:
-            valids, invalids, uncertains = inference_valid_batch(valid_model, read_result_pool)
+            valids, invalids, uncertains = infer_valid_fn(valid_model, read_result_pool)
             valid_read_result.extend(valids)
             
             pred_vunc_points.extend([item[0] for item in uncertains])
@@ -141,17 +141,17 @@ def process_patches(proc_id, start_points, valid_model, pn_model,kfb_path):
             print(f'\rCore: {proc_id}, 当前已处理: {curent_process}', end='')
         
         if len(valid_read_result) > 0:
-            positives,negatives = inference_batch_pn(pn_model, valid_read_result)
+            positives,negatives = infer_pn_fn(pn_model, valid_read_result)
             pred_p_points.extend([item[0] for item in positives])
             pred_n_points.extend([item[0] for item in negatives])
             valid_read_result = []
     
     if len(read_result_pool) > 0:
-        valids, invalids, uncertains = inference_valid_batch(valid_model, read_result_pool)
+        valids, invalids, uncertains = infer_valid_fn(valid_model, read_result_pool)
         pred_vunc_points.extend([item[0] for item in uncertains])
         pred_vn_points.extend([item[0] for item in invalids])
         if len(valids) > 0:
-            positives,negatives = inference_batch_pn(pn_model, valids)
+            positives,negatives = infer_pn_fn(pn_model, valids)
             pred_p_points.extend([item[0] for item in positives])
             pred_n_points.extend([item[0] for item in negatives])
 

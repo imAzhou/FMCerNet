@@ -6,8 +6,8 @@ net_type = 'patch'
 # backbone
 backbone_type = 'uni'
 backbone_cfg = _base_.backbone_cfgdict[backbone_type]
-backbone_cfg['frozen_backbone'] = True
-backbone_cfg['use_peft'] = 'lora'
+backbone_cfg['frozen_backbone'] = False
+backbone_cfg['use_peft'] = None
 
 # neck
 neck_type = 'identity'

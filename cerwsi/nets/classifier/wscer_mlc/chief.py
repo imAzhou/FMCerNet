@@ -20,7 +20,7 @@ class Attn_Net_Gated(nn.Module):
     def forward(self, x):
         a = self.attention_a(x)
         b = self.attention_b(x)
-        A = a.mul(b)
+        A = a.mul(b)  # N x D
         A = self.attention_c(A)  # N x n_classes
         return A, x
 

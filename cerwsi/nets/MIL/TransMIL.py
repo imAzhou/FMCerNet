@@ -42,13 +42,13 @@ class PPEG(nn.Module):
 class TransMIL(nn.Module):
     def __init__(self, args):
         super(TransMIL, self).__init__()
-        n_classes = args.num_classes
         C_in = args.C_in
         C_hidden = args.C_hidden
         self.pos_layer = PPEG(dim=C_hidden)
         self._fc1 = nn.Sequential(nn.Linear(C_in, C_hidden), nn.ReLU())
         self.cls_token = nn.Parameter(torch.randn(1, 1, C_hidden))
-        self.n_classes = n_classes
+        self.n_classes = args.num_classes
+        self.classes = args.classes
         self.layer1 = TransLayer(dim=C_hidden)
         self.layer2 = TransLayer(dim=C_hidden)
         self.norm = nn.LayerNorm(C_hidden)
@@ -72,7 +72,7 @@ class TransMIL(nn.Module):
         h = torch.cat([h, h[:,:add_length,:]],dim = 1) # [B, N, 512]
         #---->cls_token
         B = h.shape[0]
-        cls_tokens = self.cls_token.expand(B, -1, -1).cuda()
+        cls_tokens = self.cls_token.expand(B, -1, -1)
         h = torch.cat((cls_tokens, h), dim=1)
         #---->Translayer x1
         h = self.layer1(h) #[B, N, 512]
@@ -90,22 +90,23 @@ class TransMIL(nn.Module):
         return logits
     
     def calc_loss(self, databatch):
-        input_x = databatch['inputs']   # (bs, k, c)
+        input_x = databatch['inputs'].to(self.device)   # (bs, k, c)
         pred_logits = self.forward(input_x)
         loss_fn = nn.CrossEntropyLoss()
-        label = torch.as_tensor([item['slide_label'] for item in databatch['data_samples']]).to(self.device)
+        label = torch.as_tensor([item.slide_label for item in databatch['data_samples']]).to(self.device)
         loss = loss_fn(pred_logits, label)
         return loss, {'bce_loss': loss}
     
     def set_pred(self, databatch):
-        input_x = databatch['inputs']   # (bs, k, c)
+        input_x = databatch['inputs'].to(self.device)   # (bs, k, c)
         pred_logits = self.forward(input_x)
         pred_labels = torch.argmax(pred_logits, dim=1)
         pred_probs = F.softmax(pred_logits, dim = 1)
         data_sampels = []
         for item, label, prob in zip(databatch['data_samples'], pred_labels, pred_probs):
-            item['pred_label'] = label
-            item['pred_prob'] = prob
+            item.pred_label = label
+            item.pred_clsname = self.classes[label]
+            item.pred_prob = prob
             data_sampels.append(item)
 
         return data_sampels
@@ -116,3 +117,4 @@ if __name__ == "__main__":
     print(model.eval())
     results_dict = model(data = data)
     print(results_dict)
+

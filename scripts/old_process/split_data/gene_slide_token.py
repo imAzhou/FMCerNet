@@ -48,7 +48,7 @@ def inference_batch_valid(valid_model, read_result_pool):
         valid_flag.append(flag)
     return valid_flag
 
-def inference_batch_pn(pn_model, valid_input):
+def infer_pn_fn(pn_model, valid_input):
     data_batch = dict(inputs=[], data_samples=[])
     for read_result in valid_input:
         img_input = cv2.cvtColor(np.array(read_result), cv2.COLOR_RGB2BGR)
@@ -86,7 +86,7 @@ def process_patches(proc_id, start_points, valid_model, pn_model, kfb_path):
             print(f'\rCore: {proc_id}, 当前已处理: {p_idx+1}', end='')
         
         if len(valid_read_result) > 0:
-            pn_flag = inference_batch_pn(pn_model, valid_read_result)
+            pn_flag = infer_pn_fn(pn_model, valid_read_result)
             pn_iter = iter(pn_flag)
             points_record = [[next(pn_iter), x[1], x[2]] if x[0] == -1 else x for x in points_record]
             valid_read_result = []

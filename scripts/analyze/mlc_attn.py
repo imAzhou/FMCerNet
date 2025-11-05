@@ -23,6 +23,7 @@ parser.add_argument('config_file', type=str)
 parser.add_argument('ckpt', type=str)
 parser.add_argument('save_dir', type=str)
 parser.add_argument('cocojsonfile', type=str, help='use to visual gt bboxes')
+parser.add_argument('--patientIds', type=str, nargs='*', help='specified patientId, will show all and ignore visual_nums')
 parser.add_argument('--val_json', type=str, help='assign val jsondatas')
 parser.add_argument('--visual_nums', type=int, default=-1, help='-1 means visual all FN imgs')
 parser.add_argument('--seed', type=int, default=1234, help='random seed')
@@ -38,8 +39,11 @@ def test_net(args, cfg, model):
     
     batch_outputs = []
     for idx, data_batch in enumerate(pbar):
-        if idx > 2:
-            break
+        # if idx > 2:
+        #     break
+        filename = os.path.basename(data_batch['data_samples'][0].img_path)
+        # if filename != 'ZY_ONLINE_1_193_1608818429399_44.png':
+        #     continue
         with torch.no_grad():
             outputs = model(data_batch, 'val')
         batch_outputs.extend([item.cpu() for item in outputs])
@@ -47,18 +51,21 @@ def test_net(args, cfg, model):
     results = dist.collect_results(batch_outputs, len(valloader.dataset), device='cpu')
     if is_main_process():
         pbar.close()
-        img_savedir = f'{args.save_dir}/visual_attn'
-        os.makedirs(img_savedir, exist_ok=True, mode=0o777)
-        visual_attn(results, args.cocojsonfile, args.visual_nums, img_savedir)
+        if args.patientIds is not None:
+            img_savedir = f'{args.save_dir}/visual_attn_pid'
+            os.makedirs(img_savedir, exist_ok=True, mode=0o777)
+            visual_patient_attn(results, args.cocojsonfile, args.patientIds, img_savedir)
+        else:
+            img_savedir = f'{args.save_dir}/visual_attn'
+            os.makedirs(img_savedir, exist_ok=True, mode=0o777)
+            visual_attn(results, args.cocojsonfile, args.visual_nums, img_savedir)
 
 def heatmap_attn(img, item, annos, coco, pred_labels_str, save_path):
     plt.figure(figsize=(6, 6))
     plt.imshow(img)
     num_tokens = item.attn.shape[0]
     h = w = int(np.sqrt(num_tokens))
-    attnscore = F.softmax(item.attn, dim=0)
-    # attnscore = item.attn
-    attn2d = attnscore.reshape(h, w)
+    attn2d = item.attn.reshape(h, w)
     w_img, h_img  = img.size
     attn_resized = F.interpolate(
         attn2d[None, None, :, :].float(),
@@ -160,7 +167,7 @@ def main():
 
 def visual_attn(pred_result, coco_jsonfile, visual_nums, img_savedir):
     thr = 0.5
-    visual_cnt = 0
+    visual_cnt = [0, 0] # TN,TP
     coco = COCO(coco_jsonfile)
     classes = [i['name'] for i in coco.cats.values()]
     filename2imgid = {}
@@ -169,21 +176,35 @@ def visual_attn(pred_result, coco_jsonfile, visual_nums, img_savedir):
         filename2imgid[filename] = imgitem['id']
 
     for item in tqdm(pred_result, ncols=90, desc='Visual attn images'):
-        if visual_nums>0 and visual_cnt>=visual_nums:
-            break
         gt_diagnose = int(len(item.gt_label)>0)
         pred_diagnose = int(item.img_prob > 0.5)
-        pred_multi_label = [clsidx for clsidx,cls_score in enumerate(item.pos_prob) if cls_score > thr]
-        TP_flag = gt_diagnose == 1 and pred_diagnose == 1 and len(pred_multi_label) > 0
-        if not TP_flag:
+        if 'pos_prob' in item:
+            pred_multi_label = [clsidx for clsidx,cls_score in enumerate(item.pos_prob) if cls_score > thr]
+            TP_flag = gt_diagnose == 1 and pred_diagnose == 1 and len(pred_multi_label) > 0
+            TN_flag = gt_diagnose == 0 and pred_diagnose == 0 and len(pred_multi_label) == 0
+        else:
+            pred_multi_label = []
+            TP_flag = gt_diagnose == 1 and pred_diagnose == 1
+            TN_flag = gt_diagnose == 0 and pred_diagnose == 0
+
+        if not (TP_flag or TN_flag):
             continue
-        filename = os.path.basename(item.img_path)
-        if filename not in filename2imgid:
+        if TN_flag and visual_cnt[0] > visual_nums:
+            continue
+        if TP_flag and visual_cnt[1] > visual_nums:
             continue
         img = Image.open(item.img_path).convert("RGB")
-        annids = coco.getAnnIds([filename2imgid[filename]])
-        annos = coco.loadAnns(annids)
-        save_path = os.path.join(img_savedir, filename)
+        filename = os.path.basename(item.img_path)
+        if filename in filename2imgid:
+            annids = coco.getAnnIds([filename2imgid[filename]])
+            annos = coco.loadAnns(annids)
+        else:
+            annos = []
+
+        tag = 'TP' if TP_flag else 'TN'
+        img_savedir_flag = f'{img_savedir}/{tag}'
+        os.makedirs(img_savedir_flag, exist_ok=True, mode=0o777)
+        save_path = os.path.join(img_savedir_flag, filename)
 
         # pred_labels_str = f'prob: {item.img_prob:.2f}'
         pred_labels_str = f'Pos prob: {item.img_prob:.2f}, ' + (", ".join([classes[idx] for idx in pred_multi_label]) if len(pred_multi_label) > 0 else "None")
@@ -193,7 +214,44 @@ def visual_attn(pred_result, coco_jsonfile, visual_nums, img_savedir):
         # pred_labels_str = ", ".join([classes[idx] for idx in pred_multi_label]) if len(pred_multi_label) > 0 else "None"
         # heatmap_ncls_attn(img, item, annos, coco, pred_labels_str, save_path, classes)
 
-        visual_cnt += 1
+        flag_idx = 1 if TP_flag else 0
+        visual_cnt[flag_idx] += 1
+
+def visual_patient_attn(pred_result, coco_jsonfile, tgt_patientIds, img_savedir):
+    thr = 0.5
+    coco = COCO(coco_jsonfile)
+    classes = [i['name'] for i in coco.cats.values()]
+    filename2imgid = {}
+    for imgitem in tqdm(coco.imgs.values(), ncols=90, desc='Load filename2imgid'):
+        filename = imgitem['file_name'].split('/')[-1]
+        filename2imgid[filename] = imgitem['id']
+
+    for item in tqdm(pred_result, ncols=90, desc='Visual attn images'):
+        filename = os.path.basename(item.img_path)
+        img_patientId = '_'.join(filename.split('_')[:-2])
+        if img_patientId not in tgt_patientIds:
+            continue
+        os.makedirs(f'{img_savedir}/{img_patientId}/pos/withbbox', exist_ok=True, mode=0o777)
+        os.makedirs(f'{img_savedir}/{img_patientId}/pos/nobbox', exist_ok=True, mode=0o777)
+        os.makedirs(f'{img_savedir}/{img_patientId}/neg', exist_ok=True, mode=0o777)
+        
+        pred_multi_label = [clsidx for clsidx,cls_score in enumerate(item.pos_prob) if cls_score > thr]
+        pred_labels_str = f'Pos prob: {item.img_prob:.2f}, ' + (", ".join([classes[idx] for idx in pred_multi_label]) if len(pred_multi_label) > 0 else "None")
+        img = Image.open(item.img_path).convert("RGB")
+
+        if filename in filename2imgid:  # 有 bbox 框
+            annids = coco.getAnnIds([filename2imgid[filename]])
+            annos = coco.loadAnns(annids)
+            pos_withbbox_savepath = f'{img_savedir}/{img_patientId}/pos/withbbox/{filename}'
+            heatmap_attn(img, item, annos, coco, pred_labels_str, pos_withbbox_savepath)
+            annos = []
+            pos_nobbox_savepath = f'{img_savedir}/{img_patientId}/pos/nobbox/{filename}'
+            heatmap_attn(img, item, annos, coco, pred_labels_str, pos_nobbox_savepath)
+        else:
+            annos = []
+            neg_save_path = f'{img_savedir}/{img_patientId}/neg/{filename}'
+            heatmap_attn(img, item, annos, coco, pred_labels_str, neg_save_path)
+
 
 
 if __name__ == '__main__':
@@ -201,12 +259,17 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 scripts/analyze/mlc_attn.py \
-    log/WS1600/wscernet/mlc_f1_36.37/config.py \
-    log/WS1600/wscernet/mlc_f1_36.37/checkpoints/best.pth \
-    log/WS1600/wscernet/mlc_f1_36.37 \
-    data_resource/WINDOW_SIZE_1600/annofiles/val_noNeg_cocoformat.json \
-    --visual_nums 50
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12340 scripts/analyze/mlc_attn.py \
+    log/WS800/chief/2025_09_26_15_01_17/config.py \
+    log/WS800/chief/2025_09_26_15_01_17/checkpoints/best.pth \
+    log/WS800/chief/2025_09_26_15_01_17 \
+    data_resource/WINDOW_SIZE_800/annofiles/puretrain_cocoformat.json \
+    --val_json annofiles/multilabel_puretrain.json \
+    --visual_nums 200
+
+    --patientId ZY_ONLINE_1_1418 ZY_ONLINE_1_1467 ZY_ONLINE_1_193  \
+    --visual_nums 50 \
+    
 
 data_resource/ComparisonDetectorDataset/WINDOW_SIZE_400/annofiles/val.json
 data_resource/WINDOW_SIZE_1600/annofiles/puretrain_noNeg_cocoformat.json

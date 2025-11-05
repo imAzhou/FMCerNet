@@ -12,7 +12,7 @@ from multiprocessing import Pool
 import os
 from mmengine.logging import MMLogger
 from cerwsi.utils import KFBSlide, set_seed
-from cerwsi.utils.job_utils import (inference_valid_batch,inference_batch_pn,get_models,
+from cerwsi.utils.job_utils import (infer_valid_fn,infer_pn_fn,get_models,
                                  collect_startpoints,pred_postprocess,read_patch_fn,LEVEL)
 
 
@@ -30,13 +30,13 @@ def process_patches(proc_id, start_points, valid_model, pn_model, kfb_path, pati
         read_result_pool.append(read_patchItem)
         
         if len(read_result_pool) % args.test_bs == 0 or p_idx == len(start_points)-1:
-            valid_idx,curent_id = inference_valid_batch(valid_model, read_result_pool, curent_id, args.visual_pred, save_prefix)
+            valid_idx,curent_id = infer_valid_fn(valid_model, read_result_pool, curent_id, args.visual_pred, save_prefix)
             valid_read_result.extend([read_result_pool[idx] for idx in valid_idx])
             read_result_pool = []
             print(f'\rCore: {proc_id}, 当前已处理: {sum(curent_id)}', end='')
         
         if len(valid_read_result) > 0 and not args.only_valid:
-            pred_result = inference_batch_pn(pn_model, valid_read_result, downsample_ratio, args.visual_pred, save_prefix)
+            pred_result = infer_pn_fn(pn_model, valid_read_result, downsample_ratio, args.visual_pred, save_prefix)
             for pidx, pitem in enumerate(valid_read_result):
                 pitem['pn_pred'] = pred_result[pidx]
                 del pitem['image']

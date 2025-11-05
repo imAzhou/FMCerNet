@@ -5,7 +5,7 @@ from mmengine.dataset.sampler import DefaultSampler
 from .cls_dataset import ClsDataset
 from .instance_dataset import InstanceDataset
 from .slide_dataset import SlideDataset
-from mmpretrain.datasets import MultiLabelDataset
+from mmpretrain.datasets import MultiLabelDataset,CustomDataset
 
 def load_data(cfg, load_modes = []):
     valid_modes = {'train', 'val', 'test'}
@@ -17,8 +17,14 @@ def load_data(cfg, load_modes = []):
     for mode in load_modes:
         if cfg.dataset_type == 'cls':
             init_default_scope('mmpretrain')
-            annojson,transform,batch_size = get_mode_cfg(mode, cfg)
-            dataset = ClsDataset(cfg, annojson, transform)
+            dataset_cfg = {}
+            if mode == 'train':
+                dataset_cfg = cfg.train_datasets
+                batch_size = cfg.train_bs
+            elif mode == 'val':
+                dataset_cfg = cfg.val_datasets
+                batch_size = cfg.val_bs
+            dataset = CustomDataset(**dataset_cfg)
         elif cfg.dataset_type == 'multicls':
             init_default_scope('mmpretrain')
             dataset_cfg = {}

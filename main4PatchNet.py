@@ -141,10 +141,11 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=
     
 l_cerscanv1_dataset
 cdetector_ws400
+hicervix_dataset
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12346 main4PatchNet.py \
     configs/dataset/slide_cfg.py \
     configs/model/wsi_slidenet.py \
     configs/strategy_slide.py \
-    --record_save_dir log/slide_cls
+    --record_save_dir log/slide_mc/ours_WS1600
 '''

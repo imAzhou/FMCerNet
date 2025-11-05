@@ -1,15 +1,16 @@
 # dataset settings 
-data_root = 'data_resource/ComparisonDetectorDataset/WINDOW_SIZE_400'
-classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
+
+data_root = 'data_resource/HiCervix'
+classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
-dataset_type = 'multicls'    # cls, instance
+dataset_type = 'cls'    # cls, instance
 train_bs = 32
 val_bs = 32
-input_size = 1024  # 224, 392, 448, 512, 1024
+input_size = 224  # 224, 392, 448, 512, 1024
 
 rand_increasing_policies = [
-    dict(type='AutoContrast'),
-    dict(type='Equalize'),
+    dict(type='AutoContrast', prob=0.5),
+    dict(type='Equalize', prob=0.5),
     dict(type='Rotate', magnitude_key='angle', magnitude_range=(-15, 15), prob=0.5),
     dict(type='Contrast', magnitude_range=(-0.9, 0.9), prob=0.5),
     dict(type='Brightness', magnitude_key='magnitude', magnitude_range=(-0.9, 0.9), prob=0.5),
@@ -28,11 +29,13 @@ rand_increasing_policies = [
 
 train_datasets = dict(
     data_root = data_root,
-    data_prefix = 'images',
-    ann_file = 'annofiles/multilabel_train.json',
+    data_prefix = 'train',
+    ann_file = 'train.txt',
+    classes = classes,
     pipeline = [
         dict(type='LoadImageFromFile'),
-        dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),
+        dict(type='ResizeEdge', edge='long', scale=input_size),
+        dict(type='CenterCrop', auto_pad=True, crop_size=input_size, pad_cfg=dict(pad_val=255, type='Pad')),
         dict(type='RandomFlip', prob=0.5),
         dict(
             type='RandAugment',
@@ -45,11 +48,13 @@ train_datasets = dict(
 
 val_datasets = dict(
     data_root = data_root,
-    data_prefix = 'images',
-    ann_file = 'annofiles/multilabel_test.json',
+    data_prefix = 'val',
+    ann_file = 'val.txt',
+    classes = classes,
     pipeline = [
         dict(type='LoadImageFromFile'),
-        dict(type='Resize', scale=(input_size, input_size), keep_ratio=True),
+        dict(type='ResizeEdge', edge='long', scale=input_size),
+        dict(type='CenterCrop', auto_pad=True, crop_size=input_size, pad_cfg=dict(pad_val=255, type='Pad')),
         dict(type='PackInputs')
     ]
 )

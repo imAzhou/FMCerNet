@@ -19,13 +19,6 @@ class MLCLinear(MetaClassifier):
         self.cls_linear_heads = nn.ModuleList()
         for i in range(self.num_classes):
             self.cls_linear_heads.append(nn.Linear(input_embed_dim, 1))
-
-    def calc_logits(self, feature_emb: torch.Tensor):
-        pred_img_logits = []
-        for i in range(self.num_classes):
-            pred_img_logits.append(self.cls_linear_heads[i](feature_emb))  # [(bs, 1),]
-        pred_img_logits = torch.cat(pred_img_logits, dim=-1)  # (bs, num_cls)
-        return pred_img_logits
     
     def calc_logits(self, inputs):
         cls_token = self.get_cls_token(inputs)
