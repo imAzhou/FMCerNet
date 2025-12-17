@@ -8,11 +8,14 @@ import numpy as np
 import random
 from mmpretrain.structures import DataSample
 from mmdet.structures import DetDataSample
+import openslide
 from .tools import is_bbox_inside
 from .KFBreader.kfbreader import KFBSlide
 
+
+
 class WSIHandler:
-    def __init__(self, kfb_path, crop_ws,
+    def __init__(self, source_path, crop_ws,
                  level=0, 
                  safe_margin=100, 
                  certain_thr=0.7,
@@ -20,7 +23,7 @@ class WSIHandler:
                  bbox_score_thr=0.2,
                  positive_class=[],
                  ):
-        self.slide = KFBSlide(kfb_path)
+        self.slide = KFBSlide(source_path)
         self.level = level
         self.safe_margin = safe_margin
         self.crop_ws = crop_ws
@@ -71,12 +74,17 @@ class WSIHandler:
         coords = [x1, y1, x1+self.crop_ws, y1+self.crop_ws]
         return img_input,coords
     
-    def read_PILimg(self, point_xy):
+    def read_PILimg(self, point_xy, bboxwh=None):
         '''
+        Args:
+            point_xy: left top coord (x, y) 
+            bboxwh: region crop size (width, height) 
         return RGB PIL.Image imgdata, value in [0,1]
         '''
         x,y = point_xy
-        location, level, size = (x, y), self.level, (self.crop_ws, self.crop_ws)
+        if bboxwh == None:
+            bboxwh = (self.crop_ws, self.crop_ws)
+        location, level, size = (x, y), self.level, bboxwh
         read_result = copy.deepcopy(Image.fromarray(self.slide.read_region(location, level, size)))
         return read_result
 
@@ -125,6 +133,39 @@ class WSIHandler:
             if 'img_attnmap' in inputInfo:
                 inputInfo['img_attnmap'] = datasample.attn
         return pn_datapool
+
+    def infer_pn_batch_fn(self, pn_m, datadict_list, batch_size):
+        inputsize = pn_m.img_size
+        datapool = []
+        valid_list = [item for item in datadict_list if item['valid_flag'] != 0]
+        for didx, item in enumerate(valid_list):
+            img_input = torch.as_tensor(cv2.resize(item['image'], (inputsize,inputsize)))
+            datapool.append(img_input.permute(2,0,1))
+            
+            if len(datapool) % batch_size == 0 or didx == len(valid_list)-1:
+                with torch.no_grad():
+                    outputs = pn_m({
+                        'inputs': torch.stack(datapool, dim=0),
+                        'data_samples': [DataSample() for _ in range(len(datapool))]
+                    }, 'val')
+                start_idx = didx-len(datapool)+1
+                for oidx,datasample in enumerate(outputs):
+                    tgt_item = valid_list[start_idx + oidx]
+                    pred_clsid = int(datasample.img_prob > self.positive_thr)
+                    tgt_item['img_prob'] = datasample.img_prob.item()
+                    tgt_item['pred_label'] = pred_clsid
+                    if 'img_token' in tgt_item:
+                        tgt_item['img_token'] = datasample.img_token.detach().cpu()
+                    if 'img_attnmap' in tgt_item:
+                        tgt_item['img_attnmap'] = datasample.attn
+                    del tgt_item['image']
+                datapool = []
+                torch.cuda.empty_cache()
+        # clear invalid img
+        for item in datadict_list:
+            if item['valid_flag'] == 0:
+                del item['image']
+        torch.cuda.empty_cache()
 
     def infer_celldetector_fn(self, detector, pos_datapool):
         '''
@@ -223,4 +264,4 @@ class WSIHandler:
                 sum(p['valid_flag']==1 for p in slide_patchlist),
                 sum(p['valid_flag']==2 for p in slide_patchlist),
             )
-    
+

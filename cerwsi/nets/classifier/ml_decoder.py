@@ -139,11 +139,11 @@ class MLDecoder(MetaClassifier):
             h_out = out_extrap.flatten(1)
         h_out += self.decoder.duplicate_pooling_bias
         logits = h_out  # (bs, num_cls)
-        return logits
+        return logits,h
     
     def calc_loss(self,inputs, databatch):
         loss_fn = nn.BCEWithLogitsLoss()
-        positive_logits = self.calc_logits(inputs)
+        positive_logits,_ = self.calc_logits(inputs)
         binary_matrix = self.get_mlc_labels(databatch)
         loss = loss_fn(positive_logits, binary_matrix)
         loss_dict = {
@@ -152,11 +152,14 @@ class MLDecoder(MetaClassifier):
         return loss,loss_dict
 
     def set_pred(self,inputs, databatch):
-        positive_logits = self.calc_logits(inputs) # (bs, num_classes)
+        positive_logits, img_pos_feat = self.calc_logits(inputs) # (bs, num_classes)
         pos_probs = torch.sigmoid(positive_logits) # (bs, n_cls)
+        pos_prob_feat = torch.cat([pos_probs.unsqueeze(-1),img_pos_feat],dim=2)  # (bs, n_cls, 1+dim)
         data_sampels = []
-        for item, pos_p in zip(databatch['data_samples'], pos_probs):
+        for item, pos_p, imgtoken in zip(databatch['data_samples'], pos_probs, pos_prob_feat):
+            item.img_prob = torch.max(pos_p)
             item.pos_prob = pos_p
+            item.img_token = imgtoken
             data_sampels.append(item)
 
         return data_sampels

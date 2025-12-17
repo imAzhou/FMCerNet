@@ -1,6 +1,6 @@
 # dataset settings 
 
-data_root = 'data_resource/WINDOW_SIZE_1600'
+data_root = 'data_resource/0630/WINDOW_SIZE_1600'
 img_dir = f'{data_root}/images'
 classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
@@ -11,7 +11,7 @@ val_bs = 32
 input_size = 1024  # 224, 392, 448, 512, 1024
 with_mask = False
 
-train_annojson = f'{data_root}/annofiles/fusiontrain_noNeg_cocoformat.json'
+train_annojson = f'{data_root}/annofiles/puretrain_cocoformat.json'
 albu_train_transforms = [
     dict(type='ShiftScaleRotate',
         shift_limit=0.0625,
@@ -71,7 +71,7 @@ train_transform = [
     dict(type='PackDetInputs')
 ]
 
-val_annojson = f'{data_root}/annofiles/val_noNeg_cocoformat.json'
+val_annojson = f'{data_root}/annofiles/val_cocoformat.json'
 val_transform = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=with_mask),

@@ -201,11 +201,11 @@ if __name__ == '__main__':
 
 '''
 python tools/test_MMdetNet.py \
-    log/WS1600/20250910_155612/vis_data/config.py \
-    log/WS1600/20250910_155612/epoch_3.pth \
-    log/WS1600/20250910_155612 \
-    data_resource/0630/WINDOW_SIZE_1600/annofiles/val_noNeg_cocoformat.json \
-    data_resource/0630/WINDOW_SIZE_1600/images \
+    log/WS1200/dino_r50/vis_data/config.py \
+    log/WS1200/dino_r50/epoch_2.pth \
+    log/WS1200/dino_r50 \
+    data_resource/0630/WINDOW_SIZE_1200/annofiles/val_cocoformat.json \
+    data_resource/0630/WINDOW_SIZE_1200/images \
     --calc_metric
     --visual_nums 50
     --calc_metric

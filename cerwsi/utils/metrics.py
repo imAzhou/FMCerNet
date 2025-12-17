@@ -359,13 +359,19 @@ class SlideMetric(BaseMetric):
         self.logger_name = logger_name
         kwargs = {'task': 'multiclass', 'num_classes': num_classes}
         self.AUROC = torchmetrics.AUROC(**kwargs, average = 'macro')
-        self.metrics = torchmetrics.MetricCollection([
-            torchmetrics.Accuracy(**kwargs, average='micro'),
-            torchmetrics.CohenKappa(**kwargs),
-            torchmetrics.F1Score(**kwargs, average = 'macro'),
-            torchmetrics.Recall(**kwargs, average = 'macro'),
-            torchmetrics.Precision(**kwargs, average = 'macro'),
-        ])
+        self.metrics = torchmetrics.MetricCollection({
+            # overall metrics
+            "acc_micro": torchmetrics.Accuracy(**kwargs, average='micro'),
+            "cohen_kappa": torchmetrics.CohenKappa(**kwargs),
+            "f1_macro": torchmetrics.F1Score(**kwargs, average='macro'),
+            "recall_macro": torchmetrics.Recall(**kwargs, average='macro'),
+            "precision_macro": torchmetrics.Precision(**kwargs, average='macro'),
+
+            # per-class metrics
+            "f1_per_class": torchmetrics.F1Score(**kwargs, average=None),
+            "recall_per_class": torchmetrics.Recall(**kwargs, average=None),
+            "precision_per_class": torchmetrics.Precision(**kwargs, average=None),
+        })
         
     def process(self, data_batch, data_samples):
         """Process one batch of data samples.
@@ -406,15 +412,15 @@ class SlideMetric(BaseMetric):
         pred_label = torch.as_tensor([rs['pred_label'] for rs in results])
         pred_prob = torch.as_tensor([rs['pred_prob'] for rs in results])
 
-        result_table_1 = PrettyTable()
         result_metrics_1 = dict()
         auroc_score = self.AUROC(pred_prob, gt_label)   # tensor value
         result_metrics_1['AUROC'] = round(auroc_score.item(), 4)
         metric_scores = self.metrics(pred_label, gt_label)   # dict tensor value
         for k,v in metric_scores.items():
-            result_metrics_1[k] = round(v.item(), 4)
-        result_table_1.field_names = result_metrics_1.keys()
-        result_table_1.add_row(result_metrics_1.values())
+            if 'per_class' in k:
+                result_metrics_1[k] = [round(item_v.item(), 4) for item_v in v]
+            else:
+                result_metrics_1[k] = round(v.item(), 4)
 
         result_table_2 = PrettyTable()
         result_metrics_2 = dict()
@@ -429,7 +435,7 @@ class SlideMetric(BaseMetric):
         result_table_2.add_row(result_metrics_2.values())    
 
         cmstr = print_confusion_matrix(cm, print_flag=False)
-        str_metric = '\n' + str(result_table_1) + '\n'+ str(result_table_2) + '\n' + cmstr
+        str_metric = '\n'+ str(result_table_2) + '\n' + cmstr
         
         logger.info(str_metric)
         result = {**result_metrics_1, **result_metrics_2}

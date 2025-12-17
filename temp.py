@@ -1,36 +1,28 @@
+# import os
+# from cerwsi.utils import KFBSlide,kfbslide_get_associated_image_names,kfbslide_read_associated_image
+# import openslide
+
+# svs_path = '/nfs-medical3/data/浙一胃HE与Fish数据/胃癌FISH片/2025126768-FISH-HE-KL.svs'
+# kfb_path = '/medical-data/data/cervix/JFSW_1109/HSIL/C202028855.kfb'
+# kfbf_path = '/nfs-medical3/data/浙一胃HE与Fish数据/胃癌FISH片/2025126768-FISH-KL.kfbf'
+
+# # source_path = kfbf_path
+# # slide = KFBSlide(source_path)
+# # swidth, sheight = slide.level_dimensions[0]
+# # associated_images = kfbslide_get_associated_image_names(slide._osr)
+# # if 'label' not in associated_images:
+# #     print(f'{source_path} haven\'t label!')
+# # else:
+# #     filename = os.path.splitext(os.path.basename(source_path))[0]
+# #     image = kfbslide_read_associated_image(slide._osr, 'label')
+# #     output_path = f"{filename}.png"
+# #     image.save(output_path, "PNG")
+
+# slide = openslide.OpenSlide(svs_path)
+# print(slide.associated_images.keys())
+
+
 import torch
-from thop import profile
-from thop.vision.basic_hooks import zero_ops
-from cerwsi.nets import PatchNet
-from mmengine.config import Config
-import peft
-from mmpretrain.structures import DataSample
 
-device = torch.device('cuda:0')
-config_file = 'log/WS1200/query2label/2025_09_25_09_37_47/config.py'
-cfg = Config.fromfile(config_file)
-model = PatchNet(cfg).to(device)
-input = torch.randn(1, 3, 448, 448).to(device)  # batch=1, 3通道, 224x224输入
-
-
-data_batch = {
-    'inputs': input,
-    'data_samples':[DataSample()]
-}
-flops, params = profile(model, inputs=(data_batch, 'val'))
-print(f"FLOPs: {flops/1e9:.2f} GFLOPs")
-print(f"Params: {params/1e6:.2f} M")
-
-'''
-Ours: 
-FLOPs: 90.21 GFLOPs
-Params: 326.76 M
-
-ml_decoder 224 / 448:
-FLOPs: 78.85 / 314.42 GFLOPs
-Params: 310.01 M
-
-query2label 224 / 448:
-FLOPs: 88.10 / 350.46 GFLOPs
-Params: 408.90 M
-'''
+data = torch.load('data_resource/0630/WINDOW_SIZE_1200/slide_feat_detector/JFSW_1_2.pt')
+print()

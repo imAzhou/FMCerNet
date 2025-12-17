@@ -40,6 +40,7 @@ def test_net(cfg, model):
         #     break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
+            #推理的时候训练集和验证集都要跑一下
         model.module.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
         
         if args.save_result:
@@ -83,11 +84,20 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
-    log/WS1200/wscernet/2025_09_26_00_10_17/config.py \
-    log/WS1200/wscernet/2025_09_26_00_10_17/checkpoints/best.pth \
-    log/WS1200/wscernet/2025_09_26_00_10_17 \
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 torchrun --nproc_per_node=6 --master_port=12347 tools/test_PatchNet.py \
+    log/slide_mc/ours_WS800/2025_10_10_07_40_26/config.py \
+    log/slide_mc/ours_WS800/2025_10_10_07_40_26/checkpoints/best.pth \
+    log/slide_mc/ours_WS800 \
     --save_result
     --val_json annofiles/multilabel_puretrain.json \
     --save_result
+
+log/slide_mc/cell_detector/2025_10_13_05_45_43/config.py
+log/slide_mc/cell_detector/2025_10_13_05_45_43/checkpoints/best.pth
+
+log/slide_mc/ml_decoder/config.py
+log/slide_mc/ml_decoder/checkpoints/best.pth
+
+log/slide_mc/ours_WS800/2025_10_10_07_40_26/config.py
+log/slide_mc/ours_WS800/2025_10_10_07_40_26/checkpoints/best.pth  
 '''

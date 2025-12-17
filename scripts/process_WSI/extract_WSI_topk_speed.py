@@ -14,7 +14,8 @@ from cerwsi.utils.wsi_handler import WSIHandler
 from mmengine.logging import MMLogger
 import pandas as pd
 import time
-import re
+from multiprocessing import Pool
+
 
 LEVEL,PATCH_EDGE = 0,1200
 CERTAIN_THR,POSITIVE_THR = 0.7,0.5
@@ -24,24 +25,58 @@ valid_ckpt = 'checkpoints/valid_cls_best.pth'
 WSI_feat_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/slide_feat_ours'
 os.makedirs(WSI_feat_savedir, exist_ok=True, mode=0o777)
 infer_csv_files = [
-    'data_resource/0630/45_0924_train.csv',
-    'data_resource/0630/67_0924_val.csv'
+    # 'data_resource/0630/45_0924_train.csv',
+    # 'data_resource/0630/67_0924_val.csv',
+    'data_resource/0630/reinfer.csv',
 ]
 
 pnmodel_rootdir = 'log/WS1200/wscernet'
 mmcls_config_file = f'{pnmodel_rootdir}/config.py'
 mmcls_ckpt = f'{pnmodel_rootdir}/checkpoints/epoch_19.pth'
 infer_log_savepath = f'{pnmodel_rootdir}/infer.log'
-infer_txt_savepath = f'{pnmodel_rootdir}/infer_result.txt'
-tmp_save_dir = f'{pnmodel_rootdir}/tmp/extract_WSI_topk'
-os.makedirs(tmp_save_dir, exist_ok=True, mode=0o777)
+infer_txt_savepath = f'{pnmodel_rootdir}/infer_result_speed.txt'
+
+tmp_dir = f'{pnmodel_rootdir}/tmp'
+tmp_logtxt_dir = f'{tmp_dir}/extract_WSI_topk'
+os.makedirs(tmp_logtxt_dir, exist_ok=True, mode=0o777)
+
+
+'''
+tmp_logtxt_dir
+    - patientId.txt: log str
+'''
 
 def resume_infer():
     done_pidlist = []
-    for txtname in os.listdir(tmp_save_dir):
+    for txtname in os.listdir(tmp_logtxt_dir):
         pid = txtname.split('.')[0]
         done_pidlist.append(pid)
     return done_pidlist
+
+def readimgs(proc_id, kfb_path, set_group):
+    wsi_handler = WSIHandler(kfb_path, PATCH_EDGE, LEVEL, 
+                certain_thr=CERTAIN_THR, positive_thr=POSITIVE_THR)
+    for item in set_group:
+        item['image'],_ = wsi_handler.read_cv2img(item['xy'])
+    return set_group
+
+def load_patchimgs(kfb_path, slide_patchlist):
+    cpu_num = 16
+    step = len(slide_patchlist) // cpu_num
+    workers = Pool(processes=cpu_num)
+    processes = []
+    for proc_id in range(cpu_num):
+        if proc_id == cpu_num-1:
+            set_group = slide_patchlist[proc_id*step:]
+        else:
+            set_group = slide_patchlist[proc_id*step:(proc_id+1)*step]
+        p = workers.apply_async(readimgs,(proc_id, kfb_path, set_group))
+        processes.append(p)
+    readresults = []
+    for p in processes:
+        results = p.get()
+        readresults.extend(results)
+    return readresults
 
 def run_inference(valid_model, mlcls_model):
     done_pidlist = resume_infer()
@@ -69,6 +104,7 @@ def run_inference(valid_model, mlcls_model):
                                  certain_thr=CERTAIN_THR, positive_thr=POSITIVE_THR)
         slide_patchlist = wsi_handler.init_patchlist({
             'image': None,
+            'filepath': '',
             'valid_prob': 0, 
             'valid_flag': -1,
             'img_prob': 0, 
@@ -80,22 +116,14 @@ def run_inference(valid_model, mlcls_model):
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         data_per_rank = slide_patchlist[rank::world_size]
+        data_per_rank = load_patchimgs(row["kfb_path"], data_per_rank)
 
-        read_pool = []
-        for p_idx,patchinfo in enumerate(data_per_rank):
-            patchinfo['image'],_ = wsi_handler.read_cv2img(patchinfo['xy'])
-            read_pool.append(patchinfo)
-            if len(read_pool) % test_bs == 0 or p_idx == len(data_per_rank)-1:
-                wsi_handler.infer_valid_fn(valid_model, read_pool)
-                valid_datapool = [item for item in read_pool if item['valid_flag']!= 0] # 0: 空白无效块
-                if len(valid_datapool) > 0:
-                    wsi_handler.infer_pn_fn(mlcls_model, valid_datapool)
-                for item in read_pool:
-                    del item['image']
-                read_pool, valid_datapool = [],[]
-                torch.cuda.empty_cache()
-                print(f'\r[Rank {rank}] Processed {p_idx+1}/{len(data_per_rank)} ', end='')
+        for p_idx in range(0, len(data_per_rank), test_bs):
+            read_pool = data_per_rank[p_idx:p_idx+test_bs]
+            wsi_handler.infer_valid_fn(valid_model, read_pool)
+            print(f'\r[Rank {rank}] Processed {p_idx+1}/{len(data_per_rank)} ', end='')
 
+        wsi_handler.infer_pn_batch_fn(mlcls_model, data_per_rank, test_bs)
         all_results = [None for _ in range(dist.get_world_size())]
         torch.cuda.synchronize()    # 等当前 GPU 上的计算任务完成（防止 GPU 异步计算没结束）
         dist.all_gather_object(all_results, data_per_rank)
@@ -114,7 +142,7 @@ def run_inference(valid_model, mlcls_model):
             t_delta = time.time() - start_time
             logstr = wsi_handler.format_logstr(merged)
             logstr = f"[{patientId}]({slide_clsname}) cost:{t_delta:0.2f}s, {logstr}"
-            with open(f'{tmp_save_dir}/{patientId}.txt', 'w', encoding='utf-8') as f:
+            with open(f'{tmp_logtxt_dir}/{patientId}.txt', 'w', encoding='utf-8') as f:
                 f.write(logstr)
             logger.info(f"({ridx+1}/{len(total_datalist)}){logstr}")
 
@@ -144,13 +172,13 @@ def get_models(device, gpu):
 
 def collect_tmp():
     total_lines = []
-    for filename in os.listdir(tmp_save_dir):
-        with open(f'{tmp_save_dir}/{filename}', 'r') as f:
+    for filename in os.listdir(tmp_logtxt_dir):
+        with open(f'{tmp_logtxt_dir}/{filename}', 'r') as f:
             read_str = f.readline()
             total_lines.append(f'{read_str}\n')
     with open(infer_txt_savepath, 'w') as f: 
         f.writelines(total_lines)
-    shutil.rmtree(tmp_save_dir)
+    shutil.rmtree(tmp_dir)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -177,5 +205,5 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 scripts/process_WSI/extract_WSI_topk.py
+CUDA_VISIBLE_DEVICES=1,2,3,4,5,6,7 torchrun --nproc_per_node=7 --master_port=12341 scripts/process_WSI/extract_WSI_topk_speed.py
 '''

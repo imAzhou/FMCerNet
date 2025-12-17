@@ -16,10 +16,10 @@ from mmpretrain.structures import DataSample
 from cerwsi.nets import ValidClsNet
 from cerwsi.utils import KFBSlide,set_seed, init_distributed_mode, is_main_process
 
-WINDOW_SIZE = 800
+WINDOW_SIZE = 400
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
-max_negpatch_nums = 10    # 在每张 slide 中，阴性 tile 块的数量最多是 max_negpatch_nums 张, -1 则取所有
+max_negpatch_nums = 15    # 在每张 slide 中，阴性 tile 块的数量最多是 max_negpatch_nums 张, -1 则取所有
 max_try = 100   # 约束：neg_patch_thr <= max_try,  从 neg slide 中裁切 tile 块最多循环的次数
 data_root = f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}'
 inter_ann_dir = f'{data_root}/ann_jsons'
@@ -58,7 +58,7 @@ def cut_negslide():
         rank = args.rank
         world_size = args.world_size
         data_per_rank = data_list[rank::world_size]
-
+        max_negpatch_nums = 10 if tag == 'puretrain' else 15
         neg_patch_list = []
         for idx,row in enumerate(data_per_rank):
             kfb_path, patientId = row["kfb_path"], row["patientId"]
@@ -141,7 +141,7 @@ def extract_posslide():
         patient2patchlist[patchInfo['patientId']].append(patchInfo)
     
     data_group = {
-        'puretrain': 'data_resource/0630/4_pure_train.csv',
+        # 'puretrain': 'data_resource/0630/4_pure_train.csv',
         'val': 'data_resource/0630/6_val.csv'
     }
     for tag,csvpath in data_group.items():
@@ -184,16 +184,19 @@ def clear_imgs():
     for tag in ['puretrain','val']:
         with open(f'{ann_dir}/multilabel_{tag}.json', 'r', encoding='utf-8') as f:
             json_data = json.load(f)
-        filenames = [os.path.basename(item['img_path']) for item in json_data['data_list'] if 'neg_slide' in item['img_path']]
+        # filenames = [os.path.basename(item['img_path']) for item in json_data['data_list'] if 'neg_slide' in item['img_path']]
+        filenames = [os.path.basename(item['img_path']) for item in json_data['data_list']]
         keep_filename.extend(filenames)
     
-    exists_imgpath = glob.glob(f'{neg_slide_img_savedir}/*.png')
+    # exists_imgpath = glob.glob(f'{neg_slide_img_savedir}/*.png')
+    exists_imgpath = glob.glob(f'{data_root}/images/**/*.png')
     print(f'keep_filename nums: {len(set(keep_filename))}')
     print(f'exists_imgpath nums: {len(exists_imgpath)}')
     # for imgpath in tqdm(exists_imgpath, ncols=80):
     #     filename = os.path.basename(imgpath)
     #     if filename not in keep_filename:
     #         os.remove(imgpath)
+    
 
 def statistic():
     for tag in ['puretrain','val']:
@@ -221,9 +224,9 @@ if __name__ == "__main__":
     os.makedirs(ann_dir, exist_ok=True, mode=0o777)
     # extract_posslide()
     # cut_negslide()
-    concat_patchlist()
-    # clear_imgs()
-    statistic()
+    # concat_patchlist()
+    clear_imgs()
+    # statistic()
 
 '''
 WS = 1600, posslide max_negpatch_nums = 20; negslide max_negpatch_nums = 10
@@ -280,6 +283,25 @@ val multilabel_pn_cnt: [2845, 6663] + 2990 neg patches: [5835, 6663]
 | AGC | ASC-US | LSIL | ASC-H | HSIL |
 +-----+--------+------+-------+------+
 | 191 |  2172  | 1048 |  1612 | 2497 |
++-----+--------+------+-------+------+
+
+
+WS = 400, max_negpatch_nums = 10 (train 10, val 15)
+puretrain multilabel_pn_cnt: [11449, 20462] + 11868 neg patches: [23317, 20462]
+val multilabel_pn_cnt: [4650, 10580] + 4443 neg patches: [9093, 10580]
++------------------------------------+
+|             puretrain              |
++-----+--------+------+-------+------+
+| AGC | ASC-US | LSIL | ASC-H | HSIL |
++-----+--------+------+-------+------+
+| 963 |  4861  | 3359 |  4480 | 7838 |
++-----+--------+------+-------+------+
++------------------------------------+
+|                val                 |
++-----+--------+------+-------+------+
+| AGC | ASC-US | LSIL | ASC-H | HSIL |
++-----+--------+------+-------+------+
+| 332 |  2827  | 1418 |  2220 | 4195 |
 +-----+--------+------+-------+------+
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12342 scripts/data_process_0630/5_make_mlc_dataset.py

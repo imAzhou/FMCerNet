@@ -1,0 +1,9 @@
+{
+    "exclude": [
+      "data_resource",
+      "checkpoints",
+      "statistic_results",
+      "**/__pycache__",
+      "**/node_modules"
+    ]
+  }
