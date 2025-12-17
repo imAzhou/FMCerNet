@@ -1,16 +1,16 @@
 # dataset settings 
 
-data_root = 'data_resource/WINDOW_SIZE_1200'
+data_root = 'data_resource/WINDOW_SIZE_850'
 img_dir = f'{data_root}/images'
 classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'multicls'    # cls, instance
 train_bs = 32
 val_bs = 32
-input_size = 1024  # 224, 392, 448, 512, 1024
+input_size = 224  # 224, 392, 448, 512, 1024
 # train_annfile = 'hardsample_annofiles/multilable_hs_round2.json'
-train_annfile = 'annofiles/multilabel_puretrain.json'
-# train_annfile = 'hardsample_annofiles/hs_round2_hicervix_otsu.json'
+# train_annfile = 'annofiles/multilabel_puretrain.json'
+train_annfile = 'hardsample_annofiles/hs_round2_hicervix_otsu.json'
 
 rand_increasing_policies = [
     dict(type='AutoContrast', prob=0.5),

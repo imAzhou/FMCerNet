@@ -9,3 +9,4 @@ predict_results/
 model_structure/
 cer_wsi.egg-info/
 **/__pycache__
+cj_temporary/
