@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 import cv2
-from cellpose.vit_sam import Transformer
-from cellpose import transforms, dynamics, utils, plot
-from cellpose.core import run_net
+from .cellpose.vit_sam import Transformer
+from .cellpose import transforms, dynamics, utils, plot
+from .cellpose.core import run_net
 from cerwsi.utils import flow2cellprob,inst2bboxes
 
 class CellposeNet(nn.Module):

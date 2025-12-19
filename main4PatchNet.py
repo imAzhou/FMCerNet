@@ -31,8 +31,8 @@ args = parser.parse_args()
 def train_net(cfg, args, model):
     trainloader,valloader = load_data(cfg, ['train','val'])
     optimizer = build_optim_wrapper(model, cfg.optim_wrapper)
-    real_bs = args.world_size * cfg.train_bs
-    scale_lr(real_bs, optimizer, cfg.auto_scale_lr)
+    # real_bs = args.world_size * cfg.train_bs
+    # scale_lr(real_bs, optimizer, cfg.auto_scale_lr)
     param_schedulers = build_param_scheduler(optimizer, cfg.param_scheduler, cfg.max_epochs, len(trainloader))
     if is_main_process():
         logger, files_save_dir = get_logger(args.record_save_dir, model.module, cfg)
@@ -134,10 +134,10 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12348 main4PatchNet.py \
-    configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
-    configs/model/mlc_linear.py \
+    configs/dataset/mmpretrain/jfsw_attri_dataset.py \
+    configs/model/attri_cls.py \
     configs/strategy_patch.py \
-    --record_save_dir log/WS850/mlc_linear
+    --record_save_dir log/attri_cls
     
 l_cerscanv1_dataset
 cdetector_ws400

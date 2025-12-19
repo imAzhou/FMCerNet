@@ -441,3 +441,101 @@ class SlideMetric(BaseMetric):
         result = {**result_metrics_1, **result_metrics_2}
         logger.info(result)
         return result
+
+class AttriMetric(BaseMetric):
+
+    def __init__(self, logger_name, num_attributes=10) -> None:
+        super(AttriMetric, self).__init__()
+        self.num_attributes = num_attributes
+        self.logger_name = logger_name
+        
+    def process(self, data_batch, data_samples):
+        """Process one batch of data samples.
+
+        The processed results should be stored in ``self.results``, which will
+        be used to computed the metrics when all batches have been processed.
+
+        Args:
+            data_batch: A batch of data from the dataloader.
+            data_samples (Sequence[dict]): A batch of outputs from the model.
+        """
+        for item in data_samples:
+            result = dict(
+                pred_label = item['pred_label'].tolist(),   #  (num_attributes, )
+                # pred_prob = item['pred_logit'].tolist(),    #  (num_attributes, num_classes)
+                gt_label = item['attr_v']   # list: [4,0,2,...]
+            )
+
+            # Save the result to `self.results`.
+            self.results.append(result)
+
+    def compute_metrics(self, results):
+        """Compute the metrics from processed results.
+
+        Args:
+            results (list): The processed results of each batch.
+
+        Returns:
+            Dict: The computed metrics. The keys are the names of the metrics,
+            and the values are corresponding results.
+        """
+        # NOTICE: don't access `self.results` from the method. `self.results`
+        # are a list of results from multiple batch, while the input `results`
+        # are the collected results.
+        logger = MMLogger.get_instance(self.logger_name)
+
+        gt_labels = torch.tensor([rs['gt_label'] for rs in results])
+        pred_labels = torch.tensor([rs['pred_label'] for rs in results])
+
+        # correct_mask[i][j] = True 表示第 i 个样本的第 j 个属性预测正确
+        correct_mask = (pred_labels == gt_labels)
+
+        # --- 指标 1: Instance-level Accuracy (Exact Match Ratio) ---
+        # 要求一行里所有属性都对 (all=True)（只有当一张图片的所有属性全部预测正确时，才算预测正确）
+        instance_correct = correct_mask.all(dim=1)  # [N]
+        instance_acc = instance_correct.float().mean().item()
+
+        # --- 指标 2: Mean Attribute Accuracy (全局平均准确率) ---
+        # 所有正确预测数 / 总元素数 (平均每张图能对几个属性？)
+        mean_acc = correct_mask.float().mean().item()
+
+        # --- 指标 3: Per-Attribute Accuracy (单属性准确率) ---
+        # 对列求平均 -> [10] (分别计算每个属性的准确率)
+        per_attr_acc = correct_mask.float().mean(dim=0).tolist()
+
+        # 表格 A: 全局概览
+        table_summary = PrettyTable()
+        table_summary.field_names = ["Metric", "Value"]
+        table_summary.add_row(["Instance Acc (Exact Match)", f"{instance_acc:.2%}"])
+        table_summary.add_row(["Mean Attribute Acc", f"{mean_acc:.2%}"])
+
+        # 表格 B: 各属性详情
+        table_details = PrettyTable()
+        # 动态生成表头: Attr_0, Attr_1, ...
+        header = [f"Attr_{i}" for i in range(self.num_attributes)]
+        table_details.field_names = header
+        
+        # 格式化数值为百分比字符串
+        row_values = [f"{val:.2%}" for val in per_attr_acc]
+        table_details.add_row(row_values)
+
+        # 4. 输出日志
+        log_str = "\n" + "=="*10 + " Attribute Evaluation " + "=="*10 + "\n"
+        log_str += str(table_summary) + "\n"
+        log_str += "Per-Attribute Details:\n"
+        log_str += str(table_details)
+        
+        logger.info(log_str)
+
+        # 5. 返回字典供外层调用 (如 TensorBoard 记录)
+        eval_results = {
+            "attr/instance_acc": instance_acc,
+            "attr/mean_acc": mean_acc,
+        }
+        # 将每个属性的准确率也放入字典
+        for i, acc in enumerate(per_attr_acc):
+            eval_results[f"attr/acc_attr_{i}"] = acc
+
+        return eval_results
+
+

@@ -5,8 +5,9 @@ from .classifier.chief import CHIEF
 from .classifier.ml_decoder import MLDecoder
 from .classifier.query2label import Query2Label
 from .classifier.wscer_mlc import WSCerMLC
+from .classifier.AttriCls import AttriClsHead
 
-allowed_classifier_type = ['online_version','binary_linear', 'mc_linear', 'mlc_linear', 'chief', 'ml_decoder', 'query2label', 'svt', 'wscer_mlc', 'wscer_binary', 'wscer_partial', 'wscer_alltoken']
+allowed_classifier_type = ['online_version','binary_linear', 'mc_linear', 'mlc_linear', 'chief', 'ml_decoder', 'query2label', 'svt', 'wscer_mlc', 'wscer_binary', 'wscer_partial', 'wscer_alltoken', 'attri_cls']
 
 def get_classifier(args):
     classifier_type = args.taskhead_model
@@ -28,5 +29,7 @@ def get_classifier(args):
 
     if classifier_type == 'wscer_mlc':
         classifier = WSCerMLC
+    if classifier_type == 'attri_cls':
+        classifier = AttriClsHead
     
     return classifier(args)

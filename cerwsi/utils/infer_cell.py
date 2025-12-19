@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import ndimage
-from cellpose import transforms
+from cerwsi.nets.cellpose import transforms
 import matplotlib.patches as patches
 from collections import defaultdict
 from pycocotools import mask as mask_utils
