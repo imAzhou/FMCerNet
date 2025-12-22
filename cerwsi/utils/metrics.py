@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torchmetrics
 from mmengine.evaluator import BaseMetric
-from mmpretrain.evaluation import MultiLabelMetric,SingleLabelMetric
+from mmpretrain.evaluation import MultiLabelMetric,SingleLabelMetric,ConfusionMatrix
 from mmengine.logging import MMLogger
 
 def calculate_metrics(y_true, y_pred):
@@ -348,6 +348,118 @@ class ExtendSingleLabelMetric(SingleLabelMetric):
 
         return result_metrics
 
+class MultiClsMetric(SingleLabelMetric):
+    '''
+    预测图片属于每个类别的概率，并计算混淆矩阵
+    '''
+    def __init__(self, num_classes, classes, logger_name) -> None:
+        super(MultiClsMetric, self).__init__()
+        self.num_classes = num_classes
+        self.classes = classes
+        self.logger_name = logger_name
+
+    def process(self, data_batch, data_samples):
+        """Process one batch of data samples.
+
+        The processed results should be stored in ``self.results``, which will
+        be used to computed the metrics when all batches have been processed.
+
+        Args:
+            data_batch: A batch of data from the dataloader.
+            data_samples (Sequence[dict]): A batch of outputs from the model.
+        """
+ 
+        for item in data_samples:
+            result = dict(
+                img_mc_gt = item['gt_label'].cpu(),
+                img_mc_pred = item['pred_label'].cpu(),
+            )
+
+            # Save the result to `self.results`.
+            self.results.append(result)
+
+    def compute_metrics(self, results):
+        """Compute the metrics from processed results.
+
+        Args:
+            results (list): The processed results of each batch.
+
+        Returns:
+            Dict: The computed metrics. The keys are the names of the metrics,
+            and the values are corresponding results.
+        """
+        # NOTICE: don't access `self.results` from the method. `self.results`
+        # are a list of results from multiple batch, while the input `results`
+        # are the collected results.
+        logger = MMLogger.get_instance(self.logger_name)
+        result_metrics = dict()
+
+        def pack_results(precision, recall, f1_score, support):
+            single_metrics = {}
+            if 'precision' in self.items:
+                single_metrics['precision'] = precision
+            if 'recall' in self.items:
+                single_metrics['recall'] = recall
+            if 'f1-score' in self.items:
+                single_metrics['f1-score'] = f1_score
+            if 'support' in self.items:
+                single_metrics['support'] = support
+            return single_metrics
+        
+        y_pred = [rs['img_mc_pred'] for rs in results]
+        y_true = [rs['img_mc_gt'] for rs in results]
+        precision, recall, f1_score, support = self.calculate(
+            y_pred,
+            y_true,
+            num_classes=self.num_classes)
+        result_metrics['mc_precision'] = round(precision.item(), 4)
+        result_metrics['mc_recall'] = round(recall.item(), 4)
+        result_metrics['mc_f1_score'] = round(f1_score.item(), 4)
+        
+        clswise_metric_res = self.calculate(
+            y_pred,
+            y_true,
+            average=None,
+            num_classes=self.num_classes)
+        cw_p, cw_r, cw_f1, cw_s = clswise_metric_res
+        metric_table = PrettyTable()
+        metric_table.field_names = ["Class Name", "Precision", "Recall", "F1-Score", "Support"]
+        metric_table.align["Class Name"] = "l"
+        for i in range(self.num_classes):
+            metric_table.add_row([
+                self.classes[i], 
+                f"{cw_p[i]:.2f}", 
+                f"{cw_r[i]:.2f}", 
+                f"{cw_f1[i]:.2f}", 
+                int(cw_s[i])
+            ])
+        logger.info("\nClass-wise Metrics:\n" + metric_table.get_string())
+        
+        # mc_cmatrix: 2D tensor matrix
+        mc_cmatrix = ConfusionMatrix.calculate(y_pred, y_true, num_classes=self.num_classes)
+        mc_cmatrix = mc_cmatrix.cpu().numpy()
+        cm_table = PrettyTable()
+        # 表头：True \ Pred | Class1 | Class2 | ... | Total
+        cm_table.field_names = ["True \ Pred"] + self.classes + ["Total"]
+        cm_table.align["True \ Pred"] = "l"
+        
+        for i in range(self.num_classes):
+            row_data = mc_cmatrix[i].tolist()
+            row_total = int(sum(row_data)) # 这一行真实类别的样本总数
+            
+            # 构建行：类别名 + 各列预测值 + 总计
+            row = [self.classes[i]] + row_data + [row_total]
+            cm_table.add_row(row)
+            
+        logger.info("\nConfusion Matrix:\n" + cm_table.get_string())
+        
+        for k, v in pack_results(*clswise_metric_res).items():
+            value = [round(i, 4) for i in v.detach().cpu().tolist()]
+            result_metrics[k+'_classwise'] = value
+        
+        logger.info(result_metrics)
+
+        return result_metrics
 
 class SlideMetric(BaseMetric):
     '''
@@ -535,7 +647,8 @@ class AttriMetric(BaseMetric):
         # 将每个属性的准确率也放入字典
         for i, acc in enumerate(per_attr_acc):
             eval_results[f"attr/acc_attr_{i}"] = acc
-
+        logger.info(eval_results)
+        
         return eval_results
 
 

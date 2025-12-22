@@ -1,13 +1,14 @@
 import torch
 from torch import nn
 from .meta_classifier import MetaClassifier
-from cerwsi.utils import build_evaluator, ExtendSingleLabelMetric
+from cerwsi.utils import build_evaluator, MultiClsMetric
 
 
 class MCLinear(MetaClassifier):
     def __init__(self, args):
-        evaluator = build_evaluator([ExtendSingleLabelMetric(
+        evaluator = build_evaluator([MultiClsMetric(
             num_classes = args.num_classes,
+            classes = args.classes,
             logger_name = args.logger_name,
         )])
         super(MCLinear, self).__init__(evaluator, args)

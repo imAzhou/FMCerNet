@@ -1,10 +1,6 @@
 import json
-import torch
 from torch.utils.data import Dataset
-import torch.nn.functional as F
 from mmcv.transforms import Compose
-import os
-from mmpretrain.structures import DataSample
 
 # 自定义数据集类
 class AttriDataset(Dataset):
@@ -13,6 +9,7 @@ class AttriDataset(Dataset):
             self.data_list = json.load(f)
         
         self.img_dir = cfg.img_dir
+        self.classes = cfg.classes
         self.transform = Compose(transform)
 
     def __len__(self):
@@ -25,13 +22,7 @@ class AttriDataset(Dataset):
         ))
         output['data_samples'].attr_v = cell_info["attr_v"]
         output['data_samples'].sub_class = cell_info["sub_class"]
+        output['data_samples'].cls_id = self.classes.index(cell_info["sub_class"])
 
         return output
     
-    
-
-if __name__ == "__main__":
-    with open('data_resource/cell_attri/train_cellinst.json', 'r', encoding='utf-8') as f:
-        json_data = json.load(f)
-
-        print()

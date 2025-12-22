@@ -1,6 +1,6 @@
 
 # strategy
-lr = 0.00001
+lr = 0.0001
 weight_decay = 0.0001
 max_epochs = 30
 save_each_epoch = True
