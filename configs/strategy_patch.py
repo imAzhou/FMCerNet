@@ -47,4 +47,4 @@ param_scheduler = [
 logger_name = 'wscer_patch'
 # apply_auxiliary = 'random'  # random, logit
 # load_from = 'checkpoints/detr_r50_rename.pth'
-load_from = None
+# load_from = None

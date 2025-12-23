@@ -21,16 +21,16 @@ class AttriLinear(MetaClassifier):
         input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
         
         self.total_logits_dim = sum(self.attribute_classes)
-        self.head = nn.Linear(input_embed_dim, self.total_logits_dim)
+        self.attri_head = nn.Linear(input_embed_dim, self.total_logits_dim)
         self.cls_head = nn.Linear(self.total_logits_dim, self.num_classes)
 
-        for name, param in self.head.named_parameters():
+        for name, param in self.attri_head.named_parameters():
             param.requires_grad = False
 
 
     def calc_logits(self, inputs):
         cls_token = self.get_cls_token(inputs) 
-        attri_logits_flat = self.head(cls_token)
+        attri_logits_flat = self.attri_head(cls_token)
         cls_logits = self.cls_head(attri_logits_flat)
         v_prime_list = torch.split(attri_logits_flat, self.attribute_classes, dim=1)
         return v_prime_list,cls_logits

@@ -6,9 +6,6 @@ from collections import Counter, defaultdict
 import os
 
 random.seed(42)
-RECORD_CLASS = ['NILM', 'GEC', 
-                'AGC', 'AGC-N', 'AGC-NOS', 'AGC-FN', 
-                'ASC-US','LSIL', 'ASC-H', 'HSIL']
 
 def main():
     with open('data_resource/cell_attri/cell_inst_named.json', 'r', encoding='utf-8') as f:
@@ -64,9 +61,9 @@ def main():
             f.write(f"{pId}: {patientCount[pId]}\n")
         f.write(f"Total: {total_cnt}\n")
     
-    with open('data_resource/cell_attri/train_cellinst.json', 'w', encoding='utf-8') as f:
+    with open('data_resource/cell_attri/cell_inst/train_cellinst.json', 'w', encoding='utf-8') as f:
         json.dump(train_cellinst, f, ensure_ascii=False)
-    with open('data_resource/cell_attri/val_cellinst.json', 'w', encoding='utf-8') as f:
+    with open('data_resource/cell_attri/cell_inst/val_cellinst.json', 'w', encoding='utf-8') as f:
         json.dump(val_cellinst, f, ensure_ascii=False)
 
 
@@ -86,7 +83,7 @@ def statistic():
          open(attr_txt,  'w', encoding='utf-8') as f_attr:
 
         for mode in ['train', 'val']:
-            with open(f'data_resource/cell_attri/{mode}_cellinst.json',
+            with open(f'data_resource/cell_attri/cell_inst/{mode}_cellinst.json',
                       'r', encoding='utf-8') as f:
                 json_data = json.load(f)
 
@@ -202,7 +199,7 @@ def visual_sample():
 
     for sample_item in total_cellinst[:50]:
         imgpath = f'data_resource/cell_attri/cell_inst/images/{sample_item["filename"]}'
-        jfsw_desc = sample_item["jfsw_desc"]
+        jfsw_desc = [sample_item["sub_class"], *sample_item["jfsw_desc"]]
         attr_desc = [f"{attr_config[idx]['attr_name']}: {attr_config[idx]['children'][v]}" for idx,v in enumerate(sample_item["attr_v"])]
 
         # 合并文本用于计算高度，添加一些标题区分
@@ -264,6 +261,6 @@ def visual_sample():
             print(f"Error processing {imgpath}: {e}")
 
 if __name__ == "__main__":
-    # main()
-    # statistic()
+    main()
+    statistic()
     visual_sample()

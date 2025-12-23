@@ -6,9 +6,18 @@ import pandas as pd
 from cerwsi.utils.tools import remap_points
 
 
-RECORD_CLASS = ['NILM', 'GEC', 
-                'AGC', 'AGC-N', 'AGC-NOS', 'AGC-FN', 
-                'ASC-US','LSIL', 'ASC-H', 'HSIL']
+RECORD_CLASS = {
+    'NILM': 'NILM',
+    'GEC': 'GEC',
+    'AGC': 'AGC',
+    'AGC-N': 'AGC',
+    'AGC-NOS': 'AGC',
+    'AGC-FN': 'AGC',
+    'ASC-US': 'ASC-US',
+    'LSIL': 'LSIL',
+    'ASC-H': 'ASC-H',
+    'HSIL': 'HSIL',
+}
 
 
 def flatten_list(nested_list):
@@ -24,25 +33,25 @@ def check_inst(del_attri, ann):
     if ann is None:
         return None
     sub_class = ann.get('sub_class')
-    if sub_class not in RECORD_CLASS:
+    if sub_class not in RECORD_CLASS.keys():
         return  None
-    
-    hierarchical_annotation = ann.get('hierarchical_annotation', [])
-    desc_list = []
-    for desc in list(set(flatten_list(hierarchical_annotation))):
-        if desc not in del_attri:
-            desc_list.append(desc)
-    if not desc_list:
-        return None
-    if '成团细胞' in desc_list and '单个细胞' in desc_list:     # 16条脏数据，同时被标注成 单个和成团 
-        return  None
-    ann['desc_list'] = [sub_class, *desc_list]
-
     region = ann.get('region')
     w,h = region['width'],region['height']
     if w <=20 or h<=20:
         return  None
     
+    desc_list = []
+    if sub_class in ['NILM', 'GEC']:
+        ann['desc_list'] = desc_list
+        return ann
+    
+    hierarchical_annotation = ann.get('hierarchical_annotation', [])
+    for desc in list(set(flatten_list(hierarchical_annotation))):
+        if desc not in del_attri:
+            desc_list.append(desc)
+    if not desc_list:
+        return None
+    ann['desc_list'] = desc_list 
     return ann
 
 def map_desc2vec(desc_list):
@@ -65,12 +74,10 @@ def map_desc2vec(desc_list):
         for idx,value in zip(update_idx, update_value):
             attri_vec[idx] = value
     
-    assert attri_vec[-1] != -1, "cell type 没有确定"
-    
     return attri_vec
 
 def main():
-    del_attri = ['阴性', '阳性', 'GEC', 'NILM', 'Inflammatory', 
+    del_attri = ['阴性', '阳性', 'GEC', 'NILM', 'Inflammatory', '核仁增大/多核仁', '单个细胞', '成团细胞',
                  'HSIL', 'AGC-NOS', 'ASC-US', 'LSIL', 'AGC', 'ASC-H', 'AGC-FN', 'AGC-N', 'SCC']
 
     abandon_data = pd.read_csv('data_resource/group_csv/abandon.csv')
@@ -85,12 +92,10 @@ def main():
             continue
         patientId = row.patientId
         annos = read_json_anno(row.anno_path)
-
         for ann_ in annos:
             ann = check_inst(del_attri, ann_)
             if ann is None:
                 continue
-            
             sub_class = ann.get('sub_class')
             region = ann.get('region')
             x,y = region['x'],region['y']
@@ -100,7 +105,7 @@ def main():
             attr_v = map_desc2vec(desc_list)
             total_inst_items[patientId].append({
                 'patientId': patientId,
-                'sub_class': sub_class,
+                'sub_class': RECORD_CLASS[sub_class],
                 'bbox': [x,y,x+w,y+h],
                 'area': w*h,
                 'jfsw_desc': desc_list,

@@ -89,7 +89,7 @@ def train_net(cfg, args, model):
             metrics = model.module.taskhead.evaluator.evaluate(len(valloader.dataset))
             if is_main_process():
                 pbar.close()
-                # print(metrics)
+                print(metrics)
                 if cfg.save_each_epoch:
                     torch.save(model.module.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
                 prime_score_type = cfg.eval_prime_score

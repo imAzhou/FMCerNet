@@ -85,9 +85,9 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
-    log/WS1200/ml_decoder/input_224/config.py \
-    log/WS1200/ml_decoder/input_224/checkpoints/best.pth \
-    log/WS1200/ml_decoder/input_224 \
+    log/attri_cls/attribute_classes_sigmoid/2025_12_22_03_03_55/config.py \
+    log/attri_cls/attribute_classes_sigmoid/2025_12_22_03_03_55/checkpoints/best.pth \
+    log/attri_cls/attribute_classes_sigmoid/2025_12_22_03_03_55 \
     --save_result
     --val_json annofiles/multilabel_puretrain.json \
     --save_result
