@@ -11,5 +11,5 @@ backbone_cfg['use_peft'] = 'lora'
 
 # classifier
 taskhead_model = 'attri_cls'
-eval_prime_score = 'single-label/mc_f1_score'
+eval_prime_score = 'single-label/mc_f1_score'   # 'cls/macro_f1' 'attr/instance_acc'
 load_from = 'log/attri_cls/attribute_classes_sigmoid/2025_12_22_03_03_55/checkpoints/best.pth'

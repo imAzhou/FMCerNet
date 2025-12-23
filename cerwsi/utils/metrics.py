@@ -371,8 +371,7 @@ class MultiClsMetric(SingleLabelMetric):
  
         for item in data_samples:
             result = dict(
-                # img_mc_gt = item['gt_label'].cpu(),
-                img_mc_gt = item['cls_id'],
+                img_mc_gt = item['gt_label'].cpu(),
                 img_mc_pred = item['pred_label'].cpu(),
             )
 
@@ -652,4 +651,159 @@ class AttriMetric(BaseMetric):
         
         return eval_results
 
+class AttriMcMetric(BaseMetric):
 
+    def __init__(self, num_classes, classes, logger_name, num_attributes=10) -> None:
+        super(AttriMcMetric, self).__init__()
+        self.num_attributes = num_attributes
+        self.num_classes = num_classes
+        self.classes = classes
+        self.logger_name = logger_name
+        
+    def process(self, data_batch, data_samples):
+        """Process one batch of data samples.
+
+        The processed results should be stored in ``self.results``, which will
+        be used to computed the metrics when all batches have been processed.
+
+        Args:
+            data_batch: A batch of data from the dataloader.
+            data_samples (Sequence[dict]): A batch of outputs from the model.
+        """
+        for item in data_samples:
+            result = dict(
+                pred_attr_label = item['pred_attr_label'].tolist(),   #  (num_attributes, )
+                gt_attr_label = item['attr_v'],   # list: [4,0,2,...]
+                img_mc_gt = item['cls_id'],
+                img_mc_pred = item['pred_cls_label'].cpu(),
+            )
+
+            # Save the result to `self.results`.
+            self.results.append(result)
+
+    def compute_metrics(self, results):
+        """主评估函数：汇总属性评估和分类评估"""
+        logger = MMLogger.get_instance(self.logger_name)
+        
+        # 1. 计算属性相关指标
+        attr_eval_results = self.compute_attr_metrics(results, logger)
+        
+        # 2. 计算多分类相关指标
+        cls_eval_results = self.compute_cls_metrics(results, logger)
+        
+        # 3. 合并结果返回
+        total_results = {**attr_eval_results, **cls_eval_results}
+        logger.info(total_results)
+        return total_results
+    
+    def compute_attr_metrics(self, results, logger):
+        """部分 A: 多属性指标计算 (Instance Acc, Mean Acc, Per-Attr Acc)"""
+        gt_labels = torch.tensor([rs['gt_attr_label'] for rs in results])
+        pred_labels = torch.tensor([rs['pred_attr_label'] for rs in results])
+
+        correct_mask = (pred_labels == gt_labels)
+
+        # 计算指标
+        instance_acc = correct_mask.all(dim=1).float().mean().item()
+        mean_acc = correct_mask.float().mean().item()
+        per_attr_acc = correct_mask.float().mean(dim=0).tolist()
+
+        # 表格 A: 全局概览
+        table_summary = PrettyTable()
+        table_summary.field_names = ["Attribute Metric", "Value"]
+        table_summary.add_row(["Instance Acc (Exact Match)", f"{instance_acc:.2%}"])
+        table_summary.add_row(["Mean Attribute Acc", f"{mean_acc:.2%}"])
+
+        # 表格 B: 各属性详情
+        table_details = PrettyTable()
+        header = [f"Attr_{i}" for i in range(self.num_attributes)]
+        table_details.field_names = header
+        table_details.add_row([f"{val:.2%}" for val in per_attr_acc])
+
+        # 日志输出
+        log_str = "\n" + "=="*10 + " Attribute Evaluation " + "=="*10 + "\n"
+        log_str += str(table_summary) + "\n"
+        log_str += "Per-Attribute Details:\n"
+        log_str += str(table_details) + "\n"
+        logger.info(log_str)
+
+        # 封装返回字典
+        eval_results = {
+            "attr/instance_acc": instance_acc,
+            "attr/mean_acc": mean_acc,
+        }
+        for i, acc in enumerate(per_attr_acc):
+            eval_results[f"attr/acc_attr_{i}"] = acc
+        
+        return eval_results
+
+    def compute_cls_metrics(self, results, logger):
+        """部分 B: 多分类指标计算 (Precision, Recall, F1, Confusion Matrix)"""
+        gt_labels = torch.tensor([rs['img_mc_gt'] for rs in results])
+        pred_labels = torch.tensor([rs['img_mc_pred'] for rs in results])
+
+        num_classes = self.num_classes
+        class_names = self.classes if hasattr(self, 'classes') else [f"Class_{i}" for i in range(num_classes)]
+
+        # 1. 计算混淆矩阵 (Confusion Matrix)
+        # cm[i][j] 表示真值为 i，预测为 j
+        cm = torch.zeros(num_classes, num_classes, dtype=torch.int64)
+        for gt, pred in zip(gt_labels, pred_labels):
+            cm[gt.item(), pred.item()] += 1
+
+        # 2. 计算各类别 Precision, Recall, F1
+        # TP: 对角线元素; FP: 列和减去TP; FN: 行和减去TP
+        tp = cm.diag().float()
+        fp = cm.sum(dim=0).float() - tp
+        fn = cm.sum(dim=1).float() - tp
+        support = cm.sum(dim=1).float()
+
+        precision = tp / (tp + fp + 1e-8)
+        recall = tp / (tp + fn + 1e-8)
+        f1 = 2 * precision * recall / (precision + recall + 1e-8)
+
+        # 3. 格式化输出多分类指标表
+        table_cls = PrettyTable()
+        table_cls.field_names = ["Class", "Precision", "Recall", "F1-Score", "Support"]
+        for i in range(num_classes):
+            table_cls.add_row([
+                class_names[i], 
+                f"{precision[i]:.2%}", 
+                f"{recall[i]:.2%}", 
+                f"{f1[i]:.4f}", 
+                int(support[i])
+            ])
+        
+        # 计算宏平均 (Macro Average)
+        table_cls.add_row(["---", "---", "---", "---", "---"])
+        table_cls.add_row([
+            "Macro Avg", 
+            f"{precision.mean():.2%}", 
+            f"{recall.mean():.2%}", 
+            f"{f1.mean():.4f}", 
+            int(support.sum())
+        ])
+
+        # 4. 格式化输出混淆矩阵表
+        table_cm = PrettyTable()
+        table_cm.field_names = ["GT \ Pred"] + class_names
+        for i in range(num_classes):
+            table_cm.add_row([class_names[i]] + cm[i].tolist())
+
+        # 日志输出
+        log_str = "\n" + "=="*10 + " Classification Evaluation " + "=="*10 + "\n"
+        log_str += "Detailed Metrics:\n" + str(table_cls) + "\n"
+        log_str += "Confusion Matrix:\n" + str(table_cm) + "\n"
+        logger.info(log_str)
+
+        # 封装返回字典
+        eval_results = {
+            "cls/macro_precision": precision.mean().item(),
+            "cls/macro_recall": recall.mean().item(),
+            "cls/macro_f1": f1.mean().item(),
+        }
+        # 可选：记录每个类的 F1
+        for i, name in enumerate(class_names):
+            eval_results[f"cls/f1_{name}"] = f1[i].item()
+
+        return eval_results

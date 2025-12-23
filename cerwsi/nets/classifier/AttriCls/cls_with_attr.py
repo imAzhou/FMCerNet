@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from ..meta_classifier import MetaClassifier
-from cerwsi.utils import build_evaluator, AttriMetric
+from cerwsi.utils import build_evaluator, AttriMcMetric
 
 class AttriLinear(MetaClassifier):
     def __init__(self, args):
@@ -11,9 +11,12 @@ class AttriLinear(MetaClassifier):
         self.classes = args.classes 
         self.num_classes = args.num_classes 
         
-        evaluator = build_evaluator([AttriMetric(
-            args.logger_name,
-            num_attributes = self.num_attributes
+        evaluator = build_evaluator([AttriMcMetric(
+            num_classes = self.num_classes,
+            classes = self.classes,
+            logger_name = args.logger_name,
+            num_attributes = self.num_attributes,
+            
         )])
         super(AttriLinear, self).__init__(evaluator, args)
         
@@ -72,7 +75,7 @@ class AttriLinear(MetaClassifier):
         data_samples = []
         for i, item in enumerate(databatch['data_samples']):
             # 存储该样本所有属性的概率 (已经过 Sigmoid)
-            item.pred_prob = [probs[i] for probs in pred_probs_list]
+            item.pred_attr_prob = [probs[i] for probs in pred_probs_list]
             item.pred_attr_label = pred_attr_labels[i]
             item.pred_cls_label = pred_cls_labels[i]
             data_samples.append(item)
