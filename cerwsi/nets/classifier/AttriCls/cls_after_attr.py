@@ -38,7 +38,7 @@ class AttriLinear(MetaClassifier):
     def calc_loss(self, inputs, databatch):
         pred_logits_list,cls_logits = self.calc_logits(inputs)
 
-        clsid_gt_idx = torch.tensor([item.cls_id for item in databatch['data_samples']], dtype=torch.long, device=self.device)
+        clsid_gt_idx = torch.tensor([item.gt_label for item in databatch['data_samples']], dtype=torch.long, device=self.device)
         cls_loss_fn = nn.CrossEntropyLoss()
         cls_loss = cls_loss_fn(cls_logits, clsid_gt_idx)
 

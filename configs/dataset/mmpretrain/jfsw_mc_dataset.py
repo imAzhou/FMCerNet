@@ -36,11 +36,11 @@ train_datasets = dict(
         dict(type='ResizeEdge', edge='long', scale=input_size),
         dict(type='CenterCrop', auto_pad=True, crop_size=input_size, pad_cfg=dict(pad_val=255, type='Pad')),
         dict(type='RandomFlip', prob=0.5),
-        # dict(
-        #     type='RandAugment',
-        #     policies=rand_increasing_policies,
-        #     num_policies=2,
-        #     magnitude_level=5),
+        dict(
+            type='RandAugment',
+            policies=rand_increasing_policies,
+            num_policies=2,
+            magnitude_level=5),
         dict(type='PackInputs')
     ],
 )

@@ -45,4 +45,4 @@ param_scheduler = [
 ]
 
 logger_name = 'wscer_patch'
-load_from = 'log/attri_cls/sigmoid_lora/attri_predict/checkpoints/best.pth'
+load_from = None

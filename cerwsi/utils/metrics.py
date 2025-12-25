@@ -371,8 +371,7 @@ class MultiClsMetric(SingleLabelMetric):
  
         for item in data_samples:
             result = dict(
-                # img_mc_gt = item['gt_label'].cpu(),
-                img_mc_gt = item['cls_id'],
+                img_mc_gt = item['gt_label'].cpu(),
                 img_mc_pred = item['pred_label'].cpu(),
             )
 

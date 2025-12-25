@@ -1,4 +1,5 @@
 import json
+import torch
 from torch.utils.data import Dataset
 from mmcv.transforms import Compose
 
@@ -22,7 +23,7 @@ class AttriDataset(Dataset):
         ))
         output['data_samples'].attr_v = cell_info["attr_v"]
         output['data_samples'].sub_class = cell_info["sub_class"]
-        output['data_samples'].cls_id = self.classes.index(cell_info["sub_class"])
+        output['data_samples'].gt_label = torch.tensor(self.classes.index(cell_info["sub_class"]))
 
         return output
     
