@@ -63,6 +63,15 @@ def main():
     
     with open('data_resource/cell_attri/cell_inst/train_cellinst.json', 'w', encoding='utf-8') as f:
         json.dump(train_cellinst, f, ensure_ascii=False)
+    train_hs0_cellinst = []
+    for cellitem in train_cellinst:
+        if cellitem['sub_class'] not in ['NILM', 'GEC']:
+            train_hs0_cellinst.append(cellitem)
+        elif random.random() > 0.6:
+            train_hs0_cellinst.append(cellitem)
+    with open('data_resource/cell_attri/cell_inst/train_hs0_cellinst.json', 'w', encoding='utf-8') as f:
+        json.dump(train_hs0_cellinst, f, ensure_ascii=False)
+
     with open('data_resource/cell_attri/cell_inst/val_cellinst.json', 'w', encoding='utf-8') as f:
         json.dump(val_cellinst, f, ensure_ascii=False)
 
@@ -82,7 +91,7 @@ def statistic():
          open(area_txt,  'w', encoding='utf-8') as f_area, \
          open(attr_txt,  'w', encoding='utf-8') as f_attr:
 
-        for mode in ['train', 'val']:
+        for mode in ['train', 'train_hs0', 'val']:
             with open(f'data_resource/cell_attri/cell_inst/{mode}_cellinst.json',
                       'r', encoding='utf-8') as f:
                 json_data = json.load(f)
