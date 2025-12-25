@@ -37,24 +37,32 @@ def check_inst(del_attri, ann):
         return  None
     region = ann.get('region')
     w,h = region['width'],region['height']
-    if w <=20 or h<=20:
+    if w <=35 or h<=35:
         return  None
     
     desc_list = []
-    if sub_class in ['NILM', 'GEC']:
-        ann['desc_list'] = desc_list
-        return ann
-    
     hierarchical_annotation = ann.get('hierarchical_annotation', [])
+    clsname_list = []
     for desc in list(set(flatten_list(hierarchical_annotation))):
+        if desc in RECORD_CLASS.keys():
+            clsname_list.append(desc)
         if desc not in del_attri:
             desc_list.append(desc)
-    if not desc_list:
+    set_clsname_list = list(set([*clsname_list, sub_class]))
+    if len(set_clsname_list) > 1:   # 类别不明的细胞丢弃
         return None
+    
+    if sub_class in ['NILM', 'GEC']:
+        ann['desc_list'] = []
+        return ann
+    
+    if not desc_list:   # 空描述语的阳性细胞丢弃
+        return None
+
     ann['desc_list'] = desc_list 
     return ann
 
-def map_desc2vec(desc_list):
+def map_desc2vec(desc_list, sub_class):
     # init value
     with open('data_resource/cell_attri/config_attri.json', 'r', encoding='utf-8') as f:
         attri_cfg = json.load(f)
@@ -73,7 +81,8 @@ def map_desc2vec(desc_list):
         update_value = desc_cfg[desc]['update_value']
         for idx,value in zip(update_idx, update_value):
             attri_vec[idx] = value
-    
+    gland_flag = 0 if sub_class in ['GEC', 'AGC'] else 1
+    attri_vec[-1] = gland_flag
     return attri_vec
 
 def main():
@@ -102,9 +111,10 @@ def main():
             w,h = region['width'],region['height']
             
             desc_list = ann['desc_list']
-            attr_v = map_desc2vec(desc_list)
+            attr_v = map_desc2vec(desc_list, RECORD_CLASS[sub_class])
             total_inst_items[patientId].append({
                 'patientId': patientId,
+                'ori_clsname': sub_class,
                 'sub_class': RECORD_CLASS[sub_class],
                 'bbox': [x,y,x+w,y+h],
                 'area': w*h,

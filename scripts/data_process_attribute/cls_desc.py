@@ -72,18 +72,22 @@ def attri_count():
             ann_clsname = ann_.get('sub_class')
             if ann_clsname not in tgt_clsname:
                 continue
-            
+            region = ann_.get('region')
+            w,h = region['width'],region['height']
+            if w <=20 or h<=20:
+                continue
             hierarchical_annotation = ann_.get('hierarchical_annotation', [])
             desc_list = []
             for desc in list(set(flatten_list(hierarchical_annotation))):
                 if desc not in del_attri:
                     desc_list.append(desc)
 
-            if ann_clsname is not None and desc_list:
-                desc_cell_list.append({
-                    'clsname': ann_clsname,
-                    'desc_list': desc_list
-                })
+            if ann_clsname not in ['GEC', 'NILM'] and not desc_list:
+                continue
+            desc_cell_list.append({
+                'clsname': ann_clsname,
+                'desc_list': desc_list
+            }) 
 
     print(f'细胞实例总数: {len(desc_cell_list)}')
     with open(instance_savepath, 'w', encoding='utf-8') as f:
@@ -95,28 +99,16 @@ def generate_analysis(data, save_dir):
     # -----------------------------
     # 类别计数
     # -----------------------------
-    class_counter = Counter([d["clsname"] for d in data])
+    tgt_clsname = ['NILM','ASC-US','LSIL','ASC-H','HSIL','GEC','AGC','AGC-FN','AGC-N','AGC-NOS']
+    tgt_desc = ["核增大到2.5-3倍", "核增大大于3倍","核浆比大","核增大","异形双核或多核","核轻度深染","核染色质轻度深染","核染色质加深","核染色质呈细颗粒状","核染色质呈粗颗粒状","核膜不规则","胞浆有空泡","不完全挖空化细胞","挖空细胞","非典型角化细胞","葡萄干核型","核异形","核异形性增强","核大小不一","核位上移","失去极向，排列紊乱","羽毛状排列","细胞团呈三维簇团结构","栅栏状排列紊乱","乳头状排列紊乱","菊形团排列","腺腔样排列","细胞的大小形态不一，排列紊乱","核深染拥挤"]
+    class_counter = Counter([d["ori_clsname"] for d in data])
     class_sorted = dict(sorted(class_counter.items(), key=lambda x: x[1], reverse=True))
-
-    # 绘制柱状图
-    plt.figure(figsize=(10, 6))
-    x = list(class_sorted.keys())
-    y = list(class_sorted.values())
-    bars = plt.bar(x, y)
-    for bar in bars:
-        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
-                 str(bar.get_height()), ha='center', va='bottom')
-    plt.xlabel("Class Name")
-    plt.ylabel("Instance Count")
-    plt.title("Class Instance Count")
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "class_instance_count.png"))
-    plt.close()
 
     # 保存 txt（PrettyTable 美化）
     tb_class = PrettyTable()
     tb_class.field_names = ["Class Name", "Instance Count"]
-    for cls, cnt in class_sorted.items():
+    for cls in tgt_clsname:
+        cnt = class_sorted[cls]
         tb_class.add_row([cls, cnt])
     with open(os.path.join(save_dir, "class_instance_count.txt"), "w", encoding="utf-8") as f:
         f.write(str(tb_class))
@@ -124,25 +116,9 @@ def generate_analysis(data, save_dir):
     # -----------------------------
     # 属性计数
     # -----------------------------
-    all_attrs = list(itertools.chain.from_iterable([d["desc_list"] for d in data]))
+    all_attrs = list(itertools.chain.from_iterable([d["jfsw_desc"] for d in data]))
     attr_counter = Counter(all_attrs)
     attr_sorted = dict(sorted(attr_counter.items(), key=lambda x: x[1], reverse=True))
-
-    # 绘制柱状图
-    plt.figure(figsize=(12, 6))
-    attrs = list(attr_sorted.keys())
-    counts = list(attr_sorted.values())
-    bars = plt.bar(attrs, counts)
-    for bar in bars:
-        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
-                 str(bar.get_height()), ha='center', va='bottom')
-    plt.xlabel("Attribute")
-    plt.ylabel("Instance Count")
-    plt.title("Attribute Instance Count")
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "attribute_instance_count.png"))
-    plt.close()
 
     # 保存 txt（PrettyTable 美化）
     tb_attr = PrettyTable()
@@ -152,14 +128,34 @@ def generate_analysis(data, save_dir):
     with open(os.path.join(save_dir, "attribute_instance_count.txt"), "w", encoding="utf-8") as f:
         f.write(str(tb_attr))
 
+    cls_attri_cnt = defaultdict(list)
+    for d in data:
+        cls_attri_cnt[d['sub_class']].append(d['attr_v'])
+    tb_cacnt = PrettyTable()
+    first_class = next(iter(cls_attri_cnt))
+    num_attrs = len(cls_attri_cnt[first_class][0])
+    field_names = ["Class"] + [f"attr_{i}" for i in range(num_attrs)]
+    tb_cacnt.field_names = field_names
+    for sub_class in tgt_clsname:
+        if 'AGC' in sub_class:
+            sub_class = 'AGC'
+        attr_list = cls_attri_cnt[sub_class]
+        indices = list(zip(*attr_list))
+        row_values = []
+        for values in indices:
+            unique_vals = sorted(list(set(values)))
+            row_values.append(str(tuple(unique_vals)))
+        tb_cacnt.add_row([sub_class] + row_values)
+    tb_cacnt.align["Class"] = "l"
+    with open(os.path.join(save_dir, "cls_attri_dist.txt"), "w", encoding="utf-8") as f:
+        f.write(tb_cacnt.get_string())
+
     # -----------------------------
     # 属性共现矩阵（Excel）
     # -----------------------------
-    attr_list = list(attr_counter.keys())
-    co_mat = pd.DataFrame(0, index=attr_list, columns=attr_list)
-
+    co_mat = pd.DataFrame(0, index=tgt_desc, columns=tgt_desc)
     for d in data:
-        desc = list(set(d["desc_list"]))
+        desc = list(set(d["jfsw_desc"]))
         for i in range(len(desc)):
             for j in range(i, len(desc)):
                 co_mat.loc[desc[i], desc[j]] += 1
@@ -169,8 +165,8 @@ def generate_analysis(data, save_dir):
     co_mat.to_excel(os.path.join(save_dir, "attribute_co_occurrence.xlsx"))
     # 2. 转为共现比例
     co_ratio = co_mat.copy()
-    for a in attr_list:
-        for b in attr_list:
+    for a in tgt_desc:
+        for b in tgt_desc:
             if a != b:
                 co_ratio.loc[a, b] = co_mat.loc[a, b] / min(attr_counter[a], attr_counter[b])
             else:
@@ -182,21 +178,26 @@ def generate_analysis(data, save_dir):
     # -----------------------------
     # 类别-属性矩阵（Excel）
     # -----------------------------
-    class_attr_mat = pd.DataFrame(0, index=class_counter.keys(), columns=attr_list)
+    class_attr_mat = pd.DataFrame(0, index=tgt_clsname, columns=tgt_desc)
     for d in data:
-        cls = d["clsname"]
-        for a in d["desc_list"]:
+        cls = d["ori_clsname"]
+        for a in d["jfsw_desc"]:
             class_attr_mat.loc[cls, a] += 1
 
     class_attr_mat.to_excel(os.path.join(save_dir, "class_attribute_correlation.xlsx"))
 
     print(f"所有统计图、txt和Excel已保存到 {save_dir}")
 
-if __name__ == "__main__":
-    instance_savepath = 'data_resource/cell_attri/statistic_result/cell_inst_desc.json'
-    # main()
-    attri_count()
 
-    # with open(instance_savepath, 'r', encoding='utf-8') as f:
-    #     json_data = json.load(f)
-    # generate_analysis(json_data, 'statistic_results/attribute_analyze')
+if __name__ == "__main__":
+    # instance_savepath = 'data_resource/cell_attri/statistic_result/cell_inst_desc.json'
+    # main()
+    # attri_count()
+
+    instance_savepath = 'data_resource/cell_attri/cell_inst.json'
+    with open(instance_savepath, 'r', encoding='utf-8') as f:
+        json_data = json.load(f)
+    cell_list = []
+    for pidlist in json_data.values():
+        cell_list.extend(pidlist)
+    generate_analysis(cell_list, 'statistic_results/attribute_analyze')

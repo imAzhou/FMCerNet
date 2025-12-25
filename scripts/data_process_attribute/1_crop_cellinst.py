@@ -78,5 +78,5 @@ if __name__ == "__main__":
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 scripts/data_process_attribute/1_crop_cellinst.py
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 torchrun --nproc_per_node=7 --master_port=12341 scripts/data_process_attribute/1_crop_cellinst.py
 '''
