@@ -16,21 +16,21 @@ import pandas as pd
 import time
 import re
 
-LEVEL,PATCH_EDGE = 0,1600
+LEVEL,PATCH_EDGE = 0,1200
 CERTAIN_THR,POSITIVE_THR = 0.7,0.5
 SEED,SAFE_MARGIN = 1234,100
 test_bs = 64
 valid_ckpt = 'checkpoints/valid_cls_best.pth'
-WSI_feat_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/slide_feat_ours_topk'
+WSI_feat_savedir = f'data_resource/0630/WINDOW_SIZE_{PATCH_EDGE}/slide_feat_ours'
 os.makedirs(WSI_feat_savedir, exist_ok=True, mode=0o777)
 infer_csv_files = [
-    'data_resource/0630/WINDOW_SIZE_1600/annofiles/45_purejfsw_train.csv',
-    'data_resource/0630/WINDOW_SIZE_1600/annofiles/67_wsi_val.csv'
+    'data_resource/0630/45_0924_train.csv',
+    'data_resource/0630/67_0924_val.csv'
 ]
 
-pnmodel_rootdir = 'log/WS1600/mlc_f1_34.81'
+pnmodel_rootdir = 'log/WS1200/wscernet'
 mmcls_config_file = f'{pnmodel_rootdir}/config.py'
-mmcls_ckpt = f'{pnmodel_rootdir}/checkpoints/best.pth'
+mmcls_ckpt = f'{pnmodel_rootdir}/checkpoints/epoch_19.pth'
 infer_log_savepath = f'{pnmodel_rootdir}/infer.log'
 infer_txt_savepath = f'{pnmodel_rootdir}/infer_result.txt'
 tmp_save_dir = f'{pnmodel_rootdir}/tmp/extract_WSI_topk'
@@ -108,7 +108,7 @@ def run_inference(valid_model, mlcls_model):
                 key=lambda x: x['img_prob'], reverse=True
             )
             if len(selected) > 0:
-                slide_feats = torch.stack([pinfo['img_token'].unsqueeze(0) for pinfo in selected])
+                slide_feats = torch.stack([pinfo['img_token'] for pinfo in selected])
                 torch.save(slide_feats, f"{WSI_feat_savedir}/{patientId}.pt")
             # 打印当前切片的推理结果
             t_delta = time.time() - start_time
@@ -177,5 +177,5 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2 torchrun --nproc_per_node=3 --master_port=12341 scripts/process_WSI/extract_WSI_topk.py
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 scripts/process_WSI/extract_WSI_topk.py
 '''

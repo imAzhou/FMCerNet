@@ -6,11 +6,7 @@ net_type = 'patch'
 backbone_type = 'smartccs'
 backbone_cfg = _base_.backbone_cfgdict[backbone_type]
 
-# neck
-neck_type = None
-
 # classifier
-taskhead_type = 'cls'
 taskhead_model = 'binary_linear'
 positive_thr = 0.5
 eval_prime_score = 'accuracy'

@@ -2,9 +2,9 @@ import torch
 from torch.utils.data import DataLoader
 from mmengine.registry import init_default_scope
 from mmengine.dataset.sampler import DefaultSampler
-from .cls_dataset import ClsDataset
 from .instance_dataset import InstanceDataset
 from .slide_dataset import SlideDataset
+from .attri_dataset import AttriDataset
 from mmpretrain.datasets import MultiLabelDataset,CustomDataset
 
 def load_data(cfg, load_modes = []):
@@ -35,6 +35,18 @@ def load_data(cfg, load_modes = []):
                 dataset_cfg = cfg.val_datasets
                 batch_size = cfg.val_bs
             dataset = MultiLabelDataset(**dataset_cfg)
+        
+        elif cfg.dataset_type == 'attricls':
+            init_default_scope('mmpretrain')
+            if mode == 'train':
+                jsonfile = cfg.train_annfile
+                transform = cfg.train_transform
+                batch_size = cfg.train_bs
+            elif mode == 'val':
+                jsonfile = cfg.val_annfile
+                transform = cfg.val_transform
+                batch_size = cfg.val_bs
+            dataset = AttriDataset(cfg, jsonfile, transform)
         
         elif cfg.dataset_type == 'slide':
             if mode == 'train':

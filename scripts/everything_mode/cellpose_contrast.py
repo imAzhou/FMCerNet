@@ -1,6 +1,6 @@
 from tqdm import tqdm
 from cerwsi.nets import CellposeNet
-from cellpose import models,utils,dynamics
+from cerwsi.nets.cellpose import models,utils,dynamics
 import torch
 import cv2
 import os

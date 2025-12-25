@@ -12,7 +12,7 @@ from mmengine.optim import build_optim_wrapper
 torchvision.disable_beta_transforms_warning()
 from cerwsi.nets import PatchNet,SlideNet
 from cerwsi.datasets import load_data
-from cerwsi.utils import set_seed, init_distributed_mode, get_logger, is_main_process,build_param_scheduler, lr_scheduler_step, scale_lr
+from cerwsi.utils import set_seed, get_logger, init_distributed_mode, is_main_process,build_param_scheduler, lr_scheduler_step, scale_lr
 
 
 parser = argparse.ArgumentParser()
@@ -31,8 +31,8 @@ args = parser.parse_args()
 def train_net(cfg, args, model):
     trainloader,valloader = load_data(cfg, ['train','val'])
     optimizer = build_optim_wrapper(model, cfg.optim_wrapper)
-    real_bs = args.world_size * cfg.train_bs
-    scale_lr(real_bs, optimizer, cfg.auto_scale_lr)
+    # real_bs = args.world_size * cfg.train_bs
+    # scale_lr(real_bs, optimizer, cfg.auto_scale_lr)
     param_schedulers = build_param_scheduler(optimizer, cfg.param_scheduler, cfg.max_epochs, len(trainloader))
     if is_main_process():
         logger, files_save_dir = get_logger(args.record_save_dir, model.module, cfg)
@@ -133,19 +133,19 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12348 main4PatchNet.py \
-    configs/dataset/mmpretrain/l_cerscanv1_dataset.py \
-    configs/model/mlc_linear.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12345 main4PatchNet.py \
+    configs/dataset/mmpretrain/jfsw_mc_dataset.py \
+    configs/model/mc_linear.py \
     configs/strategy_patch.py \
-    --record_save_dir log/WS850/mlc_linear
+    --record_save_dir log/attri_cls/cell_mc
     
 l_cerscanv1_dataset
 cdetector_ws400
 hicervix_dataset
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12346 main4PatchNet.py \
-    configs/dataset/slide_cfg.py \
-    configs/model/wsi_slidenet.py \
-    configs/strategy_slide.py \
-    --record_save_dir log/slide_mc/ours_WS1600
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12344 main4PatchNet.py \
+    configs/slide/0_dataset_cfg.py \
+    configs/slide/rrtmil.py \
+    configs/slide/1_strategy_slide.py \
+    --record_save_dir log/slide_mc/ours_WS1600/rrtmil
 '''

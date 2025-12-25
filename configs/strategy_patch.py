@@ -1,9 +1,9 @@
 
 # strategy
-lr = 0.00001
+lr = 0.0001
 weight_decay = 0.0001
 max_epochs = 30
-save_each_epoch = True
+save_each_epoch = False
 val_interval = 5
 
 # optim_wrapper = dict(
@@ -35,16 +35,14 @@ optim_wrapper = dict(
 auto_scale_lr = dict(base_batch_size=8*32)
 
 param_scheduler = [
-    # dict(
-    #     type='MultiStepLR',
-    #     begin=0,
-    #     end=max_epochs,
-    #     by_epoch=True,
-    #     milestones=[25, 45],
-    #     gamma=0.1)
+    dict(
+        type='MultiStepLR',
+        begin=0,
+        end=max_epochs,
+        by_epoch=True,
+        milestones=[15, 25],
+        gamma=0.1)
 ]
 
 logger_name = 'wscer_patch'
-# apply_auxiliary = 'random'  # random, logit
-# load_from = 'checkpoints/detr_r50_rename.pth'
 load_from = None

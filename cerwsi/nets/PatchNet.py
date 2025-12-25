@@ -3,23 +3,14 @@ import torch.nn as nn
 
 from mmengine.optim import OptimWrapper
 from .get_backbone import get_backbone
-from .get_neck import get_neck
 from .get_classifier import get_classifier
-from .get_detector import get_detector
 
 class PatchNet(nn.Module):
     def __init__(self, cfg):
         super(PatchNet, self).__init__()
 
         self.backbone = get_backbone(cfg)
-        self.neck_type = cfg.neck_type
-        if self.neck_type is not None:
-            self.neck = get_neck(cfg)
-
-        if cfg.taskhead_type == 'cls':
-            self.taskhead = get_classifier(cfg)
-        elif cfg.taskhead_type == 'det':
-            self.taskhead = get_detector(cfg)
+        self.taskhead = get_classifier(cfg)
 
         frozen_backbone = cfg.backbone_cfg['frozen_backbone']
         use_peft = cfg.backbone_cfg['use_peft']
@@ -52,8 +43,6 @@ class PatchNet(nn.Module):
     def train_step(self, databatch, optim_wrapper: OptimWrapper):
         input_x = databatch['inputs']   # (bs, c, h, w)
         feature_emb = self.extract_feature(input_x)
-        if self.neck_type is not None:
-            feature_emb = self.neck(feature_emb)
         loss,loss_dict = self.taskhead.calc_loss(feature_emb, databatch)
         optim_wrapper.update_params(loss)
         return loss,loss_dict
@@ -61,7 +50,5 @@ class PatchNet(nn.Module):
     def val_step(self, databatch):
         input_x = databatch['inputs']
         feature_emb = self.extract_feature(input_x)
-        if self.neck_type is not None:
-            feature_emb = self.neck(feature_emb)
         databatch = self.taskhead.set_pred(feature_emb, databatch)
         return databatch

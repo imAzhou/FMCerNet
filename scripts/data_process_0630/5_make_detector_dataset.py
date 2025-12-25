@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from pycocotools.coco import COCO
 
-WINDOW_SIZE = 800
+WINDOW_SIZE = 400
 POSITIVE_CLASS = ['AGC', 'ASC-US','LSIL', 'ASC-H', 'HSIL']
 CLASS_COLORS = [[31,119,180], [255,153,153], [255,105,180], [255,20,147], [139,0,139]]
 data_root = f'data_resource/0630/WINDOW_SIZE_{WINDOW_SIZE}'

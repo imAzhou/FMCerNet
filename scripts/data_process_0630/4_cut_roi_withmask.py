@@ -21,7 +21,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules
 
 CERTAIN_THR = 0.7
 LEVEL = 0
-WINDOW_SIZE = 1600
+WINDOW_SIZE = 400
 STRIDE = WINDOW_SIZE - 50
 
 test_patientId = [
@@ -327,9 +327,12 @@ if __name__ == "__main__":
 WINDOW_SIZE = 1600, STRIDE = 1550:
 ['neg', 'total_pos', 'partial_pos']: [18902, 11214, 2571], [0, 0, 10667]
 
+WINDOW_SIZE = 1200, STRIDE = 1150:
+[35750, 13783, 10264] [0, 0, 42330]
+
 WINDOW_SIZE = 800, STRIDE = 750:
 [88873, 19335, 6448] [0, 0, 24942]
 
-WINDOW_SIZE = 1200, STRIDE = 1150:
-[35750, 13783, 10264] [0, 0, 42330]
+WINDOW_SIZE = 400, STRIDE = 350:
+[367425, 31042, 8885] [0, 0, 44701]
 '''
