@@ -126,7 +126,7 @@ def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
     predictor = SAM2ImagePredictor(sam2_model)
 
     empty_mask = defaultdict(int)
-    for idx, item in enumerate(all_json_datas):
+    for idx, item in enumerate(all_json_datas): # 病人级别的循环
         # if item['patientId'] not in test_patientId:
         #     continue
 
@@ -135,7 +135,7 @@ def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
         elif item['media_type'] == 'slide':
             slide = KFBSlide(item['source_path'])
 
-        for RoIItem in item['annotations']:
+        for RoIItem in item['annotations']: # RoI 级别的循环
             purename = item['patientId'] + f'_{str(RoIItem["annid"])}'
             if os.path.exists(f'{npz_mask_save_dir}/{purename}.npz'):
                 continue
@@ -152,7 +152,7 @@ def gene_roi_lesion_mask(proc_id, all_json_datas, npz_mask_save_dir):
                 )
                 annid_list = [child['annid'] for child in RoIItem['children']]
                 [child.update({'inst_infer': False}) for child in RoIItem['children']]
-                for annitem in RoIItem['children']:
+                for annitem in RoIItem['children']: # bbox 级别的循环
                     if annitem['inst_infer']:
                         continue
 
@@ -433,6 +433,7 @@ if __name__ == "__main__":
     npz_mask_save_dir = 'data_resource/0630/roi_inst_mask'
     os.makedirs(npz_mask_save_dir, exist_ok=True, mode=0o777)
     
+    # 测试单个roi生成的效果，以及跳过已经生成 mask 的 roi
     # gene_roi_lesion_mask(0, all_json_datas, npz_mask_save_dir)
     # nan_exise = []
     # for idx, item in enumerate(all_json_datas):

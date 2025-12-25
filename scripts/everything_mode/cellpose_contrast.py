@@ -13,27 +13,26 @@ from glob import glob
 
 tile_test_bs = 128
 cell_config = {
-    # 'nucleus': dict(dia=15, flowThr=0.6, cellprobThr=0.1, min_size=15),
-    # 'cytoplasm': dict(dia=120, flowThr=0.8, cellprobThr=0.1, min_size=10*10),
+    # 'nucleus': dict(dia=50, flowThr=0.6, cellprobThr=0.1, min_size=15),
+    # 'cytoplasm': dict(dia=150, flowThr=0.8, cellprobThr=0.1, min_size=10*10),
     'cluster': dict(dia=240, flowThr=-1, cellprobThr=0.1, min_size=30*30),
 }
-tail = 'cluster'
+tag = 'cluster'
+tail = f"dia{cell_config[tag]['dia']}"
 device = torch.device('cuda:7')
 cellpose_ckpt = 'checkpoints/cpsam'
 
-# all_CDetector = glob('/c23030/zly/datasets/CervicalDatasets/ComparisonDetectorDataset/train/*.bmp')
+# all_CDetector = glob('/c22073/zly/datasets/CervicalDatasets/ComparisonDetectorDataset/train/*.bmp')
 # random.shuffle(all_CDetector)
+# tag_imgs = all_CDetector[:20]
 # all_HMCHH = glob('/c23030/zly/datasets/CervicalDatasets/HMCHH/JPEGImages/*.png')
 # random.shuffle(all_HMCHH)
 # tag_imgs = [*all_CDetector[:20], *all_HMCHH[:20]]
 
 tag_imgs = []
-for vispath in glob('statistic_results/cellpose_infer/contrast/*_cytoplasm.png'):
-    purename = os.path.basename(vispath).replace('_cytoplasm.png', '')
-    if len(purename) == 5:
-        imgpath = f'/c23030/zly/datasets/CervicalDatasets/ComparisonDetectorDataset/train/{purename}.bmp'
-    else:
-        imgpath = f'/c23030/zly/datasets/CervicalDatasets/HMCHH/JPEGImages/{purename}.png'
+for vispath in glob('statistic_results/cellpose_infer/contrast/nucleus/*_dia15.png'):
+    purename = os.path.basename(vispath).replace('_dia15.png', '')
+    imgpath = f'/c22073/zly/datasets/CervicalDatasets/ComparisonDetectorDataset/train/{purename}.bmp'
     tag_imgs.append(imgpath)
 
 
@@ -139,7 +138,7 @@ def visualize_segmentation_comparison(imgRGB, our_object_list, cellpose_object_l
     
 
 def main():
-    save_dir = 'statistic_results/cellpose_infer/contrast'
+    save_dir = f'statistic_results/cellpose_infer/contrast/{tag}'
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
 
     our_model = CellposeNet(cell_config, userle=True).to(device)
@@ -223,6 +222,6 @@ def crop_tgt():
         print(f"Saved cropped image to: {save_path}")
 
 if __name__ == "__main__":
-    # main()
+    main()
     # draw_flow()
-    crop_tgt()
+    # crop_tgt()

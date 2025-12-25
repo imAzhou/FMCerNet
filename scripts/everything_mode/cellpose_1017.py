@@ -16,6 +16,7 @@ import torch.distributed as dist
 from mmdet.evaluation import CocoMetric
 from mmdet.evaluation import DumpProposals
 
+
 # ====================== cellpose infer params ======================
 SEED = 1234
 tile_test_bs = 128
@@ -23,7 +24,7 @@ cellpose_ckpt = 'checkpoints/cpsam'
 cervical_cell_config = {
     'nucleus': dict(dia=15, flowThr=0.6, cellprobThr=0.1, min_size=15),
     'cytoplasm': dict(dia=120, flowThr=0.8, cellprobThr=0.1, min_size=10*10),
-    'cluster': dict(dia=240, flowThr=-1, cellprobThr=0.1, min_size=10*10),
+    'cluster': dict(dia=180, flowThr=-1, cellprobThr=0.1, min_size=10*10),
 }
 blood_cell_config = {
     'nucleus': dict(dia=15, flowThr=0.6, cellprobThr=0.1, min_size=15),
@@ -34,15 +35,24 @@ blood_cell_config = {
 dataset_config = {
     'CDetector': {
         'dataroot_dir': 'data_resource/ComparisonDetectorDataset',
-        'infer_imgdir': 'test',
-        'metric_json': 'test_filter_error.json',
-        'cell_config': cervical_cell_config
+        'infer_imgdir': 'train',
+        'metric_json': 'train_filter_error.json',
+        'cell_config': cervical_cell_config,
+        'infer_result_dir': 'AutoMPG_row2'
     },
     'HMCHH': {
         'dataroot_dir': 'data_resource/HMCHH',
         'infer_imgdir': 'JPEGImages',
-        'metric_json': 'annofiles/fold1_val.json',
-        'cell_config': cervical_cell_config
+        'metric_json': 'annofiles_roi/fold1_train.json',
+        'cell_config': cervical_cell_config,
+        'infer_result_dir': 'cellpose_all_noNMS'
+    },
+    'HMCHHAUG': {
+        'dataroot_dir': 'data_resource/HMCHH',
+        'infer_imgdir': 'JPEGImages_with_augmented',
+        'metric_json': 'annofiles_roi/fold1_train_with_aug.json',
+        'cell_config': cervical_cell_config,
+        'infer_result_dir': 'cellpose_noNMS_aug'
     },
     'CRIC': {
         'dataroot_dir': 'data_resource/CRIC',
@@ -65,21 +75,22 @@ dataset_config = {
     },
 }
 
-DATASET_TAG = 'CRIC'
+DATASET_TAG = 'CDetector'
 
 dataroot_dir = dataset_config[DATASET_TAG]['dataroot_dir']
 infer_imgdir = dataset_config[DATASET_TAG]['infer_imgdir']
 metric_json = dataset_config[DATASET_TAG]['metric_json']
 cell_config = dataset_config[DATASET_TAG]['cell_config']
+infer_result_dir = dataset_config[DATASET_TAG]['infer_result_dir']
 
 infer_imgdirs = [
     f'{dataroot_dir}/{infer_imgdir}',
 ]
-infer_savedir = f'{dataroot_dir}/cellpose_all'
+infer_savedir = f'{dataroot_dir}/{infer_result_dir}'
 os.makedirs(infer_savedir, exist_ok=True, mode=0o777)
 
 # =================== infer results metric params ===================
-iou_thrs = [0.3]
+iou_thrs = [0.5]
 metric_jsons = [
     f'{dataroot_dir}/{metric_json}',
 ]
@@ -88,12 +99,12 @@ KEEPNUM = 300
 proposal_pkl_cfg = {
     'source_cocojson': metric_jsons[0], #拼接成得路径应为data_resource/WINDOW_SIZE_1600/annofiles/total_cocoformat.json
     'output_dir': dataroot_dir,
-    'pkl_filename': f'fold4_train_proposal_maxDet{KEEPNUM}.pkl',
+    'pkl_filename': f'row2_proposal_maxDet{KEEPNUM}.pkl',
     'img_dir': f'{dataroot_dir}/{infer_imgdir}',
 }
 # ================== infer results demo visual params ==================
 demo_nums = -1  # < 0 时不绘制结果, > 0 时绘制完 demo_nums 程序会自动结束
-demoimg_savedir = f'statistic_results/cellpose_infer/{DATASET_TAG}'
+demoimg_savedir = f'statistic_results/cellpose_infer/{DATASET_TAG}_noNMS'
 os.makedirs(demoimg_savedir, exist_ok=True, mode=0o777)
 
 
@@ -140,20 +151,12 @@ def run_inference(cellpose_model):
         object_list = cellpose_model(img, batchsize=tile_test_bs)
         
         total_bboxes = [item['bbox'] for item in object_list]
-        # NMS
-        bboxes = torch.tensor(total_bboxes, dtype=torch.float32)  # (N, 4)
-        widths = bboxes[:, 2] - bboxes[:, 0]
-        heights = bboxes[:, 3] - bboxes[:, 1]
-        scores = widths * heights  # 面积越大，得分越高
-        nms_indices = nms(bboxes, scores, iou_threshold=0.5)
-        final_bboxes = bboxes[nms_indices].tolist()
-
         if demo_nums > 0:
             savepath = f'{demoimg_savedir}/{purename}.png'
-            visual_imgmask(img, final_bboxes, savepath)
+            visual_imgmask(img, total_bboxes, savepath)
 
         with open(f'{infer_savedir}/{purename}.json', 'w', encoding='utf-8') as f:
-            json.dump(final_bboxes, f, ensure_ascii=False)
+            json.dump(total_bboxes, f, ensure_ascii=False)
 
         print(f'\r[Rank {rank}] Processed {p_idx+1}/{len(data_per_rank)} ', end='')
 
@@ -202,9 +205,17 @@ def eval_metric():
                 with open(f'{infer_savedir}/{purename}.json', 'r', encoding='utf-8') as f:
                     proposal_bboxes = json.load(f)
 
+                # NMS
+                bboxes = torch.tensor(proposal_bboxes, dtype=torch.float32)  # (N, 4)
+                widths = bboxes[:, 2] - bboxes[:, 0]
+                heights = bboxes[:, 3] - bboxes[:, 1]
+                scores = widths * heights  # 面积越大，得分越高
+                nms_indices = nms(bboxes, scores, iou_threshold=0.3)
+                final_bboxes = bboxes[nms_indices].tolist()
+
                 # 按面积从大到小排序
                 final_bboxes_sorted = sorted(
-                    proposal_bboxes,
+                    final_bboxes,
                     key=lambda box: (box[2] - box[0]) * (box[3] - box[1]),
                     reverse=True
                 )
@@ -246,9 +257,17 @@ def foramt_proposal2pkl():
         with open(f'{infer_savedir}/{purename}.json', 'r', encoding='utf-8') as f:
             proposal_bboxes = json.load(f)  # (x1,y1,x2,y2)
         
+        # NMS
+        bboxes = torch.tensor(proposal_bboxes, dtype=torch.float32)  # (N, 4)
+        widths = bboxes[:, 2] - bboxes[:, 0]
+        heights = bboxes[:, 3] - bboxes[:, 1]
+        scores = widths * heights  # 面积越大，得分越高
+        nms_indices = nms(bboxes, scores, iou_threshold=0.3)
+        final_bboxes = bboxes[nms_indices].tolist()
+
         # 按面积从大到小排序
         final_bboxes_sorted = sorted(
-            proposal_bboxes,
+            final_bboxes,
             key=lambda box: (box[2] - box[0]) * (box[3] - box[1]),
             reverse=True
         )
@@ -270,10 +289,12 @@ def foramt_proposal2pkl():
 
 if __name__ == '__main__':
     # main()
-    eval_metric()
+    # eval_metric()
     foramt_proposal2pkl()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 scripts/everything_mode/cellpose_1017.py
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12349 scripts/everything_mode/cellpose_1017.py
+
+
 '''
 

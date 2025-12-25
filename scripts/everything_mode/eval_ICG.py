@@ -1,32 +1,99 @@
 import json
+import warnings
 import os
-import torch
+
 from tqdm import tqdm
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'
+warnings.filterwarnings("ignore", category=UserWarning)
+import torch
+from torchvision.ops import nms,box_iou
 from typing import List, Tuple, Dict, Any
 
-# --- 假设的辅助函数和常量（请根据您的环境确保这些函数可用） ---
+# ====================== cellpose infer params ======================
+cervical_cell_config = {
+    'nucleus': dict(dia=15, flowThr=0.6, cellprobThr=0.1, min_size=15),
+    'cytoplasm': dict(dia=120, flowThr=0.8, cellprobThr=0.1, min_size=10*10),
+    'cluster': dict(dia=240, flowThr=-1, cellprobThr=0.1, min_size=10*10),
+}
+blood_cell_config = {
+    'nucleus': dict(dia=15, flowThr=0.6, cellprobThr=0.1, min_size=15),
+    'cytoplasm': dict(dia=100, flowThr=0.8, cellprobThr=0.1, min_size=10*10),
+    'cluster': dict(dia=150, flowThr=-1, cellprobThr=0.1, min_size=10*10),
+}
 
-# 假设的 IoU 计算函数 (使用 torchvision 作为示例实现)
-try:
-    from torchvision.ops import box_iou as box_iou
-    from torchvision.ops import nms as nms
-except ImportError:
-    # 如果 torchvision 不可用，需要自行提供 box_iou 和 nms 实现
-    print("Warning: torchvision not found. Using dummy functions for box_iou and nms.")
-    def box_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
-        # Placeholder: Must be replaced with actual IoU calculation
-        return torch.zeros(boxes1.size(0), boxes2.size(0))
-    def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torch.Tensor:
-        # Placeholder: Must be replaced with actual NMS
-        return torch.arange(boxes.size(0))
+dataset_config = {
+    'CDetector': {
+        'dataroot_dir': 'data_resource/ComparisonDetectorDataset',
+        'infer_imgdir': 'train',
+        'metric_json': 'train_filter_error.json',
+        'cell_config': cervical_cell_config,
+        'infer_result_dir': 'AutoMPG_row3'
+    },
+    'HMCHH': {
+        'dataroot_dir': 'data_resource/HMCHH',
+        'infer_imgdir': 'JPEGImages',
+        'metric_json': 'annofiles_roi/fold1_train.json',
+        'cell_config': cervical_cell_config,
+        'infer_result_dir': 'cellpose_all_noNMS'
+    },
+    'HMCHHAUG': {
+        'dataroot_dir': 'data_resource/HMCHH',
+        'infer_imgdir': 'JPEGImages_with_augmented',
+        'metric_json': 'annofiles_roi/fold1_train_with_aug.json',
+        'cell_config': cervical_cell_config,
+        'infer_result_dir': 'cellpose_noNMS_aug'
+    },
+    'CRIC': {
+        'dataroot_dir': 'data_resource/CRIC',
+        'infer_imgdir': 'images',
+        'metric_json': 'annofiles/abnormal/fold4_train.json',
+        'cell_config': cervical_cell_config
+    },
+    'BCCD':{
+        'dataroot_dir': 'data_resource/BCCD',
+        'infer_imgdir': 'train',
+        'metric_json': 'annofiles/train_annotations.coco.json',
+        'cell_config': blood_cell_config
+    },
+    'WS1600': {
+        'dataroot_dir': 'data_resource/WINDOW_SIZE_1600',
+        'infer_imgdir': 'images/total_pos',
+        # 'metric_json': 'annofiles/puretrain_cocoformat.json'
+        'metric_json': 'annofiles/total_cocoformat.json',
+        'cell_config': cervical_cell_config
+    },
+}
 
-# 假设的常量
-KEEPNUM = 1000 # 保证每张图的 proposal 数量至少达到 1000
+DATASET_TAG = 'CDetector'
+
+dataroot_dir = dataset_config[DATASET_TAG]['dataroot_dir']
+infer_imgdir = dataset_config[DATASET_TAG]['infer_imgdir']
+metric_json = dataset_config[DATASET_TAG]['metric_json']
+cell_config = dataset_config[DATASET_TAG]['cell_config']
+infer_result_dir = dataset_config[DATASET_TAG]['infer_result_dir']
+
+infer_imgdirs = [
+    f'{dataroot_dir}/{infer_imgdir}',
+]
+infer_savedir = f'{dataroot_dir}/{infer_result_dir}'
+os.makedirs(infer_savedir, exist_ok=True, mode=0o777)
+
+# =================== infer results metric params ===================
+metric_jsons = [
+    f'{dataroot_dir}/{metric_json}',
+]
+# ================== infer results format to pkl params ==================
+KEEPNUM = 1000
 ICG_LOW_THR = 0.2 # ICG 匹配的低 IoU 阈值
 ICG_HIGH_THR = 0.5 # ICG 匹配的高 IoU 阈值
 ICG_TOLERANCE = 5.0 # ICG 包含匹配的容忍度
+proposal_pkl_cfg = {
+    'source_cocojson': metric_jsons[0], #拼接成得路径应为data_resource/WINDOW_SIZE_1600/annofiles/total_cocoformat.json
+    'output_dir': dataroot_dir,
+    'pkl_filename': f'proposal_maxDet{KEEPNUM}.pkl',
+    'img_dir': f'{dataroot_dir}/{infer_imgdir}',
+}
 
-# -----------------------------------------------------------------
 
 def match_proposal_ICG_for_eval(
     proposals: torch.Tensor, 
@@ -101,88 +168,57 @@ def calculate_recall_ICG(
     all_proposals: List[torch.Tensor], 
     all_gt_bboxes: List[torch.Tensor],
     all_is_matched_ICG: List[torch.Tensor], # (M_i, K_i) 矩阵列表
-    iou_thrs: List[float],
     proposal_nums: Tuple[int, int, int]
 ) -> Dict[str, Any]:
     """
-    计算 ICG 匹配规则下的 COCO 风格 Average Recall (AR)。
+    计算 ICG 匹配规则下的 Average Recall (AR)。
+    直接基于 ICG 匹配矩阵计算召回，不涉及多 IoU 阈值平均。
     """
     num_imgs = len(all_proposals)
     
-    # 1. 收集 GT 数量
-    num_gts_per_img = [g.size(0) for g in all_gt_bboxes]
+    # 存储每个 proposal_num 下所有图像的 recall 列表
+    all_recalls = {num: [] for num in proposal_nums}
     
-    # 2. 存储每个 IoU 阈值和 proposal 数量下的召回率
-    all_recalls = {num: {thr: [] for thr in iou_thrs} for num in proposal_nums}
-    
-    # 3. 遍历每张图像
+    # 遍历每张图像
     for i in range(num_imgs):
-        proposals_i = all_proposals[i]
         gt_i = all_gt_bboxes[i]
         is_matched_matrix_i = all_is_matched_ICG[i] # (M_i, K_i)
 
         if gt_i.size(0) == 0:
             continue
 
-        # 4. 遍历每个 proposal 数量限制
+        # 遍历每个 proposal 数量限制 (e.g., 100, 300, 1000)
         for p_num in proposal_nums:
-            # 截断 proposal
-            proposals_i_trunc = proposals_i[:p_num]
-            is_matched_matrix_i_trunc = is_matched_matrix_i[:p_num] # (p_num, K_i)
+            # 截断匹配矩阵 (p_num, K_i)
+            # 前提：输入进来的 is_matched_matrix_i 对应的 proposal 已经是按分数排序过的
+            # 我们只看前 p_num 个 proposal 是否匹配到了 GT
+            is_matched_matrix_i_trunc = is_matched_matrix_i[:p_num] 
 
-            # 5. 遍历每个 IoU 阈值 (COCO AR 是针对不同 IoU 阈值的平均)
-            # 注意：这里的 IoU 阈值 iou_thr 仅用于召回率的定义，而不是 ICG 匹配本身。
-            # COCO 的召回率计算是：在一个 proposal 集合下，GT 成功匹配的比例。
-            # 这里的 ICG 匹配结果 is_matched_matrix_i_trunc 已经包含了所有 IoU 阈值的逻辑。
-            
-            # 在 ICG 评估中，我们**只使用** ICG 匹配结果来判断 GT 是否被召回。
-            # 如果 proposal [i] 通过 ICG 匹配到了 GT [j]，则 GT [j] 被召回。
-            # 如果 proposal [i] 通过 ICG 匹配到了 GT [j]，那么对于任何 IoU 阈值，
-            # 只要这个 IoU 阈值用于 AR 评估，这个 GT 就应该被视为召回。
-            
             # GT 是否被召回的 mask (K_i,)
+            # 只要该 GT 被前 p_num 个 proposal 中的任意一个匹配到，即视为召回
             gt_is_recalled = is_matched_matrix_i_trunc.any(dim=0)
             
-            # 计算召回率
+            # 计算单张图的召回率
             recall = gt_is_recalled.sum().float() / gt_i.size(0)
-            
-            # 将该召回率计入所有评估 IoU 阈值下
-            for thr in iou_thrs:
-                 all_recalls[p_num][thr].append(recall.item())
+            all_recalls[p_num].append(recall.item())
 
-    # 6. 汇总结果
+    # 汇总结果：计算所有有效图像的平均 Recall
     final_ar_results = {}
-    
-    # 计算每个 proposal_num 下的 AR (对所有 IoU 阈值和所有图像平均)
     for p_num in proposal_nums:
-        recalls_list = []
-        for thr in iou_thrs:
-            recalls_list.extend(all_recalls[p_num][thr])
-        
+        recalls_list = all_recalls[p_num]
         if not recalls_list:
             final_ar_results[f'AR@{p_num}'] = 0.0
         else:
             final_ar_results[f'AR@{p_num}'] = sum(recalls_list) / len(recalls_list)
             
-    # 计算所有 IoU 阈值和 proposal_nums 的总平均 AR (COCO 风格)
-    all_recalls_flattened = []
-    for p_num in proposal_nums:
-        for thr in iou_thrs:
-            all_recalls_flattened.extend(all_recalls[p_num][thr])
-            
-    final_ar_results['AR@all'] = sum(all_recalls_flattened) / len(all_recalls_flattened) if all_recalls_flattened else 0.0
-    
     return final_ar_results
 
 
 def eval_metric_ICG(
-    metric_jsons: List[str],
-    infer_savedir: str,
-    iou_thrs: List[float],
     proposal_nums: Tuple[int, int, int] = (100, 300, 1000)
 ):
     """
-    使用 ICG 包含匹配规则评估候选框的召回率 (AR)，并自实现 COCO 风格 AR 计算。
+    使用 ICG 包含匹配规则评估候选框的召回率 (AR)。
     """
     
     # 存储所有图像的 ICG 匹配数据
@@ -258,7 +294,6 @@ def eval_metric_ICG(
             all_proposals, 
             all_gt_bboxes, 
             all_is_matched_ICG,
-            iou_thrs, 
             proposal_nums
         )
         
@@ -271,8 +306,6 @@ def eval_metric_ICG(
 
     print("\nEvaluation finished.")
 
-
-    
-
 if __name__ == "__main__":
     eval_metric_ICG()
+
