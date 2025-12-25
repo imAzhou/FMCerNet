@@ -11,24 +11,26 @@ from tqdm import tqdm
 
 # --- 1. 配置与数据加载 ---
 def load_and_preprocess():
-    classes = ['NILM', 'GEC', 'AGC', 'AGC-NOS', 'AGC-FN', 'AGC-N', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
+    classes = ['NILM', 'GEC', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
     json_path = 'data_resource/cell_attri/cell_inst_named.json'
 
     with open(json_path, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
+    attr_nums = 0
 
     all_samples = []  # 用于存储 (K, 11) 的数据
     print("Loading JSON data and building sample matrix...")
     for tile_list in tqdm(json_data.values(), ncols=80):
         for tileitem in tile_list:
             clsid = classes.index(tileitem['sub_class'])
-            # 获取10个属性值 (前10列)
+            # 获取属性值
             attr_v = list(tileitem['attr_v'])  # 确保是深拷贝，避免修改原数据
+            attr_nums = len(attr_v)
             attr_v.append(clsid)
             all_samples.append(attr_v)
 
     # 转换为 DataFrame
-    column_names = [f'Attr_{i+1}' for i in range(10)] + ['SubClass']
+    column_names = [f'Attr_{i+1}' for i in range(attr_nums)] + ['SubClass']
     df = pd.DataFrame(all_samples, columns=column_names)
     return df
 

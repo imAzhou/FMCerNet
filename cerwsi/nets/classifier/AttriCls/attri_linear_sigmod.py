@@ -13,11 +13,15 @@ class AttriLinear(MetaClassifier):
         
         evaluator = build_evaluator([AttriMetric(
             args.logger_name,
-            num_attributes = self.num_attributes
+            attribute_names = args.attribute_names,
+            attribute_classes = self.attribute_classes,
+            num_attributes = self.num_attributes,
         )])
         super(AttriLinear, self).__init__(evaluator, args)
         
         input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
+        for i, w in enumerate(args.custom_weights):
+            self.register_buffer(f'attr_{i}_weights', torch.tensor(w, dtype=torch.float))
         
         self.total_logits_dim = sum(self.attribute_classes)
         self.attri_head = nn.Linear(input_embed_dim, self.total_logits_dim)
@@ -30,10 +34,9 @@ class AttriLinear(MetaClassifier):
     
     def calc_loss(self, inputs, databatch):
         pred_logits_list = self.calc_logits(inputs)
-
         # 获取索引形式的真值 (bs, num_attributes)
         attr_gt_idx = torch.tensor([item.attr_v for item in databatch['data_samples']], dtype=torch.long, device=self.device)
-        attr_loss_fn = nn.BCEWithLogitsLoss()
+
         total_attr_loss = 0
         # 遍历每个属性计算 BCE Loss
         for i in range(self.num_attributes):
@@ -43,9 +46,10 @@ class AttriLinear(MetaClassifier):
             # 修改点 2：将索引真值转换为 One-Hot 编码
             # F.one_hot 返回 (bs, num_class_i)，需要转为 float 以匹配 BCE 损失
             target_i = F.one_hot(attr_gt_idx[:, i], num_classes=self.attribute_classes[i]).float()
-            
+            weight_i = getattr(self, f'attr_{i}_weights')
+            loss_fn = nn.BCEWithLogitsLoss(pos_weight=weight_i)
             # 计算 BCE Loss
-            attr_loss = attr_loss_fn(logits_i, target_i)
+            attr_loss = loss_fn(logits_i, target_i)
             total_attr_loss += attr_loss
             
         loss_dict = {
@@ -63,7 +67,17 @@ class AttriLinear(MetaClassifier):
         data_samples = []
         for i, item in enumerate(databatch['data_samples']):
             # 存储该样本所有属性的概率 (已经过 Sigmoid)
-            item.pred_prob = [probs[i] for probs in pred_probs_list]
+            # pred_prob = [probs[i] for probs in pred_probs_list]
+            # pred_prob_flatten = []
+            # for problist in pred_prob:
+            #     pred_prob_flatten.extend(problist.tolist())
+            # item.pred_prob_flatten = torch.tensor(pred_prob_flatten)
+
+            pred_logits = [logits[i] for logits in pred_logits_list]
+            pred_prob_flatten = []
+            for problist in pred_logits:
+                pred_prob_flatten.extend(problist.tolist())
+            item.pred_prob_flatten = torch.tensor(pred_prob_flatten)
             item.pred_label = pred_attr_labels[i]
             data_samples.append(item)
 

@@ -89,7 +89,7 @@ def train_net(cfg, args, model):
             metrics = model.module.taskhead.evaluator.evaluate(len(valloader.dataset))
             if is_main_process():
                 pbar.close()
-                print(metrics)
+                # print(metrics)
                 if cfg.save_each_epoch:
                     torch.save(model.module.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
                 prime_score_type = cfg.eval_prime_score
@@ -133,11 +133,11 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=1,2,4,5,6,7 torchrun  --nproc_per_node=6 --master_port=12348 main4PatchNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12345 main4PatchNet.py \
     configs/dataset/mmpretrain/jfsw_attri_dataset.py \
     configs/model/attri_cls.py \
     configs/strategy_patch.py \
-    --record_save_dir log/attri_cls/attribute_classes_sigmoid
+    --record_save_dir log/attri_cls/sigmoid_lora
     
 l_cerscanv1_dataset
 cdetector_ws400

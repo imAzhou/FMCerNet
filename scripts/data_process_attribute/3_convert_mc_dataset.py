@@ -3,9 +3,7 @@ import json
 from tqdm import tqdm
 
 
-RECORD_CLASS = ['NILM', 'GEC', 
-                'AGC', 'AGC-N', 'AGC-NOS', 'AGC-FN', 
-                'ASC-US','LSIL', 'ASC-H', 'HSIL']
+RECORD_CLASS = ['NILM', 'GEC', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 
 def main():
     for mode in ['train', 'val']:

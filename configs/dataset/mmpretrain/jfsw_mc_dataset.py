@@ -1,10 +1,10 @@
 # dataset settings 
 data_root = 'data_resource/cell_attri/cell_inst'
-classes = ['NILM', 'GEC', 'AGC', 'AGC-NOS', 'AGC-FN', 'AGC-N', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
+classes = ['NILM', 'GEC', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'cls'    # cls, instance
-train_bs = 32
-val_bs = 32
+train_bs = 64
+val_bs = 64
 input_size = 224  # 224, 392, 448, 512, 1024
 
 rand_increasing_policies = [
@@ -36,11 +36,11 @@ train_datasets = dict(
         dict(type='ResizeEdge', edge='long', scale=input_size),
         dict(type='CenterCrop', auto_pad=True, crop_size=input_size, pad_cfg=dict(pad_val=255, type='Pad')),
         dict(type='RandomFlip', prob=0.5),
-        dict(
-            type='RandAugment',
-            policies=rand_increasing_policies,
-            num_policies=2,
-            magnitude_level=5),
+        # dict(
+        #     type='RandAugment',
+        #     policies=rand_increasing_policies,
+        #     num_policies=2,
+        #     magnitude_level=5),
         dict(type='PackInputs')
     ],
 )

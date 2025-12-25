@@ -40,7 +40,6 @@ def test_net(cfg, model):
         #     break
         with torch.no_grad():
             outputs = model(data_batch, 'val')
-            #推理的时候训练集和验证集都要跑一下
         model.module.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
         
         if args.save_result:
@@ -85,9 +84,9 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
-    log/attri_cls/attribute_classes_sigmoid/2025_12_22_03_03_55/config.py \
-    log/attri_cls/attribute_classes_sigmoid/2025_12_22_03_03_55/checkpoints/best.pth \
-    log/attri_cls/attribute_classes_sigmoid/2025_12_22_03_03_55 \
+    log/attri_cls/sigmoid_lora/attri_predict/config.py \
+    log/attri_cls/sigmoid_lora/attri_predict/checkpoints/best.pth \
+    log/attri_cls/sigmoid_lora/attri_predict \
     --save_result
     --val_json annofiles/multilabel_puretrain.json \
     --save_result

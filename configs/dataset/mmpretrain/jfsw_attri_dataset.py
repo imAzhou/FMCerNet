@@ -1,17 +1,21 @@
 # dataset settings 
 data_root = 'data_resource/cell_attri/cell_inst'
-classes = ['NILM', 'GEC', 'AGC', 'AGC-NOS', 'AGC-FN', 'AGC-N', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
+classes = ['NILM', 'GEC', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 img_dir = f'{data_root}/images'
 dataset_type = 'attricls'    # cls, instance
-attribute_classes = [5,3,3,2,2,3,5,3,3,4]
+attribute_names = ["Nsize","Nstains","Nchromatin","Nregular","cytoplasm","arrangement","polarity","gland"]
+attribute_classes = [6,3,3,2,5,2,2,2]
+custom_weights = [[1.0 for i in range(num)] for num in attribute_classes]
+# Attr 4: 细胞浆状态
+custom_weights[4] = [1.0, 50.0, 50.0, 50.0, 50.0]
 num_attributes = len(attribute_classes)
-train_bs = 32
-val_bs = 32
+train_bs = 64
+val_bs = 64
 input_size = 224
 
-train_annfile = f'{data_root}/train_cellinst.json'
-val_annfile = f'{data_root}/val_cellinst.json'
+train_annfile = f'{data_root}/rere_train_cellinst.json'
+val_annfile = f'{data_root}/rere_val_cellinst.json'
 
 rand_increasing_policies = [
     dict(type='AutoContrast', prob=0.5),

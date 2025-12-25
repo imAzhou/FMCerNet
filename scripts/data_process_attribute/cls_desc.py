@@ -63,7 +63,7 @@ def attri_count():
     JFSW_2_jsons = glob('/medical-data/data/cervix/JFSW_1109/**/json/*.json')
     all_jsons_path = [*JFSW_1_jsons, *JFSW_2_jsons]
     tgt_clsname = ['GEC', 'NILM','AGC','AGC-FN','AGC-N','AGC-NOS','ASC-US','LSIL','ASC-H','HSIL']
-    del_attri = ['单个细胞','成团细胞','GEC', 'HSIL', '阴性', 'AGC-NOS', 'Inflammatory', 'ASC-US', 'LSIL', 'AGC', 'NILM', 'ASC-H', '阳性', 'AGC-FN', 'AGC-N']
+    del_attri = ['单个细胞','成团细胞','GEC', 'HSIL', '阴性', 'AGC-NOS', 'Inflammatory', 'ASC-US', 'LSIL', 'AGC', 'NILM', 'ASC-H', '阳性', 'AGC-FN', 'AGC-N', '核仁增大/多核仁']
 
     desc_cell_list = []
     for jsonpath in tqdm(all_jsons_path, ncols=80):
@@ -78,9 +78,6 @@ def attri_count():
             for desc in list(set(flatten_list(hierarchical_annotation))):
                 if desc not in del_attri:
                     desc_list.append(desc)
-            
-            if '成团细胞' in desc_list and '单个细胞' in desc_list:     # 16条脏数据，同时被标注成 单个和成团 
-                continue
 
             if ann_clsname is not None and desc_list:
                 desc_cell_list.append({
@@ -196,9 +193,9 @@ def generate_analysis(data, save_dir):
     print(f"所有统计图、txt和Excel已保存到 {save_dir}")
 
 if __name__ == "__main__":
-    instance_savepath = 'data_resource/lesion_desc/cell_inst_desc.json'
-    main()
-    # attri_count()
+    instance_savepath = 'data_resource/cell_attri/statistic_result/cell_inst_desc.json'
+    # main()
+    attri_count()
 
     # with open(instance_savepath, 'r', encoding='utf-8') as f:
     #     json_data = json.load(f)

@@ -38,9 +38,9 @@ class SmartCCS(MetaBackbone):
         if frozen_backbone:
             for name, param in self.backbone.named_parameters():
                 param.requires_grad = False
-                for key in update_keys:
-                    if key in name:
-                        param.requires_grad = True
+                # for key in update_keys:
+                #     if key in name:
+                #         param.requires_grad = True
 
     def forward(self, x: torch.Tensor):
         output = self.backbone(x, is_training=True) # dict
