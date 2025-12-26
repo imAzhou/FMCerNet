@@ -12,11 +12,9 @@ from tqdm import tqdm
 # --- 1. 配置与数据加载 ---
 def load_and_preprocess():
     classes = ['NILM', 'GEC', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
-    json_path = 'data_resource/cell_attri/cell_inst_named.json'
-
+    attribute_names = ["Nsize","Nstains","Nchromatin","Nregular","cytoplasm","arrangement","polarity","gland"]
     with open(json_path, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
-    attr_nums = 0
 
     all_samples = []  # 用于存储 (K, 11) 的数据
     print("Loading JSON data and building sample matrix...")
@@ -25,12 +23,11 @@ def load_and_preprocess():
             clsid = classes.index(tileitem['sub_class'])
             # 获取属性值
             attr_v = list(tileitem['attr_v'])  # 确保是深拷贝，避免修改原数据
-            attr_nums = len(attr_v)
             attr_v.append(clsid)
             all_samples.append(attr_v)
 
     # 转换为 DataFrame
-    column_names = [f'Attr_{i+1}' for i in range(attr_nums)] + ['SubClass']
+    column_names = attribute_names + ['SubClass']
     df = pd.DataFrame(all_samples, columns=column_names)
     return df
 
@@ -89,10 +86,6 @@ def main():
     v_df = pd.DataFrame(v_matrix, index=cols, columns=cols)
     u_df = pd.DataFrame(u_matrix, index=cols, columns=cols)
 
-    # 结果导出与保存
-    output_dir = 'data_resource/cell_attri/statistic_result'
-    os.makedirs(output_dir, exist_ok=True)
-
     # 1. 绘制 Cramer's V
     plt.figure(figsize=(12, 10))
     sns.heatmap(v_df, annot=True, fmt='.2f', cmap='YlGnBu')
@@ -113,5 +106,10 @@ def main():
     print(rank)
 
 if __name__ == "__main__":
+    json_path = 'data_resource/cell_attri/cell_inst_named.json'
+    # 结果导出与保存
+    output_dir = 'data_resource/cell_attri/statistic_result'
+    os.makedirs(output_dir, exist_ok=True)
+
     main()
     

@@ -8,14 +8,14 @@ attribute_names = ["Nsize","Nstains","Nchromatin","Nregular","cytoplasm","arrang
 attribute_classes = [6,3,3,2,5,2,2,2]
 custom_weights = [[1.0 for i in range(num)] for num in attribute_classes]
 # Attr 4: 细胞浆状态
-custom_weights[4] = [1.0, 50.0, 50.0, 50.0, 50.0]
+custom_weights[4] = [1.0, 10.0, 10.0, 10.0, 10.0]
 num_attributes = len(attribute_classes)
 train_bs = 64
 val_bs = 64
 input_size = 224
 
-train_annfile = f'{data_root}/rere_train_cellinst.json'
-val_annfile = f'{data_root}/rere_val_cellinst.json'
+train_annfile = f'{data_root}/train_cellinst.json'
+val_annfile = f'{data_root}/val_cellinst.json'
 
 rand_increasing_policies = [
     dict(type='AutoContrast', prob=0.5),

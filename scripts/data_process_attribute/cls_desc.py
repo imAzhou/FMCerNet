@@ -99,8 +99,6 @@ def generate_analysis(data, save_dir):
     # -----------------------------
     # 类别计数
     # -----------------------------
-    tgt_clsname = ['NILM','ASC-US','LSIL','ASC-H','HSIL','GEC','AGC','AGC-FN','AGC-N','AGC-NOS']
-    tgt_desc = ["核增大到2.5-3倍", "核增大大于3倍","核浆比大","核增大","异形双核或多核","核轻度深染","核染色质轻度深染","核染色质加深","核染色质呈细颗粒状","核染色质呈粗颗粒状","核膜不规则","胞浆有空泡","不完全挖空化细胞","挖空细胞","非典型角化细胞","葡萄干核型","核异形","核异形性增强","核大小不一","核位上移","失去极向，排列紊乱","羽毛状排列","细胞团呈三维簇团结构","栅栏状排列紊乱","乳头状排列紊乱","菊形团排列","腺腔样排列","细胞的大小形态不一，排列紊乱","核深染拥挤"]
     class_counter = Counter([d["ori_clsname"] for d in data])
     class_sorted = dict(sorted(class_counter.items(), key=lambda x: x[1], reverse=True))
 
@@ -188,16 +186,72 @@ def generate_analysis(data, save_dir):
 
     print(f"所有统计图、txt和Excel已保存到 {save_dir}")
 
+def save_cls_attri_dist(data, savepath):
+    cls_attri_cnt = defaultdict(list)
+    for d in data:
+        cls_attri_cnt[d['sub_class']].append(d['attr_v'])
+    cls_attri_dist = {}
+    for sub_class in tgt_clsname:
+        if 'AGC' in sub_class:
+            sub_class = 'AGC'
+        attr_list = cls_attri_cnt[sub_class]
+        indices = list(zip(*attr_list))
+        row_values = []
+        for values in indices:
+            unique_vals = sorted(list(set(values)))
+            row_values.append(unique_vals)
+        cls_attri_dist[sub_class] = row_values
+    with open(savepath, 'w', encoding='utf-8') as f:
+        json.dump(cls_attri_dist, f, ensure_ascii=False)
+
+def check_temp(data):
+    attrv2clsname = defaultdict(list)
+    for item in tqdm(data, ncols=80):
+        attr_v_key = str(item['attr_v'])
+        attrv2clsname[attr_v_key].append(item)
+    conflict_cnt = 0
+    include_cell_cnt = 0
+    lines = []
+    for k,v in attrv2clsname.items():
+        unique_v = list(set([i['sub_class'] for i in v]))
+        if len(unique_v)>1:
+            strprint = f'\nattr_v-{k}\n'
+            clsname2desc = defaultdict(list)
+            for i in v:
+                clsname2desc[i['sub_class']].append(','.join(sorted(i['jfsw_desc'])))
+            for clsname,desc_list in clsname2desc.items():
+                unique_desc = list(set(desc_list))
+                strprint += f'\t{clsname}, jfsw_desc:\n'
+                for descitem in unique_desc:
+                    strprint += f'\t\t{descitem}\n'
+            
+            lines.append(strprint)
+            conflict_cnt += 1
+            include_cell_cnt += len(v)
+    with open('data_resource/cell_attri/statistic_result/attrv_conflict.txt', 'w') as f:
+        f.writelines(lines)
+        
+    print(len(attrv2clsname.keys()))
+    print(conflict_cnt)
+    print(include_cell_cnt)
 
 if __name__ == "__main__":
     # instance_savepath = 'data_resource/cell_attri/statistic_result/cell_inst_desc.json'
     # main()
     # attri_count()
 
-    instance_savepath = 'data_resource/cell_attri/cell_inst.json'
+    tgt_clsname = ['NILM','ASC-US','LSIL','ASC-H','HSIL','GEC','AGC','AGC-FN','AGC-N','AGC-NOS']
+    tgt_desc = ["核增大到2.5-3倍", "核增大大于3倍","核浆比大","核增大","异形双核或多核","核轻度深染","核染色质轻度深染","核染色质加深","核染色质呈细颗粒状","核染色质呈粗颗粒状","核膜不规则","胞浆有空泡","不完全挖空化细胞","挖空细胞","非典型角化细胞","葡萄干核型","核异形","核异形性增强","核大小不一","核位上移","失去极向，排列紊乱","羽毛状排列","细胞团呈三维簇团结构","栅栏状排列紊乱","乳头状排列紊乱","菊形团排列","腺腔样排列","细胞的大小形态不一，排列紊乱","核深染拥挤"]
+
+    instance_savepath = 'data_resource/cell_attri/re_cell_inst_named.json'
     with open(instance_savepath, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
     cell_list = []
     for pidlist in json_data.values():
         cell_list.extend(pidlist)
-    generate_analysis(cell_list, 'statistic_results/attribute_analyze')
+    # generate_analysis(cell_list, 'statistic_results/attribute_analyze')
+
+    # savepath = 'data_resource/cell_attri/configs/cls_attri_dist.json'
+    # save_cls_attri_dist(cell_list, savepath)
+        
+    check_temp(cell_list)

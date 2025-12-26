@@ -21,7 +21,7 @@ class AttriDataset(Dataset):
         output = self.transform(dict(
             img_path = f'{self.img_dir}/{cell_info["filename"]}'
         ))
-        output['data_samples'].attr_v = cell_info["attr_v"]
+        output['data_samples'].attr_v = torch.tensor(cell_info["attr_v"], dtype=torch.long)
         output['data_samples'].sub_class = cell_info["sub_class"]
         output['data_samples'].gt_label = torch.tensor(self.classes.index(cell_info["sub_class"]))
 

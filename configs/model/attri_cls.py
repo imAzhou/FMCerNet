@@ -11,4 +11,4 @@ backbone_cfg['use_peft'] = 'lora'
 
 # classifier
 taskhead_model = 'attri_cls'
-eval_prime_score = 'single-label/mc_f1_score'   # 'cls/macro_f1' 'attr/instance_acc', 'single-label/mc_f1_score'
+eval_prime_score = 'attr/instance_acc'   # 'cls/macro_f1' 'attr/instance_acc', 'single-label/mc_f1_score'

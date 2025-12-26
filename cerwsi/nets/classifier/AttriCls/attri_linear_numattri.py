@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from ..meta_classifier import MetaClassifier
 from cerwsi.utils import build_evaluator, AttriMetric
+import torch.nn.functional as F
 
 
 class AttriLinear(MetaClassifier):
@@ -13,11 +14,15 @@ class AttriLinear(MetaClassifier):
         
         evaluator = build_evaluator([AttriMetric(
             args.logger_name,
-            num_attributes = self.num_attributes
+            attribute_names = args.attribute_names,
+            attribute_classes = self.attribute_classes,
+            num_attributes = self.num_attributes,
         )])
         super(AttriLinear, self).__init__(evaluator, args)
         
         input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
+        for i, w in enumerate(args.custom_weights):
+            self.register_buffer(f'attr_{i}_weights', torch.tensor(w, dtype=torch.float))
         
         # 1. 修改输出层：输出维度为所有属性类别数的总和
         self.total_logits_dim = sum(self.attribute_classes)
@@ -41,7 +46,6 @@ class AttriLinear(MetaClassifier):
         
         loss_fn = nn.CrossEntropyLoss()
         total_loss = 0
-        
         # 3. 循环计算每个属性的 Loss
         for i in range(self.num_attributes):
             # 取第 i 个属性的预测值 (bs, cls_i) 和 真值 (bs,)
@@ -53,18 +57,44 @@ class AttriLinear(MetaClassifier):
         }
         return total_loss, loss_dict
 
-    def set_pred(self, inputs, databatch):
+    def calc_loss(self, inputs, databatch):
+        # 1. 获取预测值：长度为 num_attributes 的 list，每个元素 shape 为 (bs, cls_i)
         pred_logits_list = self.calc_logits(inputs)
         
-        # 4. 对每个属性分别取 argmax
-        # 结果拼接成 (bs, num_attributes)
+        # 2. 获取真值 (bs, num_attributes)
+        # 建议直接在 data_samples 中预处理好张量，避免在 loss 函数中循环创建 tensor 以提高性能
+        attr_gt = torch.stack([item.attr_v for item in databatch['data_samples']]).to(self.device)
+        
+        total_loss = 0
+        loss_dict = {}
+        # 3. 循环计算每个属性的 Loss
+        for i in range(self.num_attributes):
+            # 获取该属性对应的权重 buffer，并针对当前属性计算加权交叉熵
+            weight = getattr(self, f'attr_{i}_weights')
+            attr_loss = F.cross_entropy(
+                pred_logits_list[i], 
+                attr_gt[:, i], 
+                weight=weight
+            )
+            total_loss += attr_loss
+            # loss_dict[f'loss_attr_{i}'] = attr_loss.item()
+            
+        loss_dict['loss'] = total_loss.item()
+        return total_loss, loss_dict
+    
+    def set_pred(self, inputs, databatch):
+        pred_logits_list = self.calc_logits(inputs)
+        # 4. 对每个属性分别取 argmax,结果拼接成 (bs, num_attributes)
         pred_labels = torch.stack([torch.argmax(logits, dim=1) for logits in pred_logits_list], dim=1)
         
         data_samples = []
-        # 为了方便后续处理，将 list of logits 转换为便于存储的格式或保持原样
         for i, item in enumerate(databatch['data_samples']):
             # 存储该样本所有属性的 logits (可选: 合并或保持 list)
-            item.pred_logit = [logits[i] for logits in pred_logits_list]
+            pred_logits = [logits[i] for logits in pred_logits_list]    # 每个样本在 K 个属性上 M 个类别的 logit值：[[.....],[..],[...]]
+            pred_prob_flatten = []
+            for logitlist in pred_logits:
+                pred_prob_flatten.extend(F.softmax(logitlist).tolist())
+            item.pred_prob_flatten = torch.tensor(pred_prob_flatten)    # tensor: (sum(self.attribute_classes),)
             item.pred_label = pred_labels[i]
             data_samples.append(item)
 

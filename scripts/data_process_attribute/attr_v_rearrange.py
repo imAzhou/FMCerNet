@@ -87,10 +87,10 @@ def visual_sample(celllist):
 
 def map_desc2vec(desc_list, sub_class):
     # init value
-    with open('data_resource/cell_attri/config_attri.json', 'r', encoding='utf-8') as f:
+    with open('data_resource/cell_attri/configs/attri_defined.json', 'r', encoding='utf-8') as f:
         attri_cfg = json.load(f)
     attri_vec = [i['default_value'] for i in attri_cfg]
-    with open('data_resource/cell_attri/config_desc.json', 'r', encoding='utf-8') as f:
+    with open('data_resource/cell_attri/configs/desc2attri.json', 'r', encoding='utf-8') as f:
         desc_cfg = json.load(f)
     invalid_items = [item for item in desc_list if item not in desc_cfg]
     assert len(invalid_items) == 0, f"desc_list 中有 {len(invalid_items)} 个不存在的 key: {invalid_items}"
@@ -109,10 +109,10 @@ def map_desc2vec(desc_list, sub_class):
     return attri_vec
 
 def statistic():
-    with open('data_resource/cell_attri/config_attri.json', 'r', encoding='utf-8') as f:
+    with open('data_resource/cell_attri/configs/attri_defined.json', 'r', encoding='utf-8') as f:
         attr_config = json.load(f)
     attr_number = [len(i['children']) for i in attr_config]
-    out_dir = 'data_resource/cell_attri/statistic_result_rerearrange'
+    out_dir = 'data_resource/cell_attri/statistic_result_rearrange'
     os.makedirs(out_dir, exist_ok=True)
 
     class_txt = os.path.join(out_dir, 'class_dist.txt')
@@ -123,8 +123,8 @@ def statistic():
          open(area_txt,  'w', encoding='utf-8') as f_area, \
          open(attr_txt,  'w', encoding='utf-8') as f_attr:
 
-        for mode in ['train', 'val']:
-            with open(f'data_resource/cell_attri/cell_inst/rere_{mode}_cellinst.json',
+        for mode in ['train', 'train_hs0', 'val']:
+            with open(f'data_resource/cell_attri/cell_inst/re_{mode}_cellinst.json',
                       'r', encoding='utf-8') as f:
                 json_data = json.load(f)
 
@@ -218,18 +218,30 @@ def statistic():
 
 
 def main():
-    for mode in ['train', 'val']:
-        with open(f'data_resource/cell_attri/cell_inst/{mode}_cellinst.json', 'r', encoding='utf-8') as f:
-            json_data = json.load(f)
-        new_json_data = []
-        for cellitem in tqdm(json_data, ncols=80):
-            cellitem['attr_v'] = map_desc2vec(cellitem['jfsw_desc'],cellitem['sub_class'])
-            new_json_data.append(cellitem)
-        with open(f'data_resource/cell_attri/cell_inst/rere_{mode}_cellinst.json', 'w', encoding='utf-8') as f:
-            json.dump(new_json_data, f, ensure_ascii=False)
+    # for mode in ['train', 'train_hs0', 'val']:
+    #     with open(f'data_resource/cell_attri/cell_inst/{mode}_cellinst.json', 'r', encoding='utf-8') as f:
+    #         json_data = json.load(f)
+    #     new_json_data = []
+    #     for cellitem in tqdm(json_data, ncols=80):
+    #         cellitem['attr_v'] = map_desc2vec(cellitem['jfsw_desc'],cellitem['sub_class'])
+    #         new_json_data.append(cellitem)
+    #     with open(f'data_resource/cell_attri/cell_inst/re_{mode}_cellinst.json', 'w', encoding='utf-8') as f:
+    #         json.dump(new_json_data, f, ensure_ascii=False)
     # random.shuffle(tgt_celllist)
     # visual_sample(tgt_celllist[:10])
+    
+    for tag in ['cell_inst', 'cell_inst_named']:
+        with open(f'data_resource/cell_attri/{tag}.json', 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+        new_json_data = defaultdict(list)
+        for pid in tqdm(json_data.keys(), ncols=80):
+            for cellitem in json_data[pid]:
+                cellitem['attr_v'] = map_desc2vec(cellitem['jfsw_desc'],cellitem['sub_class'])
+                new_json_data[pid].append(cellitem)
+        with open(f'data_resource/cell_attri/re_{tag}.json', 'w', encoding='utf-8') as f:
+            json.dump(new_json_data, f, ensure_ascii=False)
+
 
 if __name__ == "__main__":
     main()
-    statistic()
+    # statistic()

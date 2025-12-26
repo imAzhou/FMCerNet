@@ -67,17 +67,12 @@ class AttriLinear(MetaClassifier):
         data_samples = []
         for i, item in enumerate(databatch['data_samples']):
             # 存储该样本所有属性的概率 (已经过 Sigmoid)
-            # pred_prob = [probs[i] for probs in pred_probs_list]
-            # pred_prob_flatten = []
-            # for problist in pred_prob:
-            #     pred_prob_flatten.extend(problist.tolist())
-            # item.pred_prob_flatten = torch.tensor(pred_prob_flatten)
-
-            pred_logits = [logits[i] for logits in pred_logits_list]
+            pred_prob = [probs[i] for probs in pred_probs_list]
             pred_prob_flatten = []
-            for problist in pred_logits:
+            for problist in pred_prob:
                 pred_prob_flatten.extend(problist.tolist())
             item.pred_prob_flatten = torch.tensor(pred_prob_flatten)
+
             item.pred_label = pred_attr_labels[i]
             data_samples.append(item)
 
