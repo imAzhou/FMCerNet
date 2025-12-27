@@ -4,8 +4,8 @@ classes = ['NILM', 'GEC', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 img_dir = f'{data_root}/images'
 dataset_type = 'attricls'    # cls, instance
-attribute_names = ["Nsize","Nstains","Nchromatin","Nregular","cytoplasm","arrangement","polarity","gland"]
-attribute_classes = [6,3,3,2,5,2,2,2]
+attribute_names = ["Nsize","Nstains","Nchromatin","Nregular","cytoplasm","arrangement","polarity","cellType"]
+attribute_classes = [5,3,3,2,5,4,2,7]
 custom_weights = [[1.0 for i in range(num)] for num in attribute_classes]
 # Attr 4: 细胞浆状态
 custom_weights[4] = [1.0, 10.0, 10.0, 10.0, 10.0]

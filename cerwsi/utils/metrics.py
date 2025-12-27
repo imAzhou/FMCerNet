@@ -656,8 +656,10 @@ class AttriMetric(BaseMetric):
 
 class AttriMcMetric(BaseMetric):
 
-    def __init__(self, num_classes, classes, logger_name, num_attributes=10) -> None:
+    def __init__(self, num_classes, classes, logger_name, attribute_names, attribute_classes, num_attributes=10) -> None:
         super(AttriMcMetric, self).__init__()
+        self.attribute_names = attribute_names
+        self.attribute_classes = attribute_classes
         self.num_attributes = num_attributes
         self.num_classes = num_classes
         self.classes = classes
@@ -676,8 +678,8 @@ class AttriMcMetric(BaseMetric):
         for item in data_samples:
             result = dict(
                 pred_attr_label = item['pred_attr_label'].tolist(),   #  (num_attributes, )
-                gt_attr_label = item['attr_v'],   # list: [4,0,2,...]
-                img_mc_gt = item['cls_id'],
+                gt_attr_label = item['attr_v'].tolist(),   # list: [4,0,2,...]
+                img_mc_gt = item['gt_label'],
                 img_mc_pred = item['pred_cls_label'].cpu(),
             )
 
@@ -701,42 +703,70 @@ class AttriMcMetric(BaseMetric):
     
     def compute_attr_metrics(self, results, logger):
         """部分 A: 多属性指标计算 (Instance Acc, Mean Acc, Per-Attr Acc)"""
-        gt_labels = torch.tensor([rs['gt_attr_label'] for rs in results])
-        pred_labels = torch.tensor([rs['pred_attr_label'] for rs in results])
+        # 转换为 numpy 方便 sklearn 处理
+        gt_labels = np.array([rs['gt_attr_label'] for rs in results])    # [N, num_attributes]
+        pred_labels = np.array([rs['pred_attr_label'] for rs in results]) # [N, num_attributes]
 
+
+        eval_results = {}
+        # --- 基础指标计算 (原有逻辑) ---
         correct_mask = (pred_labels == gt_labels)
+        instance_acc = np.all(correct_mask, axis=1).mean()
+        mean_acc = correct_mask.mean()
+        
+        eval_results["attr/instance_acc"] = float(round(instance_acc,4))
+        eval_results["attr/mean_acc"] = float(round(mean_acc,4))
 
-        # 计算指标
-        instance_acc = correct_mask.all(dim=1).float().mean().item()
-        mean_acc = correct_mask.float().mean().item()
-        per_attr_acc = correct_mask.float().mean(dim=0).tolist()
+        # --- 核心优化：针对每个属性计算不平衡指标 ---
+        detailed_log = "\n" + "=="*5 + " Per-Attribute Balanced Metrics " + "=="*5 + "\n"
+        
+        # 记录所有属性的 Macro-F1，用于计算全局平均
+        all_attr_macro_f1 = []
+        for i in range(self.num_attributes):
+            y_true = gt_labels[:, i]
+            y_pred = pred_labels[:, i]
+            num_classes = self.attribute_classes[i]
+            attr_name = self.attribute_names[i]
 
-        # 表格 A: 全局概览
-        table_summary = PrettyTable()
-        table_summary.field_names = ["Attribute Metric", "Value"]
-        table_summary.add_row(["Instance Acc (Exact Match)", f"{instance_acc:.2%}"])
-        table_summary.add_row(["Mean Attribute Acc", f"{mean_acc:.2%}"])
+            # 使用 precision_recall_fscore_support 一次性拿到所有类别的各项指标
+            # average=None 表示返回每一个类别的独立数值
+            precisions, recalls, f1s, support = precision_recall_fscore_support(
+                y_true, 
+                y_pred, 
+                labels=list(range(num_classes)), 
+                average=None, 
+                zero_division=0
+            )
+            
+            # 计算该属性整体的 Macro-F1
+            attr_macro_f1 = np.mean(f1s)
+            all_attr_macro_f1.append(attr_macro_f1)
 
-        # 表格 B: 各属性详情
-        table_details = PrettyTable()
-        header = [f"Attr_{i}" for i in range(self.num_attributes)]
-        table_details.field_names = header
-        table_details.add_row([f"{val:.2%}" for val in per_attr_acc])
+            # --- 打印更详细的表格 ---
+            attr_table = PrettyTable()
+            # 增加 Precision 这一列，帮助判断是否有“误报”
+            attr_table.field_names = ["Class", "Count", "Precision", "Recall", "F1-Score"]
+            
+            for cls_idx in range(num_classes):
+                attr_table.add_row([
+                    f"Class {cls_idx}",
+                    int(support[cls_idx]), # 显示该类在验证集里的实际样本数
+                    f"{precisions[cls_idx]:.2%}",
+                    f"{recalls[cls_idx]:.2%}",
+                    f"{f1s[cls_idx]:.2%}"
+                ])
+            
+            attr_table.add_row(["---", "---", "---", "---", "---"])
+            attr_table.add_row(["Macro_AVG", "-", "-", "-", f"{attr_macro_f1:.2%}"])
+    
+            detailed_log += f"\n[Attribute {attr_name} Detailed Metrics]\n{str(attr_table)}\n"
 
-        # 日志输出
-        log_str = "\n" + "=="*10 + " Attribute Evaluation " + "=="*10 + "\n"
-        log_str += str(table_summary) + "\n"
-        log_str += "Per-Attribute Details:\n"
-        log_str += str(table_details) + "\n"
-        logger.info(log_str)
+        # 3. 计算所有属性的平均 Macro-F1 (作为模型性能的总锚点)
+        mean_macro_f1 = np.mean(all_attr_macro_f1)
+        eval_results["attr/mean_macro_f1"] = float(round(mean_macro_f1,4))
 
-        # 封装返回字典
-        eval_results = {
-            "attr/instance_acc": instance_acc,
-            "attr/mean_acc": mean_acc,
-        }
-        for i, acc in enumerate(per_attr_acc):
-            eval_results[f"attr/acc_attr_{i}"] = acc
+        # --- 输出日志 ---
+        logger.info(detailed_log)
         
         return eval_results
 
