@@ -42,8 +42,9 @@ def check_inst(del_attri, ann):
     
     desc_list = []
     hierarchical_annotation = ann.get('hierarchical_annotation', [])
+    hier_anno = list(set(flatten_list(hierarchical_annotation)))
     clsname_list = []
-    for desc in list(set(flatten_list(hierarchical_annotation))):
+    for desc in hier_anno:
         if desc in RECORD_CLASS.keys():
             clsname_list.append(desc)
         if desc not in del_attri:
@@ -54,20 +55,27 @@ def check_inst(del_attri, ann):
     
     if sub_class in ['NILM', 'GEC']:
         ann['desc_list'] = []
-        return ann
+        return ann, hier_anno
     
     if not desc_list:   # 空描述语的阳性细胞丢弃
         return None
 
+    if '核染色质呈粗颗粒状' in desc_list and sub_class == 'ASC-US':     # 极有可能是标注错误的脏数据 
+        return None
+    if '非典型角化细胞' in desc_list and '不完全挖空化细胞' in desc_list:     # 极有可能是标注错误的脏数据 
+        return None
+    if '非典型角化细胞' in desc_list and '挖空细胞' in desc_list:     # 极有可能是标注错误的脏数据 
+        return None
+    
     ann['desc_list'] = desc_list 
-    return ann
+    return ann, hier_anno
 
 def map_desc2vec(desc_list, sub_class):
     # init value
-    with open('data_resource/cell_attri/config_attri.json', 'r', encoding='utf-8') as f:
+    with open('data_resource/cell_attri/configs/attri_defined.json', 'r', encoding='utf-8') as f:
         attri_cfg = json.load(f)
     attri_vec = [i['default_value'] for i in attri_cfg]
-    with open('data_resource/cell_attri/config_desc.json', 'r', encoding='utf-8') as f:
+    with open('data_resource/cell_attri/configs/desc2attri.json', 'r', encoding='utf-8') as f:
         desc_cfg = json.load(f)
     invalid_items = [item for item in desc_list if item not in desc_cfg]
     assert len(invalid_items) == 0, f"desc_list 中有 {len(invalid_items)} 个不存在的 key: {invalid_items}"
@@ -76,13 +84,12 @@ def map_desc2vec(desc_list, sub_class):
         desc_list, reverse=True,
         key=lambda item: desc_cfg[item]["priority"]
     )
+    sorted_desc_list.append(sub_class)
     for desc in sorted_desc_list:
         update_idx = desc_cfg[desc]['update_idx']
         update_value = desc_cfg[desc]['update_value']
         for idx,value in zip(update_idx, update_value):
             attri_vec[idx] = value
-    gland_flag = 0 if sub_class in ['GEC', 'AGC'] else 1
-    attri_vec[-1] = gland_flag
     return attri_vec
 
 def main():
@@ -102,9 +109,10 @@ def main():
         patientId = row.patientId
         annos = read_json_anno(row.anno_path)
         for ann_ in annos:
-            ann = check_inst(del_attri, ann_)
-            if ann is None:
+            check_res = check_inst(del_attri, ann_)
+            if check_res is None:
                 continue
+            ann,hier_anno = check_res
             sub_class = ann.get('sub_class')
             region = ann.get('region')
             x,y = region['x'],region['y']
@@ -119,6 +127,7 @@ def main():
                 'bbox': [x,y,x+w,y+h],
                 'area': w*h,
                 'jfsw_desc': desc_list,
+                'hier_anno': hier_anno,
                 'attr_v': attr_v
             })
     

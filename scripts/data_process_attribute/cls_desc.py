@@ -243,7 +243,7 @@ if __name__ == "__main__":
     tgt_clsname = ['NILM','ASC-US','LSIL','ASC-H','HSIL','GEC','AGC','AGC-FN','AGC-N','AGC-NOS']
     tgt_desc = ["核增大到2.5-3倍", "核增大大于3倍","核浆比大","核增大","异形双核或多核","核轻度深染","核染色质轻度深染","核染色质加深","核染色质呈细颗粒状","核染色质呈粗颗粒状","核膜不规则","胞浆有空泡","不完全挖空化细胞","挖空细胞","非典型角化细胞","葡萄干核型","核异形","核异形性增强","核大小不一","核位上移","失去极向，排列紊乱","羽毛状排列","细胞团呈三维簇团结构","栅栏状排列紊乱","乳头状排列紊乱","菊形团排列","腺腔样排列","细胞的大小形态不一，排列紊乱","核深染拥挤"]
 
-    instance_savepath = 'data_resource/cell_attri/re_cell_inst_named.json'
+    instance_savepath = 'data_resource/cell_attri/cell_inst.json'
     with open(instance_savepath, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
     cell_list = []

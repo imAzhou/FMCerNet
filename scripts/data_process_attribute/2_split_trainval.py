@@ -77,7 +77,7 @@ def main():
 
 
 def statistic():
-    with open('data_resource/cell_attri/config_attri.json', 'r', encoding='utf-8') as f:
+    with open('data_resource/cell_attri/configs/attri_defined.json', 'r', encoding='utf-8') as f:
         attr_config = json.load(f)
     attr_number = [len(i['children']) for i in attr_config]
     out_dir = 'data_resource/cell_attri/statistic_result'
@@ -187,7 +187,7 @@ def statistic():
 def visual_sample():
     save_dir = 'data_resource/cell_attri/sample_imgs'
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
-    with open('data_resource/cell_attri/config_attri.json', 'r', encoding='utf-8') as f:
+    with open('data_resource/cell_attri/configs/attri_defined.json', 'r', encoding='utf-8') as f:
         attr_config = json.load(f)
     with open('data_resource/cell_attri/cell_inst_named.json', 'r', encoding='utf-8') as f:
         json_data = json.load(f)
