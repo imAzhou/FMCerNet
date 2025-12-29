@@ -207,7 +207,11 @@ def save_cls_attri_dist(data, savepath):
 def check_temp(data):
     attrv2clsname = defaultdict(list)
     for item in tqdm(data, ncols=80):
-        attr_v_key = str(item['attr_v'])
+        new_attrv = item['attr_v'][:-1]
+        sub_class = item['sub_class']
+        gland_flag = 0 if sub_class in ['AGC', 'GEC'] else 1
+        new_attrv.append(gland_flag)
+        attr_v_key = str(new_attrv)
         attrv2clsname[attr_v_key].append(item)
     conflict_cnt = 0
     include_cell_cnt = 0

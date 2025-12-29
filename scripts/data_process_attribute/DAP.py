@@ -2,6 +2,7 @@ import json
 import pickle
 import numpy as np
 from sklearn.metrics import classification_report, confusion_matrix
+from scipy.spatial.distance import cdist
 from prettytable import PrettyTable
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -119,70 +120,75 @@ def TSNE_plot(y_true, X, classes, save_path):
     
     print(f"t-SNE 图像已保存至: {save_path}")
 
-
-def DAP_softprob(X_prob, cls_attr_dist, classes):
+def DAP(X_prob, cls_attr_dist, classes, attribute_dims=[5,3,3,2,5,4,2,2]):
     """
-    基于属性概率分布和类别-属性映射规则，利用最大似然估计预测最终类别。
+    Distance-based Attribute Prediction (DAP) - 修正版
     
     Args:
-        X_prob (np.ndarray): 形状为 (N_samples, 25) 的扁平化概率矩阵。
-                             每一行是一个样本所有属性预测概率的拼接。
-        cls_attr_dist (dict): 类别到属性合法索引的映射表。
-                              格式: {'NILM': [[0], [0], ...], 'ASC-US': [[0,1], ...]}
-        classes (list): 类别名称列表，用于将索引映射回类别名或确定输出顺序。
+        X_prob: (N, 26) 模型的预测概率向量
+        cls_attr_dist: 字典，格式 {'NILM': [(k_val, attr_indices), ...], ...}
+                       其中元组的第二个元素 attr_indices 才是长度为8的属性列表
+        classes: 类别名称列表
+        attribute_dims: 每个属性头的类别数量列表
         
     Returns:
-        y_pred (np.ndarray): 形状为 (N_samples, ) 的整数数组，表示预测类别的索引。
+        y_pred: (N,) 预测的类别索引
     """
     
-    # 2. 计算每个属性在 X_prob 中的切片索引
-    # 结果类似: [0, 6, 9, 12, 14, 19, 21, 23, 25]
-    slice_indices = np.cumsum([0] + attribute_classes)
-    n_samples = X_prob.shape[0]
-    n_classes = len(classes)
+    # 1. 准备 One-Hot 映射所需的 Offset
+    # offsets = [0, 5, 8, 11, 13, 18, 22, 24]
+    offsets = np.cumsum([0] + attribute_dims[:-1])
+    total_dim = sum(attribute_dims) # 26
     
-    # 初始化得分矩阵 (样本数 x 类别数)
-    # scores[i, c] 表示第 i 个样本属于第 c 个类别的对数概率得分
-    scores = np.zeros((n_samples, n_classes))
-    epsilon = 1e-10 # 防止 log(0)
+    # 2. 构建属性原型库
+    prototypes = []      # 存放展开后的 One-Hot 向量 (M, 26)
+    proto_labels = []    # 存放对应的类别索引 (M,)
     
-    # 3. 核心计算：按属性遍历（向量化计算所有样本）
-    # 外层循环次数固定为 8 (属性数量)，内层计算全是矩阵操作，速度极快
-    for attr_idx, (start, end) in enumerate(zip(slice_indices[:-1], slice_indices[1:])):
-        
-        # 取出当前属性对应的概率矩阵部分，形状 (N_samples, 当前属性维度)
-        # 例如 attr_0: (N, 6)
-        curr_attr_probs = X_prob[:, start:end]
-        
-        # 遍历每个目标类别，计算该属性对该类别的贡献
-        for cls_idx, cls_name in enumerate(classes):
-            # 获取该类别在该属性下的合法索引列表 (例如 ASC-US 在 attr_4 是 [0, 2, 4])
-            valid_indices = cls_attr_dist[cls_name][attr_idx]
+    for class_idx, class_name in enumerate(classes):
+        if class_name not in cls_attr_dist:
+            continue
             
-            # --- 关键步骤 ---
-            # 1. 提取合法索引对应的概率列
-            # 2. 按行求和 (sum(axis=1))，得到 P(Attr_i is Valid | Class_c)
-            # 结果形状: (N_samples, )
-            prob_sum = np.sum(curr_attr_probs[:, valid_indices], axis=1)
+        combinations = cls_attr_dist[class_name]
+        # attr_indices: 长度为8的属性索引列表 -> 用这个构建向量
+        for attr_indices in combinations:
+            # 初始化全0向量
+            vec = np.zeros(total_dim)
+            # 将长度为8的 indices 转为长度为26的 one-hot
+            # attr_indices 类似 [0, 2, 1, 0, 4, 3, 1, 1]
+            for i, attr_val in enumerate(attr_indices):
+                # 加上偏移量，定位到在26维向量中的绝对位置
+                idx = int(offsets[i] + attr_val)
+                vec[idx] = 1.0
             
-            # 3. 取对数并累加到总分中
-            # log(P1 * P2 * ...) = log(P1) + log(P2) + ...
-            scores[:, cls_idx] += np.log(prob_sum + epsilon)
+            prototypes.append(vec)
+            proto_labels.append(class_idx)
             
-    # 4. 取最大得分对应的类别索引
-    y_pred = np.argmax(scores, axis=1)
+    # 转为 numpy 数组
+    prototypes = np.array(prototypes)     # (M, 26)
+    proto_labels = np.array(proto_labels) # (M,)
+    
+    # 3. 计算相似度/距离
+    # 方法 A: 欧氏距离 (距离越小越好)
+    # dists = cdist(X_prob, prototypes, metric='euclidean')
+    # best_match_indices = np.argmin(dists, axis=1)
+    
+    # 方法 B: 点积相似度 (如果你的 X_prob 已经经过 Softmax，点积通常效果也很好且更快)
+    scores = np.dot(X_prob, prototypes.T) 
+    best_match_indices = np.argmax(scores, axis=1)
+    
+    # 4. 映射回类别
+    y_pred = proto_labels[best_match_indices]
     
     return y_pred
 
 if __name__ == "__main__":
     classes = ['NILM', 'GEC', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
-    attribute_classes = [6,3,3,2,5,2,2,2]
-    # cls_attr_dist: dict(clsname1=[[0, 1], ..., [0, 2, 4], [0], [1]], clsname2=[...],)
-    with open('data_resource/cell_attri/configs/cls_attri_dist.json', 'r', encoding='utf-8') as f:
+    attribute_classes = [5,3,3,2,5,4,2,2]
+    # cls_attr_dist: dict(clsname1=[(K,8)], clsname2=[...],)
+    with open('data_resource/cell_attri/configs/cls_attrset.json', 'r', encoding='utf-8') as f:
         cls_attr_dist = json.load(f)
     
-    log_dir = 'log/attri_cls/sigmoid_lora/2025_12_25_13_10_47'
-    # log_dir = 'log/attri_cls/softmax_lora/2025_12_25_15_35_42'
+    log_dir = 'log/attri_cls/softmax_lora/2025_12_27_15_12_31'
     with open(f"{log_dir}/pred_result.pkl", "rb") as f:
         pred_result = pickle.load(f)
     # X_prob: (len(pred_result), (sum(attribute_classes)))
@@ -190,6 +196,7 @@ if __name__ == "__main__":
     # y_true: (len(pred_result), )
     y_true = np.array([sample.gt_label.cpu().numpy() for sample in pred_result])
     # y_pred: (len(pred_result), )
-    y_pred = DAP_softprob(X_prob, cls_attr_dist, classes)
+    y_pred = DAP(X_prob, cls_attr_dist, classes)
     print_report_table(y_true, y_pred, classes)
     print_confusion_matrix_table(y_true, y_pred, classes)
+
