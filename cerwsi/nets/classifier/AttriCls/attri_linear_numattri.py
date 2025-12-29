@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from ..meta_classifier import MetaClassifier
-from cerwsi.utils import build_evaluator, AttriMcMetric
+from cerwsi.utils import build_evaluator, AttriMetric, AttriMcMetric
 import torch.nn.functional as F
 
 class Mlp(nn.Module):
@@ -34,10 +34,16 @@ class AttriLinear(MetaClassifier):
         self.attribute_classes = args.attribute_classes 
         self.num_attributes = len(self.attribute_classes)
         
-        evaluator = build_evaluator([AttriMcMetric(
-            num_classes = args.num_classes,
-            classes = args.classes,
-            logger_name = args.logger_name,
+        # evaluator = build_evaluator([AttriMcMetric(
+        #     num_classes = args.num_classes,
+        #     classes = args.classes,
+        #     logger_name = args.logger_name,
+        #     attribute_names = args.attribute_names,
+        #     attribute_classes = self.attribute_classes,
+        #     num_attributes = self.num_attributes,
+        # )])
+        evaluator = build_evaluator([AttriMetric(
+            args.logger_name,
             attribute_names = args.attribute_names,
             attribute_classes = self.attribute_classes,
             num_attributes = self.num_attributes,
@@ -113,6 +119,24 @@ class AttriLinear(MetaClassifier):
         loss_dict['loss'] = total_loss.item()
         return total_loss, loss_dict
     
+    def set_pred(self, inputs, databatch):
+        pred_logits_list = self.calc_logits(inputs)
+        # 4. 对每个属性分别取 argmax,结果拼接成 (bs, num_attributes)
+        pred_labels = torch.stack([torch.argmax(logits, dim=1) for logits in pred_logits_list], dim=1)
+        
+        data_samples = []
+        for i, item in enumerate(databatch['data_samples']):
+            # 存储该样本所有属性的 logits (可选: 合并或保持 list)
+            pred_logits = [logits[i] for logits in pred_logits_list]    # 每个样本在 K 个属性上 M 个类别的 logit值：[[.....],[..],[...]]
+            pred_prob_flatten = []
+            for logitlist in pred_logits:
+                pred_prob_flatten.extend(F.softmax(logitlist, dim=0).tolist())
+            item.pred_prob_flatten = torch.tensor(pred_prob_flatten)    # tensor: (sum(self.attribute_classes),)
+            item.pred_label = pred_labels[i]
+            data_samples.append(item)
+
+        return data_samples
+
     # def set_pred(self, inputs, databatch):
     #     pred_logits_list = self.calc_logits(inputs)
     #     # 4. 对每个属性分别取 argmax,结果拼接成 (bs, num_attributes)
@@ -126,27 +150,9 @@ class AttriLinear(MetaClassifier):
     #         for logitlist in pred_logits:
     #             pred_prob_flatten.extend(F.softmax(logitlist).tolist())
     #         item.pred_prob_flatten = torch.tensor(pred_prob_flatten)    # tensor: (sum(self.attribute_classes),)
-    #         item.pred_label = pred_labels[i]
+    #         item.pred_attr_label = pred_labels[i]
+    #         item.pred_cls_label = pred_labels[i][-1]
     #         data_samples.append(item)
 
     #     return data_samples
-
-    def set_pred(self, inputs, databatch):
-        pred_logits_list = self.calc_logits(inputs)
-        # 4. 对每个属性分别取 argmax,结果拼接成 (bs, num_attributes)
-        pred_labels = torch.stack([torch.argmax(logits, dim=1) for logits in pred_logits_list], dim=1)
-        
-        data_samples = []
-        for i, item in enumerate(databatch['data_samples']):
-            # 存储该样本所有属性的 logits (可选: 合并或保持 list)
-            pred_logits = [logits[i] for logits in pred_logits_list]    # 每个样本在 K 个属性上 M 个类别的 logit值：[[.....],[..],[...]]
-            pred_prob_flatten = []
-            for logitlist in pred_logits:
-                pred_prob_flatten.extend(F.softmax(logitlist).tolist())
-            item.pred_prob_flatten = torch.tensor(pred_prob_flatten)    # tensor: (sum(self.attribute_classes),)
-            item.pred_attr_label = pred_labels[i]
-            item.pred_cls_label = pred_labels[i][-1]
-            data_samples.append(item)
-
-        return data_samples
     

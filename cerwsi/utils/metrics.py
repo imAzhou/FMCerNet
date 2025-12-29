@@ -831,12 +831,12 @@ class AttriMcMetric(BaseMetric):
 
         # 封装返回字典
         eval_results = {
-            "cls/macro_precision": precision.mean().item(),
-            "cls/macro_recall": recall.mean().item(),
-            "cls/macro_f1": f1.mean().item(),
+            "cls/macro_precision": round(precision.mean().item(),4),
+            "cls/macro_recall": round(recall.mean().item(), 4),
+            "cls/macro_f1": round(f1.mean().item(), 4),
         }
         # 可选：记录每个类的 F1
         for i, name in enumerate(class_names):
-            eval_results[f"cls/f1_{name}"] = f1[i].item()
+            eval_results[f"cls/f1_{name}"] = round(f1[i].item(), 4)
 
         return eval_results
