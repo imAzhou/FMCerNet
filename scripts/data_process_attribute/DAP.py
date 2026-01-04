@@ -188,7 +188,7 @@ if __name__ == "__main__":
     with open('data_resource/cell_attri/configs/cls_attrset.json', 'r', encoding='utf-8') as f:
         cls_attr_dist = json.load(f)
     
-    log_dir = 'log/attri_cls/softmax_lora/2025_12_27_15_12_31'
+    log_dir = 'log/attri_cls/softmax_lora/2025_12_29_18_10_09'
     with open(f"{log_dir}/pred_result.pkl", "rb") as f:
         pred_result = pickle.load(f)
     # X_prob: (len(pred_result), (sum(attribute_classes)))

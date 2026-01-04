@@ -3,6 +3,7 @@ data_root = 'data_resource/cell_attri/cell_inst'
 classes = ['NILM', 'GEC', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 img_dir = f'{data_root}/images'
+attrset_jsonpath = 'data_resource/cell_attri/configs/cls_attrset.json'
 dataset_type = 'attricls'    # cls, instance
 attribute_names = ["Nsize","Nstains","Nchromatin","Nregular","cytoplasm","arrangement","polarity","cellType"]
 attribute_classes = [5,3,3,2,5,4,2,2]

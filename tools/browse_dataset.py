@@ -83,8 +83,8 @@ def main():
             prefix = data_sample.extra_info['prefix']
             # if prefix != 'partial_pos':
             #     continue
-            if patientId != 'ZY_ONLINE_1_1467':
-                continue
+            # if patientId != 'ZY_ONLINE_1_1467':
+            #     continue
             # if filename != 'JFSW_2_1630_1941810727723_3.png':
             #     continue
             if data_sample.diagnose == 0:
@@ -113,6 +113,6 @@ if __name__ == '__main__':
 '''
 python tools/browse_dataset.py \
     configs/dataset/mmdet/l_cerscanv1_dataset.py \
-    statistic_results/visual_results/gt_1600_0924 \
+    statistic_results/visual_results/gt_1200 \
     --vis_batch_nums 50
 '''

@@ -11,6 +11,9 @@ class AttriDataset(Dataset):
         
         self.img_dir = cfg.img_dir
         self.classes = cfg.classes
+        attrset_jsonpath = cfg.attrset_jsonpath
+        with open(attrset_jsonpath, 'r', encoding='utf-8') as f:
+            self.cls_attr_dist = json.load(f)
         self.transform = Compose(transform)
 
     def __len__(self):
@@ -21,6 +24,7 @@ class AttriDataset(Dataset):
         output = self.transform(dict(
             img_path = f'{self.img_dir}/{cell_info["filename"]}'
         ))
+        output['data_samples'].cls_attr_dist = self.cls_attr_dist
         output['data_samples'].attr_v = torch.tensor(cell_info["attr_v"], dtype=torch.long)
         output['data_samples'].sub_class = cell_info["sub_class"]
         output['data_samples'].gt_label = torch.tensor(self.classes.index(cell_info["sub_class"]))
