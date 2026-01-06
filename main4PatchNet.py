@@ -143,9 +143,9 @@ l_cerscanv1_dataset
 cdetector_ws400
 hicervix_dataset
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchNet.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12345 main4PatchNet.py \
     configs/dataset/mmpretrain/jfsw_attri_dataset.py \
     configs/model/attri_cls.py \
     configs/strategy_patch.py \
-    --record_save_dir log/attri_cls/softmax_lora
+    --record_save_dir log/attri_cls/hap_lora
 '''
