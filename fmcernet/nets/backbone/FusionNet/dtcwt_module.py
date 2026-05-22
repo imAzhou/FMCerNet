@@ -1,11 +1,9 @@
 import torch
 import torch.nn as nn
-from functools import partial
 import math
-import torch.nn.functional as F
 from typing import Tuple
 from timm.layers import trunc_normal_
-from pytorch_wavelets import DTCWTForward, DTCWTInverse
+from pytorch_wavelets import DTCWTForward
 
 class PatchEmbed(nn.Module):
     """
@@ -35,17 +33,74 @@ class PatchEmbed(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.proj(x)
-        _,_,H,W = x.shape
-        # B C H W -> B H*W C
-        x = x.flatten(2).transpose(1, 2)
-        return x,H,W
+        return self.proj(x)
 
 
-class DownSamples(nn.Module):
+class OrientationAttention(nn.Module):
+    def __init__(self, channels, num_orientations=6):
+        super().__init__()
+        self.channels = channels
+        self.num_orientations = num_orientations
+        self.weight_proj = nn.Conv2d(channels * num_orientations, num_orientations, kernel_size=1)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, hf_mag):
+        B, C, O, H, W = hf_mag.shape
+        assert C == self.channels
+        assert O == self.num_orientations
+        orientation_input = hf_mag.reshape(B, C * O, H, W)
+        orientation_weight = torch.softmax(self.weight_proj(orientation_input), dim=1)
+        hf_summary = (hf_mag * orientation_weight.unsqueeze(1)).sum(dim=2)
+        return hf_summary
+
+class FrequencyRefineBlock(nn.Module):
+    def __init__(self, in_channels, channels):
+        super().__init__()
+        self.proj_in = nn.Conv2d(in_channels, channels, kernel_size=1)
+        self.act1 = nn.GELU()
+        self.dwconv = nn.Conv2d(channels, channels, kernel_size=3, padding=1, groups=channels)
+        self.act2 = nn.GELU()
+        self.proj_out = nn.Conv2d(channels, channels, kernel_size=1)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+    
+    def forward(self, x):
+        shortcut = x
+        x = self.proj_in(x)
+        x = self.act1(x)
+        x = self.dwconv(x)
+        x = self.act2(x)
+        x = self.proj_out(x)
+        if shortcut.shape == x.shape:
+            x = x + shortcut
+        return x
+
+class TokenProjector(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.pool = nn.AvgPool2d(kernel_size=4, stride=4)
+        self.pool = nn.AvgPool2d(kernel_size=2, stride=2)
         self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         self.norm = nn.LayerNorm(out_channels)
         self.apply(self._init_weights)
@@ -72,114 +127,26 @@ class DownSamples(nn.Module):
         x = self.norm(x)
         return x
 
-class SVT_channel_mixing(nn.Module):
-    def __init__(self, dim, featlen):
-        super().__init__()
-
-        self.hidden_size = dim
-        self.num_blocks = 4 
-        self.block_size = self.hidden_size // self.num_blocks
-        assert self.hidden_size % self.num_blocks == 0
-        self.complex_weight_ll = nn.Parameter(torch.randn(dim, featlen, featlen, dtype=torch.float32) * 0.02)
-        self.complex_weight_lh_1 = nn.Parameter(torch.randn(2, self.num_blocks, self.block_size, self.block_size, dtype=torch.float32) * 0.02)
-        self.complex_weight_lh_2 = nn.Parameter(torch.randn(2, self.num_blocks, self.block_size, self.block_size, dtype=torch.float32) * 0.02)
-        self.complex_weight_lh_b1 = nn.Parameter(torch.randn(2, self.num_blocks, self.block_size,  dtype=torch.float32) * 0.02)
-        self.complex_weight_lh_b2 = nn.Parameter(torch.randn(2, self.num_blocks, self.block_size,  dtype=torch.float32) * 0.02)
-
-        self.xfm = DTCWTForward(J=1, biort='near_sym_b', qshift='qshift_b')
-        self.ifm = DTCWTInverse(biort='near_sym_b', qshift='qshift_b')
-        self.softshrink = 0.0 
-
-    def multiply(self, input, weights):
-        return torch.einsum('...bd,bdk->...bk', input, weights)
-
-    def forward(self, x, H, W):
-        B, N, C = x.shape 
-        x = x.view(B, H, W, C)
-        x = torch.permute(x, (0, 3, 1, 2))
-        B, C, H, W = x.shape 
-        x = x.to(torch.float32) 
-        
-        '''
-        xl: (B, C, H, W)
-        xh: [(B, C, 6, H//2, W//2, 2)]
-        '''
-        xl,xh = self.xfm(x)
-        xl = xl * self.complex_weight_ll
-
-        xh[0] = torch.permute(xh[0], (5, 0, 2, 3, 4, 1))
-        xh[0] = xh[0].reshape(xh[0].shape[0], xh[0].shape[1], xh[0].shape[2], xh[0].shape[3], xh[0].shape[4], self.num_blocks, self.block_size)
-        
-        x_real = xh[0][0]
-        x_imag = xh[0][1]
-        
-        x_real_1 = F.relu(self.multiply(x_real, self.complex_weight_lh_1[0]) - self.multiply(x_imag, self.complex_weight_lh_1[1]) + self.complex_weight_lh_b1[0])
-        x_imag_1 = F.relu(self.multiply(x_real, self.complex_weight_lh_1[1]) + self.multiply(x_imag, self.complex_weight_lh_1[0]) + self.complex_weight_lh_b1[1])
-        
-        x_real_2 = self.multiply(x_real_1, self.complex_weight_lh_2[0]) - self.multiply(x_imag_1, self.complex_weight_lh_2[1]) + self.complex_weight_lh_b2[0]
-        x_imag_2 = self.multiply(x_real_1, self.complex_weight_lh_2[1]) + self.multiply(x_imag_1, self.complex_weight_lh_2[0]) + self.complex_weight_lh_b2[1]
-
-        xh[0] = torch.stack([x_real_2, x_imag_2], dim=-1).float()
-        xh[0] = F.softshrink(xh[0], lambd=self.softshrink) if self.softshrink else xh[0]
-        xh[0] = xh[0].reshape(B, xh[0].shape[1], xh[0].shape[2], xh[0].shape[3], self.hidden_size, xh[0].shape[6])
-        xh[0] = torch.permute(xh[0], (0, 4, 1, 2, 3, 5))   # (B, C, 6, H, W, 2), 6: 六个方向，2: 实部+虚部
-        # save_wavelet_vis(xh[0][0], save_dir="statistic_results/visual_results", reduce="max")
-
-        x = self.ifm((xl,xh))   # (B, C, H, W)
-        x = torch.permute(x, (0, 2, 3, 1))   # (B, H, W, C)
-        x = x.reshape(B, N, C)  # (B, H*W, C)
-        return x
-
-class Block(nn.Module):
-    def __init__(self, 
-        dim, 
-        featlen,
-        norm_layer=nn.LayerNorm, 
-    ):
-        super().__init__()
-        self.norm1 = norm_layer(dim)
-        self.attn = SVT_channel_mixing(dim,featlen)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv2d):
-            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-            if m.bias is not None:
-                m.bias.data.zero_()
-    
-    def forward(self, x, H, W):
-        x = x + self.attn(self.norm1(x), H, W)
-        return x
-
 class DTCWTModule(nn.Module):
     def __init__(self, input_size, DTBlock_nums):
         super(DTCWTModule, self).__init__()
         patchsize = 16
         embed_dim = 256
         assert input_size % patchsize == 0
-        featlen = input_size // patchsize
+        assert DTBlock_nums > 0
         self.patch_embed = PatchEmbed(
             kernel_size=(patchsize, patchsize),
             stride=(patchsize, patchsize),
             in_chans=3,
             embed_dim=embed_dim,
         )
-        self.block = nn.ModuleList([Block(
-                dim = embed_dim, 
-                featlen = featlen,
-                norm_layer=partial(nn.LayerNorm, eps=1e-6))
-            for j in range(DTBlock_nums)])
-        self.norm = nn.LayerNorm((embed_dim,), eps=1e-06)
-        self.downsample = DownSamples(embed_dim, 1024)
+        self.xfm = DTCWTForward(J=1, biort='near_sym_b', qshift='qshift_b')
+        self.ll_pool = nn.AvgPool2d(kernel_size=2, stride=2)
+        self.orientation_attention = OrientationAttention(embed_dim, num_orientations=6)
+        encoder_blocks = [FrequencyRefineBlock(embed_dim * 2, embed_dim)]
+        encoder_blocks.extend(FrequencyRefineBlock(embed_dim, embed_dim) for _ in range(DTBlock_nums - 1))
+        self.frequency_encoder = nn.Sequential(*encoder_blocks)
+        self.token_projector = TokenProjector(embed_dim, 1024)
         
         self.apply(self._init_weights)
 
@@ -199,12 +166,18 @@ class DTCWTModule(nn.Module):
                 m.bias.data.zero_()
     
     def forward(self, x: torch.Tensor):
-        B = x.shape[0]
-        # x: B, N, C
-        x, H, W = self.patch_embed(x)
-        for blk in self.block:
-            x = blk(x, H, W)
-        x = self.norm(x)
-        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
-        x = self.downsample(x)  # x: B,N,C
-        return x
+        x = self.patch_embed(x)
+        xl, xh = self.xfm(x)
+        ll_feat = self.ll_pool(xl)
+
+        xh0 = xh[0]
+        real = xh0[..., 0]
+        imag = xh0[..., 1]
+        hf_mag = torch.sqrt(real ** 2 + imag ** 2 + 1e-6)
+        hf_mag = torch.log1p(hf_mag)
+        hf_summary = self.orientation_attention(hf_mag)
+
+        freq_feat = torch.cat([ll_feat, hf_summary], dim=1)
+        freq_feat = self.frequency_encoder(freq_feat)
+        freq_tokens = self.token_projector(freq_feat)
+        return freq_tokens

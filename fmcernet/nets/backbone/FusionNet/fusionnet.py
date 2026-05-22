@@ -37,11 +37,7 @@ class FusionNet(MetaBackbone):
         self.vit_module = vit_large(**vit_kwargs)
         self.dtcwt_module = DTCWTModule(args.input_size, args.backbone_cfg['DTBlock_nums'])
         feat_dim = 1024
-        self.cat_fc = nn.Sequential(
-            nn.Linear(feat_dim*2, feat_dim),
-            nn.ReLU(),
-            nn.Dropout(0.25)
-        )
+        self.freq_gamma = nn.Parameter(torch.zeros(1))
         self.pe_layer = PositionEmbeddingRandom(feat_dim // 2)
         
         self.load_backbone(args.backbone_cfg['backbone_ckpt'])
@@ -72,15 +68,17 @@ class FusionNet(MetaBackbone):
         feat_pe = self.pe_layer((feat_size,feat_size)).unsqueeze(0) # (1,C,H,W)
         feat_pe = feat_pe.flatten(2).permute(0, 2, 1).to(self.device) #  (1, N, C)
 
+        vit_tokens = vit_imgtokens + feat_pe
         dtcwt_output = self.dtcwt_module(x) # Tensor: B,N,C
         
-        img_token_cat = torch.cat([(vit_imgtokens+feat_pe), dtcwt_output], dim=-1)  # (B, N, 2C)
-        img_token_cat = self.cat_fc(img_token_cat)
+        img_token_cat = vit_tokens + self.freq_gamma * dtcwt_output
+        fusion_cls = vit_output['x_norm_clstoken'] + self.freq_gamma * dtcwt_output.mean(dim=1)
 
         output = {
             **vit_output, 
             'dtcwt_output':dtcwt_output,
-            'cat_output': img_token_cat     # Tensor: B,N,C
+            'cat_output': img_token_cat,     # Tensor: B,N,C
+            'fusion_clstoken': fusion_cls,
         }
         return output
 
