@@ -7,9 +7,9 @@ import mmengine.dist as dist
 from mmengine.fileio import dump
 import argparse
 from mmengine.config import Config
-from cerwsi.datasets import load_data
-from cerwsi.nets import PatchNet,SlideNet
-from cerwsi.utils import set_seed, init_distributed_mode, is_main_process
+from fmcernet.datasets import load_data
+from fmcernet.nets import PatchNet,SlideNet
+from fmcernet.utils import set_seed, init_distributed_mode, is_main_process
 
 
 parser = argparse.ArgumentParser()
@@ -39,7 +39,7 @@ def test_net(cfg, model):
         # if idx > 2:
         #     break
         with torch.no_grad():
-            outputs = model(data_batch, 'val')
+            outputs, _, _ = model(data_batch, 'val')
         model.module.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
         
         if args.save_result:
@@ -84,10 +84,9 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
-    log/attri_cls/softmax_lora/2025_12_29_18_10_09/config.py \
-    log/attri_cls/softmax_lora/2025_12_29_18_10_09/checkpoints/best.pth \
-    log/attri_cls/softmax_lora/2025_12_29_18_10_09 \
-    --save_result
+    work_dir/mlc/smartccs/fb_our_decoder/neg1750/config.py \
+    work_dir/mlc/smartccs/fb_our_decoder/neg1750/checkpoints/best.pth \
+    work_dir/mlc/smartccs/fb_our_decoder/neg1750 \
     --val_json annofiles/multilabel_puretrain.json \
     --save_result
 

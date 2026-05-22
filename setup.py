@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='cer_wsi',
+    name='fmcernet',
     version='0.1.0',
     packages = find_packages(),
     install_requires=[],

@@ -7,7 +7,7 @@ net_type = 'patch'
 backbone_type = 'smartccs'
 backbone_cfg = _base_.backbone_cfgdict[backbone_type]
 backbone_cfg['frozen_backbone'] = True
-backbone_cfg['use_peft'] = 'lora'
+backbone_cfg['use_peft'] = None
 
 # classifier
 taskhead_model = 'query2label'

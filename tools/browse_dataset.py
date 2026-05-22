@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 import cv2
-from cerwsi.utils import show_box,show_mask
-from cerwsi.datasets import load_data
+from fmcernet.utils import show_box,show_mask
+from fmcernet.datasets import load_data
 from mmdet.structures import DetDataSample
 
 

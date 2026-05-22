@@ -1,31 +1,31 @@
 
 # strategy
-lr = 0.0001
-weight_decay = 0.0001
-max_epochs = 30
+lr = 5e-5
+weight_decay = 0.001
+max_epochs = 15
 save_each_epoch = False
-val_interval = 5
+val_interval = 1
 
-# optim_wrapper = dict(
-#     optimizer=dict(
-#         type='AdamW',
-#         lr=5e-4 * (8*32) / 512,
-#         weight_decay=0.05,
-#         eps=1e-8,
-#         betas=(0.9, 0.999)),
-#     paramwise_cfg=dict(
-#         norm_decay_mult=0.0,
-#         bias_decay_mult=0.0,
-#         flat_decay_mult=0.0,
-#         custom_keys={
-#             '.absolute_pos_embed': dict(decay_mult=0.0),
-#             '.relative_position_bias_table': dict(decay_mult=0.0)
-#         }),
+# loss_cfg = dict(
+#     type='BCEWithLogitsLoss',
+#     reduction='mean',
 # )
+
+loss_cfg = dict(
+    type='AsymmetricLossOptimized',
+    gamma_neg=2,
+    gamma_pos=0,
+    clip=0.0,
+    eps=1e-5,
+    disable_torch_grad_focal_loss=True,
+    reduction='mean',
+    loss_scale=1.0,
+)
+
 
 optim_wrapper = dict(    
     optimizer=dict(type='AdamW', lr=lr, weight_decay=weight_decay),
-    # clip_grad=dict(max_norm=1.0, norm_type=2),  # 添加梯度裁剪
+    clip_grad=dict(max_norm=1.0, norm_type=2),
     # paramwise_cfg=dict(
     #     custom_keys={'backbone': dict(lr_mult=10., decay_mult=1.0)})
 )
@@ -36,12 +36,19 @@ auto_scale_lr = dict(base_batch_size=8*32)
 
 param_scheduler = [
     dict(
-        type='MultiStepLR',
+        type='LinearLR',
+        start_factor=0.1,
         begin=0,
-        end=max_epochs,
+        end=1,
         by_epoch=True,
-        milestones=[15, 25],
-        gamma=0.1)
+        convert_to_iter_based=True),
+    dict(
+        type='CosineAnnealingLR',
+        T_max=max_epochs - 1,
+        eta_min=1e-6,
+        begin=1,
+        end=max_epochs,
+        by_epoch=True),
 ]
 
 logger_name = 'wscer_patch'

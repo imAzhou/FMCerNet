@@ -10,9 +10,9 @@ from mmengine.config import Config
 import torchvision
 from mmengine.optim import build_optim_wrapper
 torchvision.disable_beta_transforms_warning()
-from cerwsi.nets import PatchNet,SlideNet
-from cerwsi.datasets import load_data
-from cerwsi.utils import set_seed, get_logger, init_distributed_mode, is_main_process,build_param_scheduler, lr_scheduler_step, scale_lr
+from fmcernet.nets import PatchNet,SlideNet
+from fmcernet.datasets import load_data
+from fmcernet.utils import set_seed, get_logger, init_distributed_mode, is_main_process,build_param_scheduler, lr_scheduler_step, scale_lr
 
 
 parser = argparse.ArgumentParser()
@@ -75,6 +75,8 @@ def train_net(cfg, args, model):
         if (epoch+1) % cfg.val_interval == 0 or epoch == 0:
             model.eval()
             pbar = valloader
+            val_loss_stat = torch.zeros(2, device=model.module.device)
+            val_loss_dict_stats = {}
             if is_main_process():
                 logger.info(f'Val Epoch {epoch + 1}/{cfg.max_epochs}')
                 pbar = tqdm(valloader, ncols=80)
@@ -83,12 +85,37 @@ def train_net(cfg, args, model):
                 # if idx > 2:
                 #     break
                 with torch.no_grad():
-                    outputs = model(data_batch, 'val')
+                    outputs, val_loss, val_loss_dict = model(data_batch, 'val')
+                batch_size = len(data_batch['data_samples'])
+                val_loss_stat[0] += val_loss.detach() * batch_size
+                val_loss_stat[1] += batch_size
+                for loss_name, loss_value in val_loss_dict.items():
+                    if loss_name not in val_loss_dict_stats:
+                        val_loss_dict_stats[loss_name] = torch.zeros(2, device=model.module.device)
+                    if torch.is_tensor(loss_value):
+                        loss_value = loss_value.detach().to(model.module.device)
+                    else:
+                        loss_value = torch.tensor(float(loss_value), device=model.module.device)
+                    val_loss_dict_stats[loss_name][0] += loss_value * batch_size
+                    val_loss_dict_stats[loss_name][1] += batch_size
                 model.module.taskhead.evaluator.process(data_samples=outputs, data_batch=None)
 
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                torch.distributed.all_reduce(val_loss_stat)
+                for loss_name in sorted(val_loss_dict_stats):
+                    torch.distributed.all_reduce(val_loss_dict_stats[loss_name])
+            val_loss = val_loss_stat[0] / val_loss_stat[1].clamp(min=1)
+            val_loss_dict = {
+                loss_name: stat[0] / stat[1].clamp(min=1)
+                for loss_name, stat in val_loss_dict_stats.items()
+            }
             metrics = model.module.taskhead.evaluator.evaluate(len(valloader.dataset))
             if is_main_process():
                 pbar.close()
+                print_str = f'Val loss: {val_loss.item():.4f}'
+                for loss_name, loss_value in val_loss_dict.items():
+                    print_str += f', {loss_name}:{loss_value.item():.6f}'
+                logger.info(print_str)
                 # print(metrics)
                 if cfg.save_each_epoch:
                     torch.save(model.module.state_dict(), f'{files_save_dir}/checkpoints/epoch_{epoch}.pth')
@@ -133,11 +160,11 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12345 main4PatchNet.py \
-    configs/dataset/mmpretrain/jfsw_mc_dataset.py \
-    configs/model/mc_linear.py \
+CUDA_VISIBLE_DEVICES=5 torchrun  --nproc_per_node=1 --master_port=12340 main4PatchNet.py \
+    configs/dataset/l_cerscan_ws800.py \
+    configs/model/wscernet.py \
     configs/strategy_patch.py \
-    --record_save_dir log/attri_cls/cell_mc
+    --record_save_dir work_dir/debug
     
 l_cerscanv1_dataset
 cdetector_ws400

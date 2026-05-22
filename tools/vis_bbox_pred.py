@@ -8,9 +8,9 @@ import math
 import torch.nn.functional as F
 import argparse
 from mmengine.config import Config
-from cerwsi.datasets import load_data
-from cerwsi.nets import PatchClsNet
-from cerwsi.utils import set_seed, init_distributed_mode, is_main_process
+from fmcernet.datasets import load_data
+from fmcernet.nets import PatchClsNet
+from fmcernet.utils import set_seed, init_distributed_mode, is_main_process
 import matplotlib.patches as mpatches
 from PIL import Image
 import matplotlib.pyplot as plt
@@ -115,7 +115,7 @@ def test_net(cfg, model):
         if idx > 5:
             break
         with torch.no_grad():
-            outputs = model(data_batch, 'val')
+            outputs, _, _ = model(data_batch, 'val')
         
         for bidx in range(len(outputs['inputs'])):
             datasample = outputs['data_samples'][bidx]

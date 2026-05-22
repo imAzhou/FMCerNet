@@ -3,8 +3,9 @@ torchvision==0.22.1
 torchmetrics==1.8.1
 xformers==0.0.31.post1
 tqdm==4.67.1
-transformers==4.51.3
+transformers==4.56.2
 timm==1.0.19
+safetensors==0.5.3
 mmcv==2.2.0
 mmdet==3.3.0
 mmpretrain==1.2.0

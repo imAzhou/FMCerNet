@@ -5,7 +5,7 @@ from tqdm import tqdm
 import numpy as np
 import json
 from prettytable import PrettyTable
-from cerwsi.utils import calculate_metrics,print_confusion_matrix
+from fmcernet.utils import calculate_metrics,print_confusion_matrix
 from sklearn.metrics import classification_report
 
 CLSMAP = {

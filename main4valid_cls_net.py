@@ -11,8 +11,8 @@ import numpy as np
 from math import ceil
 import argparse
 from mmengine.config import Config
-from cerwsi.nets import ValidClsNet
-from cerwsi.utils import (KFBSlide, set_seed,
+from fmcernet.nets import ValidClsNet
+from fmcernet.utils import (KFBSlide, set_seed,
                           load_cls_dataset,get_logger,get_train_strategy,build_evaluator)
 from mmpretrain.structures import DataSample
 import warnings

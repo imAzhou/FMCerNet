@@ -1,12 +1,8 @@
 .vscode/
 .dist_test/
 checkpoints/
-before_0103_log/
-log/
-statistic_results/
 data_resource/
-predict_results/
+work_dir/
 model_structure/
-cer_wsi.egg-info/
+fmcernet.egg-info/
 **/__pycache__
-cj_temporary/
