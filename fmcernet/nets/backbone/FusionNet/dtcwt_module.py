@@ -61,6 +61,7 @@ class OrientationAttention(nn.Module):
         hf_summary = (hf_mag * orientation_weight.unsqueeze(1)).sum(dim=2)
         return hf_summary
 
+
 class FrequencyRefineBlock(nn.Module):
     def __init__(self, in_channels, channels):
         super().__init__()
@@ -140,10 +141,9 @@ class DTCWTModule(nn.Module):
             in_chans=3,
             embed_dim=embed_dim,
         )
-        self.xfm = DTCWTForward(J=1, biort='near_sym_b', qshift='qshift_b')
-        self.ll_pool = nn.AvgPool2d(kernel_size=2, stride=2)
+        self.xfm = DTCWTForward(J=2, biort='near_sym_b', qshift='qshift_b')
         self.orientation_attention = OrientationAttention(embed_dim, num_orientations=6)
-        encoder_blocks = [FrequencyRefineBlock(embed_dim * 2, embed_dim)]
+        encoder_blocks = [FrequencyRefineBlock(embed_dim * 3, embed_dim)]
         encoder_blocks.extend(FrequencyRefineBlock(embed_dim, embed_dim) for _ in range(DTBlock_nums - 1))
         self.frequency_encoder = nn.Sequential(*encoder_blocks)
         self.token_projector = TokenProjector(embed_dim, 1024)
@@ -164,20 +164,33 @@ class DTCWTModule(nn.Module):
             m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
             if m.bias is not None:
                 m.bias.data.zero_()
+
+    def build_high_frequency_magnitude(self, xh):
+        real = xh[..., 0]
+        imag = xh[..., 1]
+        mag = torch.sqrt(real ** 2 + imag ** 2 + 1e-6)
+        return torch.log1p(mag)
     
     def forward(self, x: torch.Tensor):
         x = self.patch_embed(x)
         xl, xh = self.xfm(x)
-        ll_feat = self.ll_pool(xl)
+        ll_feat = xl
 
         xh0 = xh[0]
-        real = xh0[..., 0]
-        imag = xh0[..., 1]
-        hf_mag = torch.sqrt(real ** 2 + imag ** 2 + 1e-6)
-        hf_mag = torch.log1p(hf_mag)
+        hf_mag = self.build_high_frequency_magnitude(xh0)
         hf_summary = self.orientation_attention(hf_mag)
 
-        freq_feat = torch.cat([ll_feat, hf_summary], dim=1)
+        xh1 = xh[1]
+        hf_mag = self.build_high_frequency_magnitude(xh1)
+        hf_summary_l2 = self.orientation_attention(hf_mag)
+        hf_summary_l2 = torch.nn.functional.interpolate(
+            hf_summary_l2,
+            size=hf_summary.shape[-2:],
+            mode='bilinear',
+            align_corners=False,
+        )
+
+        freq_feat = torch.cat([ll_feat, hf_summary, hf_summary_l2], dim=1)
         freq_feat = self.frequency_encoder(freq_feat)
         freq_tokens = self.token_projector(freq_feat)
         return freq_tokens

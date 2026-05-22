@@ -21,6 +21,49 @@ class LayerNorm2d(nn.Module):
         x = self.weight[:, None, None] * x + self.bias[:, None, None]
         return x
 
+
+class ConcatFCFusion(nn.Module):
+    def __init__(self, feat_dim):
+        super().__init__()
+        self.feat_dim = feat_dim
+        self.token_fusion = nn.Linear(feat_dim * 2, feat_dim)
+        self.cls_fusion = nn.Linear(feat_dim * 2, feat_dim)
+        self._init_identity_fusion()
+
+    def _init_identity_fusion(self):
+        for layer in [self.token_fusion, self.cls_fusion]:
+            nn.init.zeros_(layer.weight)
+            nn.init.zeros_(layer.bias)
+            with torch.no_grad():
+                layer.weight[:, :self.feat_dim].copy_(
+                    torch.eye(
+                        self.feat_dim,
+                        dtype=layer.weight.dtype,
+                        device=layer.weight.device,
+                    )
+                )
+                freq_weight = torch.empty(
+                    self.feat_dim,
+                    self.feat_dim,
+                    dtype=layer.weight.dtype,
+                    device=layer.weight.device,
+                )
+                nn.init.normal_(freq_weight, std=0.001)
+                freq_weight.clamp_(min=-0.003, max=0.003)
+                layer.weight[:, self.feat_dim:].copy_(freq_weight)
+
+    def forward(self, vit_tokens, dtcwt_tokens, vit_cls):
+        assert vit_tokens.shape == dtcwt_tokens.shape, \
+            f"Expected matched token shapes, got {tuple(vit_tokens.shape)} and {tuple(dtcwt_tokens.shape)}."
+        assert vit_cls.shape == vit_tokens[:, 0].shape, \
+            f"Expected cls shape {tuple(vit_tokens[:, 0].shape)}, got {tuple(vit_cls.shape)}."
+
+        freq_cls = dtcwt_tokens.mean(dim=1)
+        fused_tokens = self.token_fusion(torch.cat([vit_tokens, dtcwt_tokens], dim=-1))
+        fused_cls = self.cls_fusion(torch.cat([vit_cls, freq_cls], dim=-1))
+        return fused_tokens, fused_cls
+
+
 class FusionNet(MetaBackbone):
     def __init__(self, args):
         super(FusionNet, self).__init__(args)
@@ -37,7 +80,7 @@ class FusionNet(MetaBackbone):
         self.vit_module = vit_large(**vit_kwargs)
         self.dtcwt_module = DTCWTModule(args.input_size, args.backbone_cfg['DTBlock_nums'])
         feat_dim = 1024
-        self.freq_gamma = nn.Parameter(torch.zeros(1))
+        self.feature_fusion = ConcatFCFusion(feat_dim)
         self.pe_layer = PositionEmbeddingRandom(feat_dim // 2)
         
         self.load_backbone(args.backbone_cfg['backbone_ckpt'])
@@ -70,9 +113,11 @@ class FusionNet(MetaBackbone):
 
         vit_tokens = vit_imgtokens + feat_pe
         dtcwt_output = self.dtcwt_module(x) # Tensor: B,N,C
-        
-        img_token_cat = vit_tokens + self.freq_gamma * dtcwt_output
-        fusion_cls = vit_output['x_norm_clstoken'] + self.freq_gamma * dtcwt_output.mean(dim=1)
+        img_token_cat, fusion_cls = self.feature_fusion(
+            vit_tokens,
+            dtcwt_output,
+            vit_output['x_norm_clstoken'],
+        )
 
         output = {
             **vit_output, 
