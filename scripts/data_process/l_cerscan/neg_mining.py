@@ -268,20 +268,51 @@ def select_negatives(collected_results, negative_items, num_clusters, samples_pe
     print("KMeans finished")
 
     rng = np.random.default_rng(seed)
+    target_negative_count = num_clusters * samples_per_cluster
+    if len(negative_items) < target_negative_count:
+        raise ValueError(
+            f"Need {target_negative_count} negatives, got {len(negative_items)} available"
+        )
+
     selected_negative_indices = []
+    selected_negative_set = set()
+    small_cluster_count = 0
+    small_cluster_selected_count = 0
     for cluster_id in range(num_clusters):
         member_indices = np.flatnonzero(cluster_ids == cluster_id)
         if len(member_indices) < samples_per_cluster:
-            raise ValueError(
-                f"Cluster {cluster_id} has {len(member_indices)} samples, "
-                f"less than {samples_per_cluster}"
-            )
-        selected = rng.choice(member_indices, size=samples_per_cluster, replace=False)
-        selected_negative_indices.extend(int(index) for index in selected)
+            selected = member_indices
+            small_cluster_count += 1
+            small_cluster_selected_count += len(member_indices)
+        else:
+            selected = rng.choice(member_indices, size=samples_per_cluster, replace=False)
+        for index in selected:
+            selected_index = int(index)
+            selected_negative_indices.append(selected_index)
+            selected_negative_set.add(selected_index)
 
-    if len(selected_negative_indices) != num_clusters * samples_per_cluster:
+    remaining_needed = target_negative_count - len(selected_negative_indices)
+    if remaining_needed > 0:
+        remaining_indices = [
+            index
+            for index in range(len(negative_items))
+            if index not in selected_negative_set
+        ]
+        if len(remaining_indices) < remaining_needed:
+            raise ValueError(
+                f"Need {remaining_needed} extra negatives, got {len(remaining_indices)} available"
+            )
+        extra_selected = rng.choice(remaining_indices, size=remaining_needed, replace=False)
+        selected_negative_indices.extend(int(index) for index in extra_selected)
+        print(
+            f"{small_cluster_count} clusters had fewer than {samples_per_cluster} samples; "
+            f"selected all {small_cluster_selected_count} samples from them and "
+            f"randomly filled {remaining_needed} extras from other clusters"
+        )
+
+    if len(selected_negative_indices) != target_negative_count:
         raise ValueError(
-            f"Expected {num_clusters * samples_per_cluster} selected negatives, "
+            f"Expected {target_negative_count} selected negatives, "
             f"got {len(selected_negative_indices)}"
         )
     if len(set(selected_negative_indices)) != len(selected_negative_indices):

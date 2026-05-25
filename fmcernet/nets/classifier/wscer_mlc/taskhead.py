@@ -13,12 +13,14 @@ class MLCQuery(nn.Module):
         self,
         num_classes,
         input_embed_dim,
+        key_gate_scale,
         depth: int=2,
         num_heads: int=8,
         mlp_dim: int=2048,
     ) -> None:
         super().__init__()
         self.num_classes = num_classes
+        self.key_gate_scale = key_gate_scale
         proj_dim_1 = input_embed_dim // 2
         self.proj_1 = nn.Sequential(
             nn.Linear(input_embed_dim, proj_dim_1),
@@ -44,15 +46,15 @@ class MLCQuery(nn.Module):
             self.cls_pos_heads.append(nn.Linear(proj_dim_1, 1))
     
     def forward(self, img_tokens, key_gate=None):
-        keys = self.proj_1(img_tokens)  # (bs, num_tokens, C1=512)
-        bs, num_tokens, embed_dim = keys.shape
+        bs, num_tokens, _ = img_tokens.shape
         if key_gate is not None:
             if key_gate.ndim == 1:
                 key_gate = key_gate.unsqueeze(0)
             assert key_gate.shape == (bs, num_tokens), \
                 f"MLC key_gate shape must be {(bs, num_tokens)}, got {tuple(key_gate.shape)}."
-            key_gate = key_gate.to(device=keys.device, dtype=keys.dtype).detach()
-            keys = keys * (1.0 + key_gate.unsqueeze(-1))
+            key_gate = key_gate.to(device=img_tokens.device, dtype=img_tokens.dtype).detach()
+            img_tokens = img_tokens * (1.0 + self.key_gate_scale * key_gate.unsqueeze(-1))
+        keys = self.proj_1(img_tokens)  # (bs, num_tokens, C1=512)
 
         feat_size = int(math.sqrt(num_tokens))
         assert feat_size * feat_size == num_tokens, \
@@ -87,7 +89,7 @@ class WSCerMLC(MetaClassifier):
         self.num_classes = args.num_classes
         self.with_visual_pred_features = getattr(args, 'with_visual_pred_features', True)
         self.binary_branch = CHIEF(input_embed_dim)
-        self.mlc_branch = MLCQuery(args.num_classes, input_embed_dim)
+        self.mlc_branch = MLCQuery(args.num_classes, input_embed_dim, args.key_gate_scale)
         self.use_pos_loss_weight = args.loss_cfg['type'] != 'AsymmetricLossOptimized'
         if self.use_pos_loss_weight:
             self.pos_loss_fn = build_loss(args.loss_cfg, reduction='none')
