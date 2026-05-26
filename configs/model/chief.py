@@ -3,7 +3,8 @@ _base_ = [
 ]
 net_type = 'patch'
 # backbone
-backbone_type = 'smartccs'
+# backbone_type = 'fusionnet'
+backbone_type = 'fusionnet'    # smartccs, cytofm, unicas
 backbone_cfg = _base_.backbone_cfgdict[backbone_type]
 backbone_cfg['frozen_backbone'] = True
 backbone_cfg['use_peft'] = None

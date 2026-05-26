@@ -64,8 +64,10 @@ def main():
     cfg = Config.fromfile(args.config_file)
     cfg.save_result_dir = args.save_dir
     if cfg.net_type == 'patch':
-        cfg.backbone_cfg['backbone_ckpt'] = None
-        cfg.instance_ckpt = None
+        if cfg.backbone_type == 'fusionnet':
+            cfg.backbone_cfg['vit_module_ckpt'] = None
+        else:
+            cfg.backbone_cfg['backbone_ckpt'] = None
         if args.val_json:
             cfg.val_datasets['ann_file'] = args.val_json
         model = PatchNet(cfg).to(device)
@@ -84,10 +86,10 @@ if __name__ == '__main__':
 
 '''
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
-    work_dir/mlc/smartccs/fb_our_decoder/neg1750/config.py \
-    work_dir/mlc/smartccs/fb_our_decoder/neg1750/checkpoints/best.pth \
-    work_dir/mlc/smartccs/fb_our_decoder/neg1750 \
-    --val_json annofiles/multilabel_puretrain.json \
+    work_dir/mlc/ours/ws800/2026_05_25_20_08_13/config.py \
+    work_dir/mlc/ours/ws800/2026_05_25_20_08_13/checkpoints/epoch_8.pth \
+    work_dir/mlc/ours/ws800/2026_05_25_20_08_13 \
+    --val_json annofiles/multilabel_val.json \
     --save_result
 
 log/slide_mc/cell_detector/2025_10_13_05_45_43/config.py

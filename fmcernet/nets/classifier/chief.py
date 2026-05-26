@@ -40,7 +40,7 @@ class CHIEF(MetaClassifier):
         super(CHIEF, self).__init__(evaluator, args)
         
         self.backbone_type = args.backbone_type
-        input_embed_dim = args.backbone_cfg['backbone_output_dim'][-1]
+        input_embed_dim = args.backbone_cfg['backbone_token_output_dim'][-1]
         if input_embed_dim == 384:
             size = [384, 256, 256]
         elif input_embed_dim == 768:

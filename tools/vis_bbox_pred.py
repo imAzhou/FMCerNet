@@ -156,8 +156,10 @@ def main():
     device = torch.device(f'cuda:{os.getenv("LOCAL_RANK")}')
 
     cfg = Config.fromfile(args.config_file)
-    cfg.backbone_cfg['backbone_ckpt'] = None
-    cfg.instance_ckpt = None
+    if cfg.backbone_type == 'fusionnet':
+        cfg.backbone_cfg['vit_module_ckpt'] = None
+    else:
+        cfg.backbone_cfg['backbone_ckpt'] = None
     model = PatchClsNet(cfg).to(device)
     model_without_ddp = model
 

@@ -3,26 +3,24 @@ data_root = 'data_resource/LCerScan/WS1200'
 classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'multicls'    # cls, instance
-train_bs = 32
-val_bs = 32
+train_bs = 128
+val_bs = 128
 input_size = 1024  # 224, 392, 448, 512, 1024
 
 rand_increasing_policies = [
-    dict(type='AutoContrast'),
-    dict(type='Equalize'),
-    dict(type='Rotate', magnitude_key='angle', magnitude_range=(-15, 15), prob=0.5),
-    dict(type='Contrast', magnitude_range=(-0.9, 0.9), prob=0.5),
-    dict(type='Brightness', magnitude_key='magnitude', magnitude_range=(-0.9, 0.9), prob=0.5),
-    dict(type='Sharpness', magnitude_key='magnitude', magnitude_range=(0, 9), prob=0.5),
+    dict(type='AutoContrast', prob=0.3),
+    dict(type='Rotate', magnitude_range=(0, 15), prob=0.5, interpolation='bicubic'),
+    dict(type='Contrast', magnitude_range=(0, 0.3), prob=0.5),
+    dict(type='Brightness', magnitude_range=(0, 0.3), prob=0.5),
+    dict(type='Sharpness', magnitude_range=(0, 0.6), prob=0.5),
+    dict(type='ColorTransform', magnitude_range=(0, 0.2), prob=0.5),
     dict(
         type='Shear',
-        magnitude_key='magnitude',
-        magnitude_range=(-0.9, 0.9),
+        magnitude_range=(0, 0.15),
         direction='horizontal', prob=0.5),
     dict(
         type='Shear',
-        magnitude_key='magnitude',
-        magnitude_range=(-0.9, 0.9),
+        magnitude_range=(0, 0.15),
         direction='vertical', prob=0.5),
 ]
 

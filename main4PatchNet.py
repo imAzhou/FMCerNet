@@ -160,11 +160,11 @@ if __name__ == '__main__':
     main()
 
 '''
-CUDA_VISIBLE_DEVICES=1,2,3,4,5,6,7 torchrun  --nproc_per_node=7 --master_port=12340 main4PatchNet.py \
-    configs/dataset/l_cerscan_ws800.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12340 main4PatchNet.py \
+    configs/dataset/l_cerscan_ws1600.py \
     configs/model/wscernet.py \
     configs/strategy_patch.py \
-    --record_save_dir work_dir/fusionnet_negall
+    --record_save_dir work_dir/mlc/ours/ws1600
     
 l_cerscanv1_dataset
 cdetector_ws400

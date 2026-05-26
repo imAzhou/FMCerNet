@@ -89,7 +89,7 @@ class WSCerMLC(MetaClassifier):
         self.num_classes = args.num_classes
         self.with_visual_pred_features = getattr(args, 'with_visual_pred_features', True)
         self.binary_branch = CHIEF(input_embed_dim)
-        self.mlc_branch = MLCQuery(args.num_classes, input_embed_dim, args.key_gate_scale)
+        self.mlc_branch = MLCQuery(args.num_classes, input_embed_dim, args.key_gate_scale, depth=2)
         self.use_pos_loss_weight = args.loss_cfg['type'] != 'AsymmetricLossOptimized'
         if self.use_pos_loss_weight:
             self.pos_loss_fn = build_loss(args.loss_cfg, reduction='none')

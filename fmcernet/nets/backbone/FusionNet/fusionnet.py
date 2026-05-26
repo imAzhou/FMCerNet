@@ -83,15 +83,19 @@ class FusionNet(MetaBackbone):
         self.feature_fusion = ConcatFCFusion(feat_dim)
         self.pe_layer = PositionEmbeddingRandom(feat_dim // 2)
         
-        self.load_backbone(args.backbone_cfg['backbone_ckpt'])
+        self.load_backbone(args.backbone_cfg['vit_module_ckpt'])
         self.vit_module = self.get_peft_model(self.vit_module)
         self.freeze_backbone(args.backbone_cfg['frozen_backbone'])
 
     def load_backbone(self, ckpt):
         if ckpt is not None:
-            params_weight = torch.load(ckpt, map_location="cpu")
-            load_result = self.load_state_dict(params_weight, strict=False)
-            print('Load backbone FusionNet: ' + str(load_result))
+            params_weight = torch.load(ckpt, map_location="cpu", weights_only=True)["teacher"]
+            state_dict = {}
+            for key, value in params_weight.items():
+                if key.startswith('backbone.'):
+                    state_dict[key[len('backbone.'):]] = value
+            self.vit_module.load_state_dict(state_dict, strict=True)
+            print('Load vit_module FusionNet from: ' + str(ckpt))
 
     def freeze_backbone(self, frozen_backbone):
         '''frozen the vit_module params'''
@@ -126,42 +130,3 @@ class FusionNet(MetaBackbone):
             'fusion_clstoken': fusion_cls,
         }
         return output
-
-def make_pretrain_ckpt():
-    import torch
-    from fmcernet.nets.backbone.FusionNet.fusionnet import FusionNet
-    import argparse
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-    args.input_size = 1024
-    args.backbone_cfg = {
-        'use_peft': None,
-        'frozen_backbone': True,
-        'backbone_ckpt': None,
-        'DTBlock_nums': 3
-    }
-
-    model = FusionNet(args)
-    model_ckpt = {}
-    smartccs_ckpt = torch.load('checkpoints/CCS_vitl_100M.pth', map_location="cpu", weights_only=True)["teacher"]
-    for key,value in smartccs_ckpt.items():
-        if 'backbone' in key:
-            key = '.'.join(key.split('.')[1:])
-            model_ckpt['vit_module.'+key] = value
-    load_result = model.load_state_dict(model_ckpt, strict=False)
-    print(load_result)
-    torch.save(model.state_dict(), f'checkpoints/fusionnet.pth')
-
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-    args.input_size = 1024
-    args.backbone_cfg = {
-        'use_peft': 'lora',
-        'frozen_backbone': True,
-        'backbone_ckpt': None
-    }
-    data = torch.randn((7, 3, 1024, 1024)).cuda()
-    model = FusionNet(args).cuda()
