@@ -33,6 +33,8 @@ class PatchNet(nn.Module):
             return self.train_step(data_batch, optim_wrapper)
         if mode == 'val':
             return self.val_step(data_batch)
+        if mode == 'predict':
+            return self.predict_step(data_batch)
     
     def extract_feature(self, input_x):
         input_x = input_x[:, [2, 1, 0], :, :].to(self.device)   # bgr2rgb
@@ -53,3 +55,8 @@ class PatchNet(nn.Module):
         loss, loss_dict = self.taskhead.calc_loss(feature_emb, databatch)
         databatch = self.taskhead.set_pred(feature_emb, databatch)
         return databatch, loss, loss_dict
+
+    def predict_step(self, databatch):
+        input_x = databatch['inputs']
+        feature_emb = self.extract_feature(input_x)
+        return self.taskhead.set_pred(feature_emb, databatch)

@@ -109,10 +109,10 @@ load_from = 'path/to/checkpoint.pth'
 
 ### 验证集评估
 
-使用 `tools/test_PatchNet.py` 加载训练时保存的 `config.py` 和 checkpoint：
+使用 `test_PatchNet.py` 加载训练时保存的 `config.py` 和 checkpoint：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node=1 --master_port=12347 tools/test_PatchNet.py \
+CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node=1 --master_port=12347 test_PatchNet.py \
   work_dir/mlc/ours/wscernet/config.py \
   work_dir/mlc/ours/wscernet/checkpoints/best.pth \
   work_dir/mlc/ours/wscernet \
@@ -124,16 +124,6 @@ CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node=1 --master_port=12347 tools/tes
 - `--val_json <path>`：覆盖配置里的 `cfg.val_datasets['ann_file']`
 - `--save_result`：保存预测结果到 `<save_dir>/pred_result.pkl`
 
-### 预测可视化
-
-使用 `tools/vis_bbox_pred.py` 保存可视化结果：
-
-```bash
-CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node=1 --master_port=12341 tools/vis_bbox_pred.py \
-  work_dir/mlc/ours/wscernet/config.py \
-  work_dir/mlc/ours/wscernet/checkpoints/best.pth \
-  work_dir/mlc/ours/wscernet/visual_pred
-```
 
 ## 可选 Backbone
 

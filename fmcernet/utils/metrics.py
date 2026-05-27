@@ -1,7 +1,6 @@
-import json
 from sklearn.metrics import (
     roc_curve, auc, precision_recall_fscore_support,
-    accuracy_score, recall_score, f1_score, confusion_matrix,classification_report)
+    accuracy_score, confusion_matrix)
 from prettytable import PrettyTable
 import numpy as np
 import torch

@@ -14,5 +14,6 @@ backbone_cfg['use_peft'] = None     # 'lora', None
 taskhead_model = 'wscer_mlc'
 key_gate_scale = 1.0
 positive_thr = 0.5
-with_visual_pred_features = False
+format_heatmap = False
+format_img_token = False
 eval_prime_score = 'multi-label/f1-score'

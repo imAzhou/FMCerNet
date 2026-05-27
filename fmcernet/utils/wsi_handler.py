@@ -8,7 +8,6 @@ import numpy as np
 import random
 from mmpretrain.structures import DataSample
 from mmdet.structures import DetDataSample
-import openslide
 from .tools import is_bbox_inside
 from .KFBreader.kfbreader import KFBSlide
 
@@ -123,7 +122,7 @@ class WSIHandler:
 
         data_batch['inputs'] = torch.stack(data_batch['inputs'], dim=0)
         with torch.no_grad():
-            outputs = pn_m(data_batch, 'val')
+            outputs = pn_m(data_batch, 'predict')
         for inputInfo, datasample in zip(pn_datapool, outputs):
             pred_clsid = int(datasample.img_prob > self.positive_thr)
             inputInfo['img_prob'] = datasample.img_prob.item()
@@ -147,7 +146,7 @@ class WSIHandler:
                     outputs = pn_m({
                         'inputs': torch.stack(datapool, dim=0),
                         'data_samples': [DataSample() for _ in range(len(datapool))]
-                    }, 'val')
+                    }, 'predict')
                 start_idx = didx-len(datapool)+1
                 for oidx,datasample in enumerate(outputs):
                     tgt_item = valid_list[start_idx + oidx]
@@ -264,4 +263,3 @@ class WSIHandler:
                 sum(p['valid_flag']==1 for p in slide_patchlist),
                 sum(p['valid_flag']==2 for p in slide_patchlist),
             )
-

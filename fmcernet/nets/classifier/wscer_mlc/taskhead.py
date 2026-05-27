@@ -87,7 +87,8 @@ class WSCerMLC(MetaClassifier):
         super(WSCerMLC, self).__init__(evaluator, args)
         input_embed_dim = args.backbone_cfg['backbone_token_output_dim'][-1]
         self.num_classes = args.num_classes
-        self.with_visual_pred_features = getattr(args, 'with_visual_pred_features', True)
+        self.format_heatmap = getattr(args, 'format_heatmap', False)
+        self.format_img_token = getattr(args, 'format_img_token', False)
         self.binary_branch = CHIEF(input_embed_dim)
         self.mlc_branch = MLCQuery(args.num_classes, input_embed_dim, args.key_gate_scale, depth=2)
         self.use_pos_loss_weight = args.loss_cfg['type'] != 'AsymmetricLossOptimized'
@@ -134,43 +135,36 @@ class WSCerMLC(MetaClassifier):
         }
         return loss,loss_dict
 
-    def build_visual_pred_features(self, img_probs, pos_probs, inter_var):
-        heatmap = (self.binary_branch.patch_probs(inter_var))['patch_prob']  # (bs, num_tokens)
+    def build_img_token(self, img_probs, pos_probs, inter_var):
         img_pn_feat = inter_var['img_feat']     # (bs, dim)
         pn_prob_feat = torch.cat([img_probs.unsqueeze(-1),img_pn_feat],dim=1)   # (bs, 1+dim)
-
         img_pos_feat = inter_var['pos_cls_tokens']  # (bs, n_cls, dim)
         pos_prob_feat = torch.cat([pos_probs.unsqueeze(-1),img_pos_feat],dim=2)  # (bs, n_cls, 1+dim)
         img_clstokens = torch.cat([pn_prob_feat.unsqueeze(1),pos_prob_feat],dim=1)     # (bs, 1+n_cls, 1+dim)
 
-        # _,clsid = torch.max(pos_probs, 1)       # (bs, )
-        # img_pos_feat = inter_var['pos_cls_tokens'][torch.arange(bs), clsid]     # (bs, dim)
-        # img_clstokens = torch.cat([img_pn_feat,img_pos_feat],dim=1)     # (bs, dim*2)
-        return heatmap, img_clstokens
+        return img_clstokens
 
     def set_pred(self, inputs, databatch):
         # attn_array: (bs, num_classes, num_tokens)
         pred_logits, inter_var = self.calc_logits(inputs) # (bs, num_classes)
         img_pn_logit = pred_logits[:, 0]
         positive_logits = pred_logits[:, 1:]
-        img_probs = torch.sigmoid(img_pn_logit).squeeze(-1)   # (bs, )
-        bs = len(databatch['data_samples'])
-        if bs == 1:
-            img_probs = img_probs.unsqueeze(0)
+        img_probs = torch.sigmoid(img_pn_logit)   # (bs, )
         pos_probs = torch.sigmoid(positive_logits) # (bs, n_cls)
 
-        visual_pred_features = None
-        if self.with_visual_pred_features:
-            visual_pred_features = self.build_visual_pred_features(img_probs, pos_probs, inter_var)
+        if self.format_heatmap:
+            bs_heatmap = (self.binary_branch.patch_probs(inter_var))['patch_prob']  # (bs, num_tokens)
+        if self.format_img_token:
+            bs_img_token = self.build_img_token(img_probs, pos_probs, inter_var)
 
         data_sampels = []
         for idx, (item, pn_p, pos_p) in enumerate(zip(databatch['data_samples'], img_probs, pos_probs)):
             item.img_prob = pn_p
             item.pos_prob = pos_p
-            if visual_pred_features is not None:
-                heatmap, img_clstokens = visual_pred_features
-                item.attn = heatmap[idx]  # (num_tokens)
-                item.img_token = img_clstokens[idx]
+            if self.format_heatmap:
+                item.attn = bs_heatmap[idx]
+            if self.format_img_token:
+                item.img_token = bs_img_token[idx]
             data_sampels.append(item)
 
         return data_sampels

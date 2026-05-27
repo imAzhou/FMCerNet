@@ -3,7 +3,7 @@
 lr = 5e-5
 weight_decay = 0.001
 max_epochs = 15
-save_each_epoch = False
+save_each_epoch = True
 val_interval = 1
 
 # loss_cfg = dict(

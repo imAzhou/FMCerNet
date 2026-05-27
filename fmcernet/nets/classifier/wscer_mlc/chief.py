@@ -72,10 +72,10 @@ class CHIEF(nn.Module):
         A_raw = inter_var['A_raw']  # A_raw: (bs, num_tokens, 1)
         h = inter_var['token_feats']    # h: (bs, num_tokens, c=512)
         patch_logits = torch.sigmoid(self.classifiers(h))    # h: (bs, num_tokens, 1)
-        patch_prob = torch.sigmoid(A_raw.squeeze()) * patch_logits.squeeze()
+        patch_prob = torch.sigmoid(A_raw.squeeze(-1)) * patch_logits.squeeze(-1)
 
         return {
             'patch_prob': patch_prob,  # A_raw: (bs, num_tokens)
-            'attention_raw': A_raw.squeeze()  # A_raw: (bs, num_tokens)
+            'attention_raw': A_raw.squeeze(-1)  # A_raw: (bs, num_tokens)
         }
     

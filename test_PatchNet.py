@@ -85,10 +85,10 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 tools/test_PatchNet.py \
-    work_dir/mlc/ours/ws800/2026_05_25_20_08_13/config.py \
-    work_dir/mlc/ours/ws800/2026_05_25_20_08_13/checkpoints/epoch_8.pth \
-    work_dir/mlc/ours/ws800/2026_05_25_20_08_13 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12347 test_PatchNet.py \
+    work_dir/mlc/ours/ws800/config.py \
+    work_dir/mlc/ours/ws800/checkpoints/best.pth \
+    work_dir/mlc/ours/ws800 \
     --val_json annofiles/multilabel_val.json \
     --save_result
 
