@@ -62,7 +62,7 @@ class MetaClassifier(nn.Module):
         elif self.backbone_type in ['smartccs', 'cytofm', 'unicas', 'virchow', 'virchow2', 'gpfm', 'genbio-pathfm']:
             cls_token = inputs['x_norm_clstoken']
         elif self.backbone_type == 'fusionnet':
-            cls_token = inputs['fusion_clstoken']
+            cls_token = inputs['cat_output'].mean(dim=1)
         return cls_token
 
     @abstractmethod

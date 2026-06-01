@@ -42,15 +42,6 @@ class OrientationAttention(nn.Module):
         self.channels = channels
         self.num_orientations = num_orientations
         self.weight_proj = nn.Conv2d(channels * num_orientations, num_orientations, kernel_size=1)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Conv2d):
-            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-            if m.bias is not None:
-                m.bias.data.zero_()
 
     def forward(self, hf_mag):
         B, C, O, H, W = hf_mag.shape
@@ -70,22 +61,6 @@ class FrequencyRefineBlock(nn.Module):
         self.dwconv = nn.Conv2d(channels, channels, kernel_size=3, padding=1, groups=channels)
         self.act2 = nn.GELU()
         self.proj_out = nn.Conv2d(channels, channels, kernel_size=1)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv2d):
-            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-            if m.bias is not None:
-                m.bias.data.zero_()
     
     def forward(self, x):
         shortcut = x
@@ -104,22 +79,6 @@ class TokenProjector(nn.Module):
         self.pool = nn.AvgPool2d(kernel_size=2, stride=2)
         self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         self.norm = nn.LayerNorm(out_channels)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv2d):
-            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-            if m.bias is not None:
-                m.bias.data.zero_()
 
     def forward(self, x):
         x = self.pool(x)
@@ -172,25 +131,25 @@ class DTCWTModule(nn.Module):
         return torch.log1p(mag)
     
     def forward(self, x: torch.Tensor):
-        x = self.patch_embed(x)
+        x = self.patch_embed(x) # (B,C,H,W)
         xl, xh = self.xfm(x)
-        ll_feat = xl
+        ll_feat = xl     # (B,C,H/2,W/2)
 
         xh0 = xh[0]
         hf_mag = self.build_high_frequency_magnitude(xh0)
-        hf_summary = self.orientation_attention(hf_mag)
+        hf_summary = self.orientation_attention(hf_mag)     # (B,C,H/2,W/2)
 
         xh1 = xh[1]
         hf_mag = self.build_high_frequency_magnitude(xh1)
-        hf_summary_l2 = self.orientation_attention(hf_mag)
-        hf_summary_l2 = torch.nn.functional.interpolate(
+        hf_summary_l2 = self.orientation_attention(hf_mag)  # (B,C,H/4,W/4)
+        hf_summary_l2 = torch.nn.functional.interpolate(    # (B,C,H/2,W/2)
             hf_summary_l2,
             size=hf_summary.shape[-2:],
             mode='bilinear',
             align_corners=False,
         )
-
+        # freq_feat: (B,C,H/2,W/2)
         freq_feat = torch.cat([ll_feat, hf_summary, hf_summary_l2], dim=1)
-        freq_feat = self.frequency_encoder(freq_feat)
-        freq_tokens = self.token_projector(freq_feat)
+        freq_feat = self.frequency_encoder(freq_feat)    # (B,C,H/2,W/2)
+        freq_tokens = self.token_projector(freq_feat)    # (B,1024,H/2,W/2)
         return freq_tokens
