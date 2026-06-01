@@ -64,10 +64,7 @@ def main():
     cfg = Config.fromfile(args.config_file)
     cfg.save_result_dir = args.save_dir
     if cfg.net_type == 'patch':
-        if cfg.backbone_type == 'fusionnet':
-            cfg.backbone_cfg['vit_module_ckpt'] = None
-        else:
-            cfg.backbone_cfg['backbone_ckpt'] = None
+        cfg.backbone_cfg['backbone_ckpt'] = None
         if args.val_json:
             cfg.val_datasets['ann_file'] = args.val_json
         model = PatchNet(cfg).to(device)

@@ -87,21 +87,17 @@ class WSCerMLC(MetaClassifier):
         super(WSCerMLC, self).__init__(evaluator, args)
         input_embed_dim = args.backbone_cfg['backbone_token_output_dim'][-1]
         self.num_classes = args.num_classes
-        self.format_heatmap = getattr(args, 'format_heatmap', False)
         self.format_img_token = getattr(args, 'format_img_token', False)
         self.binary_branch = CHIEF(input_embed_dim)
         self.mlc_branch = MLCQuery(args.num_classes, input_embed_dim, args.key_gate_scale, depth=2)
-        self.use_pos_loss_weight = args.loss_cfg['type'] != 'AsymmetricLossOptimized'
-        if self.use_pos_loss_weight:
-            self.pos_loss_fn = build_loss(args.loss_cfg, reduction='none')
-        else:
-            self.pos_loss_fn = build_loss(args.loss_cfg)
+        self.pos_loss_fn = build_loss(args.loss_cfg)
         
     def calc_logits(self, inputs):
         img_tokens = self.get_img_tokens(inputs)  # (bs, num_tokens, C)
         pred_pn_logits, inter_var = self.binary_branch(img_tokens)
 
         key_gate = self.binary_branch.patch_probs(inter_var)['patch_prob']
+        inter_var['heatmap'] = key_gate
         pred_pos_logits,pos_cls_tokens = self.mlc_branch(img_tokens, key_gate=key_gate)
         inter_var['pos_cls_tokens'] = pos_cls_tokens
         
@@ -117,16 +113,7 @@ class WSCerMLC(MetaClassifier):
         pn_loss = F.binary_cross_entropy_with_logits(img_pn_logit, img_gt, reduction='mean')
 
         binary_matrix = self.get_mlc_labels(databatch)
-        if self.use_pos_loss_weight:
-            pos_loss_matrix = self.pos_loss_fn(positive_logits, binary_matrix)
-            pos_loss_weight = torch.where(
-                img_gt > 0,
-                torch.ones_like(img_gt),
-                torch.full_like(img_gt, 0.1),
-            )
-            pos_loss = (pos_loss_matrix * pos_loss_weight).mean()
-        else:
-            pos_loss = self.pos_loss_fn(positive_logits, binary_matrix)
+        pos_loss = self.pos_loss_fn(positive_logits, binary_matrix)
 
         loss = pn_loss + pos_loss
         loss_dict = {
@@ -152,8 +139,6 @@ class WSCerMLC(MetaClassifier):
         img_probs = torch.sigmoid(img_pn_logit)   # (bs, )
         pos_probs = torch.sigmoid(positive_logits) # (bs, n_cls)
 
-        if self.format_heatmap:
-            bs_heatmap = (self.binary_branch.patch_probs(inter_var))['patch_prob']  # (bs, num_tokens)
         if self.format_img_token:
             bs_img_token = self.build_img_token(img_probs, pos_probs, inter_var)
 
@@ -161,8 +146,7 @@ class WSCerMLC(MetaClassifier):
         for idx, (item, pn_p, pos_p) in enumerate(zip(databatch['data_samples'], img_probs, pos_probs)):
             item.img_prob = pn_p
             item.pos_prob = pos_p
-            if self.format_heatmap:
-                item.attn = bs_heatmap[idx]
+            item.attn = inter_var['heatmap'][idx]
             if self.format_img_token:
                 item.img_token = bs_img_token[idx]
             data_sampels.append(item)

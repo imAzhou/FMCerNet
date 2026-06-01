@@ -164,7 +164,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=
     configs/dataset/l_cerscan_ws800.py \
     configs/model/wscernet.py \
     configs/strategy_patch.py \
-    --record_save_dir work_dir/mlc/ours/ws1600
+    --record_save_dir work_dir/mlc/ablation/vit_output_nope
     
 l_cerscanv1_dataset
 cdetector_ws400
