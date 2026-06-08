@@ -1,12 +1,17 @@
 import torch
+from pathlib import Path
 from mmpretrain import get_model
 from .meta_backbone import MetaBackbone
+
+
+MMPRETRAIN_CONFIG_ROOT = Path(__file__).resolve().parents[3] / 'mmpretrain' / '.mim' / 'configs'
+
 
 class ResNet(MetaBackbone):
     def __init__(self, args):
         super(ResNet, self).__init__(args)
         self.backbone = get_model(
-            'resnet50_8xb32_in1k', 
+            MMPRETRAIN_CONFIG_ROOT / 'resnet' / 'resnet50_8xb32_in1k.py',
             pretrained=False, 
             backbone=dict(out_indices=(0, 1, 2, 3))
         ).backbone

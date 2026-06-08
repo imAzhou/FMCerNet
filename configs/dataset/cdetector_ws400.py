@@ -3,9 +3,9 @@ data_root = 'data_resource/CDetector_WS400/WS_400'
 classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
 dataset_type = 'multicls'    # cls, instance
-train_bs = 32
-val_bs = 32
-input_size = 1024  # 224, 392, 448, 512, 1024
+train_bs = 128
+val_bs = 128
+input_size = 224  # 224, 392, 448, 512, 1024
 
 rand_increasing_policies = [
     dict(type='AutoContrast', prob=0.3),

@@ -1,12 +1,17 @@
 import torch
+from pathlib import Path
 from mmpretrain import get_model
 from .meta_backbone import MetaBackbone
+
+
+MMPRETRAIN_CONFIG_ROOT = Path(__file__).resolve().parents[3] / 'mmpretrain' / '.mim' / 'configs'
+
 
 class ViT(MetaBackbone):
     def __init__(self, args):
         super(ViT, self).__init__(args)
         self.backbone = get_model(
-            'vit-large-p16_in21k-pre_3rdparty_in1k-384px', 
+            MMPRETRAIN_CONFIG_ROOT / 'vision_transformer' / 'vit-large-p16_64xb64_in1k-384px.py',
             pretrained=False,
             backbone=dict(out_type='raw', with_cls_token=True)
         ).backbone

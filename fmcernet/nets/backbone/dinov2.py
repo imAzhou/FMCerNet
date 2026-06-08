@@ -1,12 +1,18 @@
 import torch
+from pathlib import Path
 from mmpretrain import get_model
 from .meta_backbone import MetaBackbone
+
+
+MMPRETRAIN_CONFIG_ROOT = Path(__file__).resolve().parents[3] / 'mmpretrain' / '.mim' / 'configs'
+
 
 class DINOV2(MetaBackbone):
     def __init__(self, args):
         super(DINOV2, self).__init__(args)
         self.backbone = get_model(
-            'vit-large-p14_dinov2-pre_3rdparty', pretrained=False,
+            MMPRETRAIN_CONFIG_ROOT / 'dinov2' / 'vit-large-p14_dinov2-pre_headless.py',
+            pretrained=False,
             backbone=dict(out_type='raw', with_cls_token=True)
         ).backbone
 
