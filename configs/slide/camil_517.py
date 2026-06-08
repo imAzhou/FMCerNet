@@ -1,0 +1,10 @@
+net_type = 'slide'
+mil_type = 'CAMIL'
+in_dim = 517
+embed_dim = 512
+temperature = 1.2
+dropout = 0.15
+n_layers = 4
+attn_dim = 256
+gate = True
+num_heads = 8

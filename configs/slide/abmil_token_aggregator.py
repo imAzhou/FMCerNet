@@ -1,0 +1,10 @@
+net_type = 'slide'
+mil_type = 'ABMIL'
+in_dim = 1024
+dataset_in_dim = 3078
+tile_token_aggregator = True
+embed_dim = 512
+num_fc_layers = 1
+dropout = 0.25
+attn_dim = 384
+gate = True

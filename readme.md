@@ -177,3 +177,14 @@ taskhead_model = 'wscer_mlc'
 - 训练策略：`configs/strategy_patch.py`
 - slide 级配置：`configs/slide/*.py`
 
+当前 slide MIL 默认配置为 `RRTMIL + pn_posprob`：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 conda run -n sam2 torchrun --nproc_per_node=8 --master_port=12345 main4PatchNet.py \
+    configs/slide/0_dataset_cfg.py \
+    configs/slide/rrtmil.py \
+    configs/slide/1_strategy_slide.py \
+    --record_save_dir work_dir/slide/ours_ws800/rrtmil_pn_posprob
+```
+
+其中 `configs/slide/rrtmil.py` 使用 `in_dim = 517`，`configs/slide/1_strategy_slide.py` 使用 `format_type = 'pn_posprob'`，即每个 tile 输入 `[pn_feat, 5 个 pos_prob]`。

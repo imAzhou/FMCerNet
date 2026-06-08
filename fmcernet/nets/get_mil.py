@@ -3,8 +3,9 @@ from .MIL.TransMIL import TransMIL
 from .MIL.ABMIL import ABMIL
 from .MIL.DSMIL import DSMIL
 from .MIL.RRT import RRTMIL
+from .MIL.CAMIL import CAMIL
 
-allowed_mil_type = ['HMIL', 'ABMIL', 'TransMIL', 'DSMIL', 'RRTMIL']
+allowed_mil_type = ['HMIL', 'ABMIL', 'TransMIL', 'DSMIL', 'RRTMIL', 'CAMIL']
 
 def get_mil(config):
     mil_type = config.mil_type
@@ -83,6 +84,20 @@ def get_mil(config):
             shift_size=config.shift_size,
             no_norm=config.no_norm,
             classes=config.classes,
+        )
+
+    if mil_type == 'CAMIL':
+        mil_model = CAMIL(
+            in_dim=config.in_dim,
+            embed_dim=config.embed_dim,
+            num_classes=config.num_classes,
+            classes=config.classes,
+            temperature=config.temperature,
+            dropout=config.dropout,
+            n_layers=config.n_layers,
+            attn_dim=config.attn_dim,
+            gate=config.gate,
+            num_heads=config.num_heads,
         )
     
     return mil_model

@@ -1,5 +1,4 @@
-data_root = 'data_resource/0630/WINDOW_SIZE_1600'
-feat_dir = f'{data_root}/slide_feat_ours'
+feat_dir = 'data_resource/LCerScan/WS800/slide_feat_ours'
 classes = ['NILM', 'AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 cls_map = {
     'NILM': 'NILM',
@@ -19,5 +18,5 @@ patch_nums = 1000
 train_bs = 32
 val_bs = 32
 
-train_csvfile = 'data_resource/0630/45_0924_train.csv'
-val_csvfile = 'data_resource/0630/67_0924_val.csv'
+train_csvfile = 'data_resource/LCerScan/train.csv'
+val_csvfile = 'data_resource/LCerScan/val.csv'

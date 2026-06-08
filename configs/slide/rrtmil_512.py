@@ -1,6 +1,6 @@
 net_type = 'slide'
 mil_type = 'RRTMIL'
-in_dim = 517
+in_dim = 512
 mlp_dim = 512
 embed_dim = 512
 act = "relu"

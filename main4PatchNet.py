@@ -170,9 +170,9 @@ l_cerscanv1_dataset
 cdetector_ws400
 hicervix_dataset
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun  --nproc_per_node=8 --master_port=12345 main4PatchNet.py \
-    configs/dataset/mmpretrain/jfsw_attri_dataset.py \
-    configs/model/attri_cls.py \
-    configs/strategy_patch.py \
-    --record_save_dir log/attri_cls/hap_lora
+CUDA_VISIBLE_DEVICES=0,1,2,4,5,6,7 torchrun  --nproc_per_node=7 --master_port=12345 main4PatchNet.py \
+    configs/slide/0_dataset_cfg.py \
+    configs/slide/camil_517.py \
+    configs/slide/1_strategy_slide.py \
+    --record_save_dir work_dir/slide/ours_ws800/camil_517_pn_posprob
 '''
