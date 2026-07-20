@@ -273,11 +273,6 @@ The slide metadata CSV used by this tool must provide `wsi_path`,
 project-relative dataset, checkpoint, and output paths near the top of the
 script.
 
-## Tests
+## Contact
 
-Run the unit tests in the `sam2` environment:
-
-```bash
-conda activate sam2
-python -m unittest discover -s tests -p "test_*.py"
-```
+If you have any questions, please contact us via email: zhoulyaxx@zju.edu.cn
