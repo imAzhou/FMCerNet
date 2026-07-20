@@ -7,17 +7,6 @@ histopathology_backbone_cfgdict = {
         frozen_backbone = False,
         use_peft = None,
     ),
-    # 'uni': dict(
-    #     backbone_output_dim = [1024],
-    #     backbone_token_output_dim = [1024],
-    #     backbone_output_downratio = [16],
-    #     backbone_ckpt = 'checkpoints/uni.bin',
-    #     frozen_backbone = True,
-    #     use_peft = 'lora',   # None, lora, FourierFT, dtcwt
-    #     lora_target_modules = ["qkv", "proj", "fc1", "fc2"],
-    #     vit_patch_size = 16,
-    #     default_input_size = 224
-    # ),
     'uni2-h': dict(
         backbone_output_dim = [1536],
         backbone_token_output_dim = [1536],
@@ -30,16 +19,6 @@ histopathology_backbone_cfgdict = {
         num_register_tokens = 8,
         default_input_size = 224
     ),
-    # 'virchow': dict(
-    #     backbone_output_dim = [2560],
-    #     backbone_token_output_dim = [1280],
-    #     backbone_output_downratio = [14],
-    #     backbone_ckpt = 'checkpoints/virchow.safetensors',
-    #     frozen_backbone = True,
-    #     use_peft = None,
-    #     vit_patch_size = 14,
-    #     default_input_size = 224
-    # ),
     'virchow2': dict(
         backbone_output_dim = [2560],
         backbone_token_output_dim = [1280],

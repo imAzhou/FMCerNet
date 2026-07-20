@@ -32,15 +32,15 @@ class MetaClassifier(nn.Module):
         elif self.backbone_type == 'sam2':
             img_tokens = inputs['trunk_outputs'][-1]   # (bs,c,h,w)
             img_tokens = img_tokens.flatten(2).transpose(1, 2)
-        elif self.backbone_type in ['vit','dinov2', 'dinov3', 'uni']:
+        elif self.backbone_type in ['vit','dinov2', 'dinov3']:
             img_tokens = inputs[:,1:,:]
         elif self.backbone_type == 'uni2-h':
             img_tokens = inputs[:,9:,:]
         elif self.backbone_type == 'ctranspath':
             img_tokens = inputs
-        elif self.backbone_type in ['smartccs', 'cytofm', 'unicas', 'virchow', 'virchow2', 'gpfm', 'genbio-pathfm']:
+        elif self.backbone_type in ['smartccs', 'cytofm', 'unicas', 'virchow2', 'gpfm', 'genbio-pathfm']:
             img_tokens = inputs['x_norm_patchtokens']
-        elif self.backbone_type == 'fusionnet':
+        elif self.backbone_type == 'lfreqvit':
             # feat_1 = inputs['x_norm_patchtokens']
             # feat_2 = inputs['dtcwt_output']
             # img_tokens = feat_1 + feat_2
@@ -55,13 +55,13 @@ class MetaClassifier(nn.Module):
         elif self.backbone_type == 'sam2':
             feat = inputs['vision_features']
             cls_token = feat.mean(dim=[2, 3])
-        elif self.backbone_type in ['vit', 'dinov2', 'dinov3', 'uni', 'uni2-h']:
+        elif self.backbone_type in ['vit', 'dinov2', 'dinov3', 'uni2-h']:
             cls_token = inputs[:,0,:]
         elif self.backbone_type == 'ctranspath':
             cls_token = inputs.mean(dim=1)
-        elif self.backbone_type in ['smartccs', 'cytofm', 'unicas', 'virchow', 'virchow2', 'gpfm', 'genbio-pathfm']:
+        elif self.backbone_type in ['smartccs', 'cytofm', 'unicas', 'virchow2', 'gpfm', 'genbio-pathfm']:
             cls_token = inputs['x_norm_clstoken']
-        elif self.backbone_type == 'fusionnet':
+        elif self.backbone_type == 'lfreqvit':
             cls_token = inputs['cat_output'].mean(dim=1)
         return cls_token
 

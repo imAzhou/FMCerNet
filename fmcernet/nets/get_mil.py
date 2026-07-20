@@ -1,20 +1,16 @@
-from .MIL.HMIL import HMIL
 from .MIL.TransMIL import TransMIL
 from .MIL.ABMIL import ABMIL
 from .MIL.DSMIL import DSMIL
 from .MIL.RRT import RRTMIL
 from .MIL.CAMIL import CAMIL
 
-allowed_mil_type = ['HMIL', 'ABMIL', 'TransMIL', 'DSMIL', 'RRTMIL', 'CAMIL']
+allowed_mil_type = ['ABMIL', 'TransMIL', 'DSMIL', 'RRTMIL', 'CAMIL']
 
 def get_mil(config):
     mil_type = config.mil_type
     assert mil_type in allowed_mil_type, f'mil_type allowed in {allowed_mil_type}'
     
     mil_model = None
-    if mil_type == 'HMIL':
-        mil_model = HMIL()
-    
     if mil_type == 'ABMIL':
         mil_model = ABMIL(
             in_dim=config.in_dim,

@@ -3,6 +3,10 @@
 checkpoints/
 data_resource/
 work_dir/
+configs/experiments/
+scripts/
+tests/
 model_structure/
 fmcernet.egg-info/
+AGENTS.md
 **/__pycache__

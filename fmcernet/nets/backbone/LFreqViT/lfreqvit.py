@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from ..SmartCCS.vision_transformer import vit_large
-from .dtcwt_module import DTCWTModule
+from .frequency_module import FrequencyModule
 from ..meta_backbone import MetaBackbone
 
 class LayerNorm2d(nn.Module):
@@ -20,9 +20,9 @@ class LayerNorm2d(nn.Module):
         return x
 
 
-class FusionNet(MetaBackbone):
+class LFreqViT(MetaBackbone):
     def __init__(self, args):
-        super(FusionNet, self).__init__(args)
+        super().__init__(args)
         vit_kwargs = dict(
             img_size=224,
             patch_size=14,
@@ -34,7 +34,11 @@ class FusionNet(MetaBackbone):
             ffn_bias=True,
         )
         self.vit_module = vit_large(**vit_kwargs)
-        self.dtcwt_module = DTCWTModule(args.input_size, args.backbone_cfg['DTBlock_nums'])
+        self.frequency_module = FrequencyModule(
+            input_size=args.input_size,
+            block_count=args.backbone_cfg['DTBlock_nums'],
+            operator_name=args.backbone_cfg['frequency_operator'],
+        )
         feat_dim = 1024
         self.feature_fusion = nn.Linear(feat_dim * 2, feat_dim)
         self._init_feature_fusion(feat_dim)
@@ -74,7 +78,7 @@ class FusionNet(MetaBackbone):
                 if key.startswith('backbone.'):
                     state_dict[key[len('backbone.'):]] = value
             self.vit_module.load_state_dict(state_dict, strict=True)
-            print('Load vit_module FusionNet from: ' + str(ckpt))
+            print('Load vit_module LFreqViT from: ' + str(ckpt))
 
     def freeze_backbone(self, frozen_backbone):
         '''frozen the vit_module params'''
@@ -90,15 +94,15 @@ class FusionNet(MetaBackbone):
         x_224 = F.interpolate(x,size=224,mode='bilinear',align_corners=False)
         vit_output = self.vit_module(x_224, is_training=True) # dict
         vit_imgtokens = vit_output['x_norm_patchtokens'] # Tensor: B,N,C
-        dtcwt_output = self.dtcwt_module(x) # Tensor: B,N,C
+        frequency_output = self.frequency_module(x) # Tensor: B,N,C
 
         fused_tokens = self.feature_fusion(
-            torch.cat([vit_imgtokens, dtcwt_output], dim=-1)
+            torch.cat([vit_imgtokens, frequency_output], dim=-1)
         )
 
         output = {
             **vit_output, 
-            'dtcwt_output':dtcwt_output,
+            'frequency_output':frequency_output,
             'cat_output': fused_tokens,     # Tensor: B,N,C
         }
         return output

@@ -10,7 +10,7 @@ cytopathology_backbone_cfgdict = {
         vit_patch_size = 14,
         default_input_size = 224
     ),
-    'fusionnet': dict(
+    'lfreqvit': dict(
         backbone_output_dim = [1024],
         backbone_token_output_dim = [1024],
         backbone_output_downratio = [64],
@@ -18,7 +18,8 @@ cytopathology_backbone_cfgdict = {
         frozen_backbone = True,
         use_peft = None, 
         lora_target_modules = ["qkv", "proj", "fc1", "fc2"],
-        DTBlock_nums = 3
+        DTBlock_nums = 3,
+        frequency_operator = 'dtcwt'
     ),
     'cytofm': dict(
         backbone_output_dim = [768],

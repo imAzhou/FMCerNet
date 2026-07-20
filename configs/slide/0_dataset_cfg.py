@@ -13,7 +13,7 @@ cls_map = {
     'AGC-FN': 'AGC',
 }
 num_classes = len(classes)
-dataset_type = 'slide'    # cls, instance
+dataset_type = 'slide'
 patch_nums = 1000
 train_bs = 32
 val_bs = 32

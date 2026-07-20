@@ -5,7 +5,7 @@ from torch.utils.data import Sampler
 from mmengine.registry import init_default_scope
 from mmengine.dataset.sampler import DefaultSampler
 from .slide_dataset import SlideDataset
-from mmpretrain.datasets import MultiLabelDataset,CustomDataset
+from mmpretrain.datasets import MultiLabelDataset
 
 
 class BalancedBatchSampler(Sampler):
@@ -99,24 +99,14 @@ def build_sampler(cfg, mode, dataset, batch_size):
 
 
 def load_data(cfg, load_modes = []):
-    valid_modes = {'train', 'val', 'test'}
+    valid_modes = {'train', 'val'}
 
     assert all(mode in valid_modes for mode in load_modes), \
     f"Invalid mode(s) in load_modes: {load_modes}. Must be in {valid_modes}"
 
     dataloaders = []
     for mode in load_modes:
-        if cfg.dataset_type == 'cls':
-            init_default_scope('mmpretrain')
-            dataset_cfg = {}
-            if mode == 'train':
-                dataset_cfg = cfg.train_datasets
-                batch_size = cfg.train_bs
-            elif mode == 'val':
-                dataset_cfg = cfg.val_datasets
-                batch_size = cfg.val_bs
-            dataset = CustomDataset(**dataset_cfg)
-        elif cfg.dataset_type == 'multicls':
+        if cfg.dataset_type == 'multicls':
             init_default_scope('mmpretrain')
             dataset_cfg = {}
             if mode == 'train':
@@ -135,6 +125,8 @@ def load_data(cfg, load_modes = []):
                 csvfile = cfg.val_csvfile
                 batch_size = cfg.val_bs
             dataset = SlideDataset(cfg, csvfile)
+        else:
+            raise ValueError(f'Invalid dataset_type: {cfg.dataset_type}')
 
         sampler = build_sampler(cfg, mode, dataset, batch_size)
         loader = DataLoader(dataset, 
@@ -149,21 +141,6 @@ def load_data(cfg, load_modes = []):
     if len(dataloaders) == 1:
         return dataloaders[0]
     return dataloaders
-
-def get_mode_cfg(mode, cfg):
-    if mode == 'train':
-        annojson = cfg.train_annojson
-        transform = cfg.train_transform
-        batch_size = cfg.train_bs
-    elif mode == 'val':
-        annojson = cfg.val_annojson
-        transform = cfg.val_transform
-        batch_size = cfg.val_bs
-    elif mode == 'test':
-        annojson = cfg.test_annojson
-        transform = cfg.test_transform
-        batch_size = cfg.test_bs
-    return annojson,transform,batch_size
 
 def custom_collate(batch):
     images = [item['inputs'] for item in batch]

@@ -76,7 +76,7 @@ class MLCQuery(nn.Module):
 
         return pred_pos_logits,queries
 
-class WSCerMLC(MetaClassifier):
+class C2FHead(MetaClassifier):
     def __init__(self, args):
         evaluator = build_evaluator([ExtendMultiLabelMetric(
             thr = args.positive_thr,
@@ -84,12 +84,12 @@ class WSCerMLC(MetaClassifier):
             logger_name = args.logger_name,
             with_binary = True
         )])
-        super(WSCerMLC, self).__init__(evaluator, args)
+        super().__init__(evaluator, args)
         input_embed_dim = args.backbone_cfg['backbone_token_output_dim'][-1]
         self.num_classes = args.num_classes
         self.format_img_token = getattr(args, 'format_img_token', False)
         self.binary_branch = CHIEF(input_embed_dim)
-        self.mlc_branch = MLCQuery(args.num_classes, input_embed_dim, args.key_gate_scale, depth=2)
+        self.mlc_branch = MLCQuery(args.num_classes, input_embed_dim, args.key_gate_scale, depth=args.mlc_depth)
         self.pos_loss_fn = build_loss(args.loss_cfg)
         
     def calc_logits(self, inputs):

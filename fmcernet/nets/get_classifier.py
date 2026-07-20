@@ -5,9 +5,9 @@ from .classifier.chief import CHIEF
 from .classifier.ml_decoder import MLDecoder
 from .classifier.query2label import Query2Label
 from .classifier.mlc_nc import MLCNC
-from .classifier.wscer_mlc import WSCerMLC
+from .classifier.c2fhead import C2FHead
 
-allowed_classifier_type = ['binary_linear', 'mc_linear', 'mlc_linear', 'chief', 'ml_decoder', 'query2label', 'mlc_nc', 'wscer_mlc']
+allowed_classifier_type = ['binary_linear', 'mc_linear', 'mlc_linear', 'chief', 'ml_decoder', 'query2label', 'mlc_nc', 'c2fhead']
 
 def get_classifier(args):
     classifier_type = args.taskhead_model
@@ -29,7 +29,7 @@ def get_classifier(args):
     if classifier_type == 'mlc_nc':
         classifier = MLCNC
 
-    if classifier_type == 'wscer_mlc':
-        classifier = WSCerMLC
+    if classifier_type == 'c2fhead':
+        classifier = C2FHead
     
     return classifier(args)

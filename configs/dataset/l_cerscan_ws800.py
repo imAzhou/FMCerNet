@@ -2,13 +2,11 @@
 data_root = 'data_resource/LCerScan/WS800'
 classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
-dataset_type = 'multicls'    # cls, instance
+dataset_type = 'multicls'
 train_bs = 128
 val_bs = 128
 input_size = 1024  # 224, 392, 448, 512, 1024
 
-# train_sampler = dict(type='balanced_batch', pos_fraction=0.5, seed=1234)
-# train_ann_file = 'annofiles/multilabel_puretrain_neg3000.json'
 train_sampler = dict()
 train_ann_file = 'annofiles/multilabel_puretrain.json'
 

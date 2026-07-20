@@ -9,12 +9,12 @@ import random
 from mmpretrain.structures import DataSample
 from mmdet.structures import DetDataSample
 from .tools import is_bbox_inside
-from .KFBreader.kfbreader import KFBSlide
+from .wsi_reader import WSIReader
 
 
 
 class WSIHandler:
-    def __init__(self, source_path, crop_ws,
+    def __init__(self, reader: WSIReader, crop_ws,
                  level=0, 
                  safe_margin=100, 
                  certain_thr=0.7,
@@ -22,7 +22,9 @@ class WSIHandler:
                  bbox_score_thr=0.2,
                  positive_class=[],
                  ):
-        self.slide = KFBSlide(source_path)
+        if not isinstance(reader, WSIReader):
+            raise TypeError("reader must be a WSIReader instance.")
+        self.reader = reader
         self.level = level
         self.safe_margin = safe_margin
         self.crop_ws = crop_ws
@@ -32,15 +34,15 @@ class WSIHandler:
         self.positive_class = positive_class
 
     def save_thumbnail(self, savepath):
-        smallest_level = len(self.slide.level_downsamples)-1
-        width, height = self.slide.level_dimensions[smallest_level]
+        smallest_level = len(self.reader.level_downsamples)-1
+        width, height = self.reader.level_dimensions[smallest_level]
         location, level, size = (0, 0), smallest_level, (width, height)
-        read_result = Image.fromarray(self.slide.read_region(location, level, size))
+        read_result = Image.fromarray(self.reader.read_region(location, level, size))
         read_result.save(savepath)
         return read_result
 
     def init_patchlist(self, init_dict):
-        width, height = self.slide.level_dimensions[self.level]
+        width, height = self.reader.level_dimensions[self.level]
         width -= self.safe_margin
         height -= self.safe_margin
         iw, ih = ceil(width/self.crop_ws), ceil(height/self.crop_ws)
@@ -62,7 +64,7 @@ class WSIHandler:
         return BGR numpy imgdata, value in [0,255]
         '''
         if random_cut:
-            max_x, max_y = self.slide.level_dimensions[self.level]
+            max_x, max_y = self.reader.level_dimensions[self.level]
             max_x, max_y = max_x-self.safe_margin, max_y-self.safe_margin
             x1,y1 = random.randint(self.safe_margin, max_x-self.crop_ws),random.randint(self.safe_margin, max_y-self.crop_ws)
             point_xy = (x1,y1)
@@ -84,7 +86,7 @@ class WSIHandler:
         if bboxwh == None:
             bboxwh = (self.crop_ws, self.crop_ws)
         location, level, size = (x, y), self.level, bboxwh
-        read_result = copy.deepcopy(Image.fromarray(self.slide.read_region(location, level, size)))
+        read_result = copy.deepcopy(Image.fromarray(self.reader.read_region(location, level, size)))
         return read_result
 
     def infer_valid_fn(self, valid_m, valid_datapool):

@@ -2,7 +2,7 @@
 data_root = 'data_resource/LCerScan/WS1600'
 classes = ['AGC', 'ASC-US', 'LSIL', 'ASC-H', 'HSIL']
 num_classes = len(classes)
-dataset_type = 'multicls'    # cls, instance
+dataset_type = 'multicls'
 train_bs = 32
 val_bs = 32
 input_size = 1024  # 224, 392, 448, 512, 1024

@@ -11,6 +11,7 @@ from mmengine.registry import init_default_scope
 from fmcernet.nets import PatchNet,ValidClsNet
 from fmcernet.utils import set_seed, init_distributed_mode, is_main_process
 from fmcernet.utils.wsi_handler import WSIHandler
+from fmcernet.utils.wsi_reader import open_wsi
 from mmengine.logging import MMLogger
 import pandas as pd
 import time
@@ -52,14 +53,20 @@ def resume_infer():
         done_pidlist.append(pid)
     return done_pidlist
 
-def readimgs(proc_id, kfb_path, set_group):
-    wsi_handler = WSIHandler(kfb_path, PATCH_EDGE, LEVEL, 
-                certain_thr=CERTAIN_THR, positive_thr=POSITIVE_THR)
-    for item in set_group:
-        item['image'],_ = wsi_handler.read_cv2img(item['xy'])
+def readimgs(proc_id, wsi_path, set_group):
+    with open_wsi(wsi_path) as reader:
+        wsi_handler = WSIHandler(
+            reader,
+            PATCH_EDGE,
+            LEVEL,
+            certain_thr=CERTAIN_THR,
+            positive_thr=POSITIVE_THR,
+        )
+        for item in set_group:
+            item['image'],_ = wsi_handler.read_cv2img(item['xy'])
     return set_group
 
-def load_patchimgs(kfb_path, slide_patchlist):
+def load_patchimgs(wsi_path, slide_patchlist):
     cpu_num = 16
     step = len(slide_patchlist) // cpu_num
     workers = Pool(processes=cpu_num)
@@ -69,7 +76,7 @@ def load_patchimgs(kfb_path, slide_patchlist):
             set_group = slide_patchlist[proc_id*step:]
         else:
             set_group = slide_patchlist[proc_id*step:(proc_id+1)*step]
-        p = workers.apply_async(readimgs,(proc_id, kfb_path, set_group))
+        p = workers.apply_async(readimgs,(proc_id, wsi_path, set_group))
         processes.append(p)
     readresults = []
     for p in processes:
@@ -82,9 +89,9 @@ def run_inference(valid_model, mlcls_model):
     total_datalist = []
     for csv_file in infer_csv_files:
         df = pd.read_csv(csv_file)
-        df = df.drop_duplicates(subset=["patientId"])   # 按 patientId 去重
+        df = df.drop_duplicates(subset=["patientId"])   # Deduplicate by patientId
         df = df[~df["patientId"].isin(done_pidlist)]
-        data_list = df.to_dict(orient="records")  # 每一行 -> dict
+        data_list = df.to_dict(orient="records")  # Convert each row to a dictionary
         total_datalist.extend(data_list)
     # total_datalist = total_datalist[:2]
     if is_main_process():
@@ -96,26 +103,33 @@ def run_inference(valid_model, mlcls_model):
     
     for ridx,row in enumerate(total_datalist):
         patientId = row["patientId"]
-        slide_clsname = row["kfb_clsname"]
+        slide_clsname = row["slide_clsname"]
+        wsi_path = row["wsi_path"]
         if is_main_process():
             start_time = time.time()
-        wsi_handler = WSIHandler(row["kfb_path"], PATCH_EDGE, LEVEL, 
-                                 certain_thr=CERTAIN_THR, positive_thr=POSITIVE_THR)
-        slide_patchlist = wsi_handler.init_patchlist({
-            'image': None,
-            'filepath': '',
-            'valid_prob': 0, 
-            'valid_flag': -1,
-            'img_prob': 0, 
-            'pred_label': -1,
-            'img_token': None
-        })
+        with open_wsi(wsi_path) as reader:
+            wsi_handler = WSIHandler(
+                reader,
+                PATCH_EDGE,
+                LEVEL,
+                certain_thr=CERTAIN_THR,
+                positive_thr=POSITIVE_THR,
+            )
+            slide_patchlist = wsi_handler.init_patchlist({
+                'image': None,
+                'filepath': '',
+                'valid_prob': 0,
+                'valid_flag': -1,
+                'img_prob': 0,
+                'pred_label': -1,
+                'img_token': None
+            })
 
-        # ---- 数据切分（保证每张卡处理的数据不重复） ----
+        # ---- Split data so each GPU processes a disjoint subset ----
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         data_per_rank = slide_patchlist[rank::world_size]
-        data_per_rank = load_patchimgs(row["kfb_path"], data_per_rank)
+        data_per_rank = load_patchimgs(wsi_path, data_per_rank)
 
         for p_idx in range(0, len(data_per_rank), test_bs):
             read_pool = data_per_rank[p_idx:p_idx+test_bs]
@@ -124,12 +138,12 @@ def run_inference(valid_model, mlcls_model):
 
         wsi_handler.infer_pn_batch_fn(mlcls_model, data_per_rank, test_bs)
         all_results = [None for _ in range(dist.get_world_size())]
-        torch.cuda.synchronize()    # 等当前 GPU 上的计算任务完成（防止 GPU 异步计算没结束）
+        torch.cuda.synchronize()    # Wait for asynchronous work on the current GPU
         dist.all_gather_object(all_results, data_per_rank)
-        dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
-        if dist.get_rank() == 0:    # rank0 汇总结果
+        dist.barrier()  # Wait for all ranks before rank 0 aggregates results
+        if dist.get_rank() == 0:    # Rank 0 aggregates results
             merged = [x for r in all_results for x in r]
-            # 取 img_prob > 0 的 tile, 即有效 tile
+            # Select valid tiles with img_prob > 0
             selected = sorted(
                 [v for v in merged if v['img_prob'] > 0],
                 key=lambda x: x['img_prob'], reverse=True
@@ -137,7 +151,7 @@ def run_inference(valid_model, mlcls_model):
             if len(selected) > 0:
                 slide_feats = torch.stack([pinfo['img_token'] for pinfo in selected])
                 torch.save(slide_feats, f"{WSI_feat_savedir}/{patientId}.pt")
-            # 打印当前切片的推理结果
+            # Log the inference result for the current slide
             t_delta = time.time() - start_time
             logstr = wsi_handler.format_logstr(merged)
             logstr = f"[{patientId}]({slide_clsname}) cost:{t_delta:0.2f}s, {logstr}"
@@ -189,9 +203,9 @@ def main():
     valid_model,mlcls_model = get_models(device,args.gpu)
     
     run_inference(valid_model, mlcls_model)
-    torch.cuda.synchronize()    # 等当前 GPU 上的计算任务完成（防止 GPU 异步计算没结束）
-    dist.barrier()  # 等所有 rank 到达这里（防止 rank0 提前汇总）
-    if dist.get_rank() == 0:    # rank0 汇总结果
+    torch.cuda.synchronize()    # Wait for asynchronous work on the current GPU
+    dist.barrier()  # Wait for all ranks before rank 0 aggregates results
+    if dist.get_rank() == 0:    # Rank 0 aggregates results
         collect_tmp()
         print(f"\n{'='*40}")
         print(f'WSI infer result saved in {infer_txt_savepath}')
@@ -205,5 +219,5 @@ if __name__ == '__main__':
 
 
 '''
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 scripts/process_WSI/extract_all_patch.py
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=8 --master_port=12341 tools/process_WSI/extract_all_patch.py
 '''

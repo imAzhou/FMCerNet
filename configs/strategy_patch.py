@@ -51,5 +51,5 @@ param_scheduler = [
         by_epoch=True),
 ]
 
-logger_name = 'wscer_patch'
+logger_name = 'c2fhead_patch'
 load_from = None

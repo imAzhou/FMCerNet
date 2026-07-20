@@ -31,13 +31,7 @@ class SlideDataset(Dataset):
         attn_mask = torch.zeros(self.patch_nums,)
 
         if os.path.exists(feat_path):
-            if self.format_type == 'direct':
-                slide_tensor = self.format_slide_tensor_simple(feat_path)
-            elif self.format_type == 'pn_pos':
-                slide_tensor = self.format_slide_tensor(feat_path)
-            elif self.format_type == 'nopn_pos':
-                slide_tensor = self.format_slide_tensor_nopn(feat_path)
-            elif self.format_type == 'pn_only':
+            if self.format_type == 'pn_only':
                 slide_tensor = self.format_slide_tensor_pn_only(feat_path)
             elif self.format_type == 'pn_posprob':
                 slide_tensor = self.format_slide_tensor_pn_posprob(feat_path)
@@ -64,9 +58,9 @@ class SlideDataset(Dataset):
             slide_tensor = F.pad(slide_tensor, pad_size, value=0)
 
         # slide_tensor = torch.rand(self.patch_nums, 517)
-        slide_clsname = slide_info['kfb_clsname']
+        slide_clsname = slide_info['slide_clsname']
         if self.cls_map is not None:
-            slide_clsname = self.cls_map[slide_info['kfb_clsname']]
+            slide_clsname = self.cls_map[slide_info['slide_clsname']]
         slide_label = self.classes.index(slide_clsname)
         data_samples = DataSample()
         data_samples.slide_label = slide_label
@@ -77,43 +71,6 @@ class SlideDataset(Dataset):
             'data_samples': data_samples
         }
     
-    def format_slide_tensor(self, feat_path):
-        '''适用于 ours 的方法'''
-        load_tensor = torch.load(feat_path)    # (L, dim)
-        pn_prob_feat = load_tensor[:,0,:]
-        pn_prob, pn_feat = pn_prob_feat[:,0], pn_prob_feat[:,1:]
-        pos_prob_feat = load_tensor[:,1:,:]
-        pos_prob, pos_feat = pos_prob_feat[:,:,0], pos_prob_feat[:,:,1:]
-        # step1: 按pn_prob从大到小排序
-        sorted_idx = torch.argsort(pn_prob, descending=True)  # (L,)
-        # step2: 取pos_prob前k个最大值对应的pos_feat
-        top_idx = torch.topk(pos_prob, k=3, dim=1).indices    # (L, 3)
-        top_pos_feat = torch.gather(pos_feat, 1, top_idx.unsqueeze(-1).expand(-1, -1, pos_feat.size(-1)))  # (L, 3, dim)
-        pos_feat_sum = top_pos_feat.mean(dim=1)   # (L, dim)
-
-        feat_concat = torch.cat([pn_feat, pos_feat_sum], dim=1)   # (L, dim*2)
-        slide_tensor = feat_concat[sorted_idx[:self.patch_nums]]   # (topk, dim*2)
-        
-        return slide_tensor
-
-    def format_slide_tensor_nopn(self, feat_path):
-        '''no pos/neg prob and feat: ml_decoder'''
-        load_tensor = torch.load(feat_path)    # (L, dim)
-        pos_prob, pos_feat = load_tensor[:,:,0], load_tensor[:,:,1:]
-        # 取每个patch的最大pos_prob
-        max_prob, _ = torch.max(pos_prob, dim=1)   # (L,)
-        # 按最大prob从大到小排序，得到索引
-        sorted_idx = torch.argsort(max_prob, descending=True)   # (L,)
-
-        # 取pos_prob前k个最大值对应的pos_feat
-        top_idx = torch.topk(pos_prob, k=3, dim=1).indices    # (L, 3)
-        top_pos_feat = torch.gather(pos_feat, 1, top_idx.unsqueeze(-1).expand(-1, -1, pos_feat.size(-1)))  # (L, 3, dim)
-        pos_feat_sum = top_pos_feat.sum(dim=1)   # (L, dim)
-
-        slide_tensor = pos_feat_sum[sorted_idx[:self.patch_nums]]   # (topk, dim)
-
-        return slide_tensor
-
     def format_slide_tensor_pn_only(self, feat_path):
         load_tensor = torch.load(feat_path)    # (L, 6, 513)
         pn_prob_feat = load_tensor[:, 0, :]
@@ -163,9 +120,3 @@ class SlideDataset(Dataset):
         sorted_idx = torch.argsort(pn_prob, descending=True)
         sorted_tensor = load_tensor[sorted_idx[:self.patch_nums]]
         return sorted_tensor.flatten(start_dim=1)
-
-    def format_slide_tensor_simple(self, feat_path):
-        ''''''
-        load_tensor = torch.load(feat_path)    # (L, dim)
-        slide_tensor = load_tensor[:self.patch_nums]   # (topk, dim)
-        return slide_tensor
